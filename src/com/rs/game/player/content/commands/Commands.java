@@ -2083,6 +2083,23 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "roofs": {
+		// ::roofs on / off - toggle the client's Remove Roofs graphic option
+		boolean hide = cmd.length >= 2 && (cmd[1].equalsIgnoreCase("on")
+			|| cmd[1].equalsIgnoreCase("hide")
+			|| cmd[1].equalsIgnoreCase("true")
+			|| cmd[1].equalsIgnoreCase("1"));
+		// "::roofs" with no arg: hide. "::roofs off" / "show" / "0": show.
+		if (cmd.length < 2) hide = true;
+		else if (cmd[1].equalsIgnoreCase("off")
+			|| cmd[1].equalsIgnoreCase("show")
+			|| cmd[1].equalsIgnoreCase("false")
+			|| cmd[1].equalsIgnoreCase("0")) hide = false;
+		com.rs.bot.spectate.BotSpectator.setRoofsHidden(player, hide);
+		player.getPackets().sendGameMessage("Roofs are now " + (hide ? "hidden" : "shown") + ".");
+		return true;
+	    }
+
 	    case "botinfo": {
 		if (cmd.length < 2) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::botinfo botName");

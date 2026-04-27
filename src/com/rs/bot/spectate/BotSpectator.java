@@ -35,15 +35,9 @@ public final class BotSpectator {
         if (target == null) return false;
         spectator.getTemporaryAttributtes().put(ATTR_KEY, target.getDisplayName());
         ensureTicker();
-        // Hide the spectator's character model so OTHER clients don't draw
-        // them. The client always renders self locally regardless, so we
-        // also snap the camera up high looking down at the target - the
-        // self-render ends up directly under the lens, mostly invisible.
-        try {
-            spectator.getAppearence().setHidden(true);
-        } catch (Throwable t) {
-            // best-effort; spectate still works without the hide
-        }
+        try { spectator.getAppearence().setHidden(true); } catch (Throwable ignore) {}
+        // Hide roofs so we can see indoor scenes through ceilings.
+        setRoofsHidden(spectator, true);
         spectator.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
         applySpectateCamera(spectator, target);
         return true;
@@ -52,16 +46,20 @@ public final class BotSpectator {
     /** Stop spectating. */
     public static void stop(Player spectator) {
         spectator.getTemporaryAttributtes().remove(ATTR_KEY);
+        try { spectator.getAppearence().setHidden(false); } catch (Throwable ignore) {}
+        try { spectator.getPackets().sendResetCamera(); } catch (Throwable ignore) {}
+        setRoofsHidden(spectator, false);
+    }
+
+    /**
+     * Toggle the client's "Remove roofs" graphic option. The 718 client
+     * reads this from varbit 4084 (0 = show, 1 = hide). Public so the
+     * ::roofs command can call it directly without going through spectate.
+     */
+    public static void setRoofsHidden(Player p, boolean hidden) {
         try {
-            spectator.getAppearence().setHidden(false);
-        } catch (Throwable t) {
-            // ignore
-        }
-        try {
-            spectator.getPackets().sendResetCamera();
-        } catch (Throwable t) {
-            // ignore
-        }
+            p.getVarsManager().sendVarBit(4084, hidden ? 1 : 0);
+        } catch (Throwable ignore) {}
     }
 
     /** True if this player is currently spectating someone. */
