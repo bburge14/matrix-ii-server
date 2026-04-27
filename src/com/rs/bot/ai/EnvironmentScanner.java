@@ -52,6 +52,15 @@ public final class EnvironmentScanner {
      * Returns null if nothing matches within radius.
      */
     public static TreeMatch findNearestTree(WorldTile from, int radius) {
+        return findNearestTree(from, radius, null);
+    }
+
+    /**
+     * Find the nearest tree of a specific type. Used when a TrainingMethod
+     * directs the bot to e.g. yew trees so we don't grab a regular tree
+     * that happens to be closer.
+     */
+    public static TreeMatch findNearestTree(WorldTile from, int radius, TreeDefinitions only) {
         WorldObject best = null;
         TreeDefinitions bestDef = null;
         int bestDist = Integer.MAX_VALUE;
@@ -60,6 +69,7 @@ public final class EnvironmentScanner {
             if (name == null) continue;
             TreeDefinitions def = matchTree(name);
             if (def == null) continue;
+            if (only != null && def != only) continue;
             int d = manhattan(from, o);
             if (d < bestDist) {
                 bestDist = d;
@@ -75,6 +85,10 @@ public final class EnvironmentScanner {
      * (Copper, Tin, Iron, Coal, Mithril, Adamant, Runite, ...).
      */
     public static RockMatch findNearestRock(WorldTile from, int radius) {
+        return findNearestRock(from, radius, null);
+    }
+
+    public static RockMatch findNearestRock(WorldTile from, int radius, RockDefinitions only) {
         WorldObject best = null;
         RockDefinitions bestDef = null;
         int bestDist = Integer.MAX_VALUE;
@@ -83,6 +97,7 @@ public final class EnvironmentScanner {
             if (name == null) continue;
             RockDefinitions def = matchRock(name);
             if (def == null) continue;
+            if (only != null && def != only) continue;
             int d = manhattan(from, o);
             if (d < bestDist) {
                 bestDist = d;
@@ -98,6 +113,10 @@ public final class EnvironmentScanner {
      * 313, 6267, ...) not world objects.
      */
     public static FishMatch findNearestFishingSpot(WorldTile from, int radius) {
+        return findNearestFishingSpot(from, radius, null);
+    }
+
+    public static FishMatch findNearestFishingSpot(WorldTile from, int radius, FishingSpots only) {
         NPC best = null;
         FishingSpots bestDef = null;
         int bestDist = Integer.MAX_VALUE;
@@ -107,6 +126,7 @@ public final class EnvironmentScanner {
             if (!from.withinDistance(n, radius)) continue;
             FishingSpots def = matchFishingSpot(n.getId());
             if (def == null) continue;
+            if (only != null && def != only) continue;
             int d = manhattan(from, n);
             if (d < bestDist) {
                 bestDist = d;

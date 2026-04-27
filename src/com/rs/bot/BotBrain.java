@@ -699,33 +699,70 @@ public class BotBrain {
     }
 
     private void performGoalActivity(Goal goal, int x, int y) {
-        String desc = goal.getDescription().toLowerCase();
-
-        // If an action is already running (woodcutting, mining, fishing, etc.)
-        // let it tick and gain XP. We don't want to stomp it by setting a new
-        // action every brain tick - the existing one is already doing real work.
+        // If an action is already running (woodcutting, mining, fishing, ...)
+        // let it tick and gain XP. We don't stomp a running action - the
+        // ActionManager already handles continuation and we want the bot
+        // to commit to a tree/rock until depletion.
         if (bot.getActionManager() != null && bot.getActionManager().getAction() != null) {
             return;
         }
 
-        if (desc.contains("woodcutting") || desc.contains("logs")) {
-            tryStartWoodcutting();
-        } else if (desc.contains("mining") || desc.contains("ore")) {
-            tryStartMining();
-        } else if (desc.contains("fishing") || desc.contains("fish")) {
-            tryStartFishing();
-        } else if (desc.contains("bank")) {
-            // Banking action wiring lives in a separate ticket; for now mark
-            // progress so the goal eventually rotates.
-            goalStack.updateCurrentGoal("organizing bank", 0.01);
+        // Pick a concrete training method for this goal based on bot stats.
+        // The method tells us where to go, what kind of target to look for
+        // and which Action class to start. As the bot levels up, the picker
+        // automatically promotes them to the next-tier method.
+        com.rs.bot.ai.TrainingMethods.Method method =
+            com.rs.bot.ai.TrainingMethods.bestMethodFor(goal, bot);
+        if (method != null) {
+            executeTrainingMethod(goal, method);
+            return;
+        }
+
+        // No training method matched the goal type - fall back to legacy
+        // description-keyword routing for anything we haven't planned yet
+        // (banking, equipment shopping, quests, ...).
+        String desc = goal.getDescription().toLowerCase();
+        if (desc.contains("bank")) {
+            goalStack.updateCurrentGoal("organizing bank", 0);
         } else {
-            // Combat / quest / collection goals - no real wiring yet.
             randomSmartWalk(x, y);
         }
     }
 
-    private void tryStartWoodcutting() {
-        EnvironmentScanner.TreeMatch match = EnvironmentScanner.findNearestTree(bot, 8);
+    /**
+     * Walk the bot to the method's location and start the matching action.
+     * If the bot isn't yet at the location, route there. Once on-site,
+     * scan for the right tree/rock/spot type (filtered) and start.
+     */
+    private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
+        // Walk-out phase - get to the training area first.
+        if (method.location != null) {
+            int dx = bot.getX() - method.location.getX();
+            int dy = bot.getY() - method.location.getY();
+            if (dx * dx + dy * dy > 64) { // > ~8 tiles
+                if (com.rs.bot.ai.WorldKnowledge.isWalkingDistance(
+                        bot.getX(), bot.getY(),
+                        method.location.getX(), method.location.getY())) {
+                    BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+                } else {
+                    attemptTeleportTo(method.location.getX(), method.location.getY(),
+                                      bot.getX(), bot.getY());
+                }
+                return;
+            }
+        }
+        goal.setCurrentStep(method.description);
+        switch (method.kind) {
+            case WOODCUTTING: tryStartWoodcutting(method); break;
+            case MINING:      tryStartMining(method); break;
+            case FISHING:     tryStartFishing(method); break;
+            case COMBAT:      tryStartCombat(method); break;
+        }
+    }
+
+    private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+        EnvironmentScanner.TreeMatch match =
+            EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
             BotPathing.wiggle(bot, 5);
             return;
@@ -738,8 +775,9 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
 
-    private void tryStartMining() {
-        EnvironmentScanner.RockMatch match = EnvironmentScanner.findNearestRock(bot, 8);
+    private void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+        EnvironmentScanner.RockMatch match =
+            EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
             BotPathing.wiggle(bot, 5);
             return;
@@ -752,8 +790,9 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(miningChatter());
     }
 
-    private void tryStartFishing() {
-        EnvironmentScanner.FishMatch match = EnvironmentScanner.findNearestFishingSpot(bot, 10);
+    private void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+        EnvironmentScanner.FishMatch match =
+            EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {
             BotPathing.wiggle(bot, 5);
             return;
@@ -764,6 +803,17 @@ public class BotBrain {
         }
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
         if (Utils.random(100) < 30) say(fishingChatter());
+    }
+
+    private void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
+        // Combat itself isn't wired yet (no PlayerCombat hook for bots).
+        // For now the bot stands in the right training area until that
+        // pass. Once combat is wired this method picks the right NPC
+        // and starts attacking. Just log the intent for now.
+        if (Utils.random(100) < 5) {
+            System.out.println("[COMBAT-STUB] " + bot.getDisplayName()
+                + " arrived at " + method.description + " - awaiting combat wiring.");
+        }
     }
 
     private boolean isAdjacent(int x, int y, com.rs.game.WorldObject o) {
