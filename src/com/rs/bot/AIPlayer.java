@@ -90,9 +90,13 @@ public class AIPlayer extends Player {
 
         @Override
     public void processEntity() {
-        // Phase 2a: tick the brain only. Do NOT call super.processEntity() -
-        // the parent method touches packet/dialogue/prayer systems that NPE for headless bots.
-        // Movement application happens in processEntityUpdate (next loop) -> processMovement().
+        // Tick the brain to make decisions, then process the action manager
+        // so skilling/combat actions the brain has set actually run (gain XP,
+        // drop items, etc.). We skip the full super.processEntity() because
+        // it touches subsystems with side effects we don't want for headless
+        // bots (logic packets, dialogue, music). The encoder is wired up
+        // in hydrate() so anything that eventually calls getPackets() inside
+        // an action just discards bytes harmlessly via the MockChannel.
         if (brain != null) {
             try {
                 brain.tick(this);
@@ -100,6 +104,17 @@ public class AIPlayer extends Player {
                 System.err.println("[AIPlayer] brain tick error for " + getDisplayName() + ": " + t);
                 t.printStackTrace();
             }
+        }
+        try {
+            if (getActionManager() != null) getActionManager().process();
+        } catch (Throwable t) {
+            System.err.println("[AIPlayer] action process error for " + getDisplayName() + ": " + t);
+            t.printStackTrace();
+        }
+        try {
+            if (getTimersManager() != null) getTimersManager().process();
+        } catch (Throwable t) {
+            // timers are best-effort - don't break the tick over them
         }
     }
 
@@ -185,6 +200,11 @@ public class AIPlayer extends Player {
                 0L, 0, 765, 503,
                 null, null
             );
+            // Wire up the world packet encoder. session.write() is a no-op for
+            // bots (MockChannel.isConnected() == false), so packets construct
+            // and discard harmlessly. This makes player.getPackets() non-null
+            // so existing skilling/combat/inventory code doesn't NPE on bots.
+            session.setEncoder(2, this);
             // After init(): re-randomize appearance only if the stored data is broken,
             // otherwise leave the persisted Appearence as-is so the bot keeps its identity.
             if (getAppearence().getAppeareanceData() == null) {
