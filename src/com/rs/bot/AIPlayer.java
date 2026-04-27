@@ -209,29 +209,41 @@ public class AIPlayer extends Player {
                 + " at " + getX() + "," + getY() + ",plane=" + getPlane()
                 + " regionId=" + getRegionId()
                 + " index=" + getIndex());
-            // After init(): re-randomize appearance only if the stored data is broken,
-            // otherwise leave the persisted Appearence as-is so the bot keeps its identity.
+            // After init(): the cached appearance bytes are transient so they're
+            // null after deserialization - regenerate. Each step is wrapped in
+            // its own try/catch so one failure (e.g. setCombatMode looking up
+            // a HUD packet that NPEs) doesn't leave the bot without an
+            // appearance, which would make it invisible to nearby clients.
             if (getAppearence().getAppeareanceData() == null) {
-                getAppearence().resetAppearence();
-                com.rs.game.player.content.PlayerLook.randomizeLook(getAppearence());
-                getAppearence().generateAppearenceData();
+                try {
+                    getAppearence().resetAppearence();
+                    com.rs.game.player.content.PlayerLook.randomizeLook(getAppearence());
+                    getAppearence().generateAppearenceData();
+                } catch (Throwable t) {
+                    System.out.println("[AIPlayer] " + name + " appearance regen failed: " + t);
+                    t.printStackTrace(System.out);
+                }
 
-            // Assign random combat mode
-            if (botCombatMode == -1) {
-            // Randomize weapon sheathe (50/50 chance)
-            weaponSheathe = Utils.random(5) == 0;
-
-                botCombatMode = Utils.random(4);  // 0-3 random mode
-            }
-            getCombatDefinitions().setCombatMode(botCombatMode);
-
-            if (!weaponSheathe) getCombatDefinitions().switchSheathe();
-            
-            // Apply weapon sheathe preference
-            
-            // Apply weapon sheathe preference
+                if (botCombatMode == -1) {
+                    weaponSheathe = Utils.random(5) == 0;
+                    botCombatMode = Utils.random(4);
+                }
+                try {
+                    getCombatDefinitions().setCombatMode(botCombatMode);
+                } catch (Throwable t) {
+                    System.out.println("[AIPlayer] " + name + " setCombatMode failed: " + t);
+                    t.printStackTrace(System.out);
+                }
+                try {
+                    if (!weaponSheathe) getCombatDefinitions().switchSheathe();
+                } catch (Throwable t) {
+                    System.out.println("[AIPlayer] " + name + " switchSheathe failed: " + t);
+                    t.printStackTrace(System.out);
+                }
             }
         } catch (Throwable t) {
+            System.out.println("[AIPlayer] hydrate failed: " + t);
+            t.printStackTrace(System.out);
             System.err.println("[AIPlayer] hydrate failed: " + t);
             t.printStackTrace();
         }
