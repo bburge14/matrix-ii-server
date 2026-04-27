@@ -23,11 +23,11 @@ def config_path():
 def load_config():
     p = config_path()
     if not p.exists():
-        return {"host": "127.0.0.1", "port": 8090, "token": ""}
+        return {"host": "107.202.173.6", "port": 8090, "token": ""}
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"host": "127.0.0.1", "port": 8090, "token": ""}
+        return {"host": "107.202.173.6", "port": 8090, "token": ""}
 
 def save_config(cfg):
     config_path().write_text(json.dumps(cfg, indent=2), encoding="utf-8")
