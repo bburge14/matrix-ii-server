@@ -46,6 +46,10 @@ public class BotBrain {
      *  far from the nearest tele spot - the bot is forced to walk in
      *  between, just like a real player out of runes. */
     private long teleportCooldownUntil;
+    /** True when the bot is on a bank trip (full inventory diversion). */
+    private boolean bankingMode;
+    /** Where to walk back to once the bank trip is done. */
+    private WorldTile bankReturnTile;
     private String currentActivity;
 
     public BotBrain(AIPlayer bot) {
@@ -112,14 +116,91 @@ public class BotBrain {
     private void executeCurrentGoalActions() {
         Goal currentGoal = goalStack.getCurrentGoal();
         if (currentGoal == null) return;
-        // Skip while a prior teleport is still casting (lock = isLocked()) or the
-        // walkSteps queue still has tiles to consume. Both cases mean the bot is
-        // mid-action and re-queueing now would either stomp the cast or pile up
-        // micro-steps on top of an in-flight path.
         if (bot.isLocked()) return;
         if (!bot.getWalkSteps().isEmpty()) return;
+
+        // Bank trip diversion: if inventory is near-full or we're already
+        // on a bank run, drive that to completion before doing anything
+        // else. Banking deposits everything then walks the bot back to its
+        // training spot, after which performGoalActivity resumes normally.
+        if (bankingMode || shouldStartBanking(currentGoal)) {
+            runBankingTrip(currentGoal);
+            return;
+        }
+
         executeGoalActions(currentGoal);
     }
+
+    private boolean shouldStartBanking(Goal goal) {
+        try {
+            com.rs.game.player.Inventory inv = bot.getInventory();
+            if (inv == null) return false;
+            // 3 free slots is the threshold - leaves room for one more
+            // skilling drop without immediately re-banking.
+            if (inv.getFreeSlots() > 3) return false;
+        } catch (Throwable t) {
+            return false;
+        }
+        Goal.GoalCategory cat = goal.getCategory();
+        // Only divert for goals where banking actually closes the loop.
+        return cat == Goal.GoalCategory.SKILL
+            || cat == Goal.GoalCategory.ECONOMIC
+            || cat == Goal.GoalCategory.COMBAT;
+    }
+
+    private void runBankingTrip(Goal goal) {
+        if (!bankingMode) {
+            // Entering bank-trip mode. Stash the tile we're at so we can
+            // walk back after dumping the inventory.
+            bankingMode = true;
+            bankReturnTile = new WorldTile(bot.getX(), bot.getY(), bot.getPlane());
+            goal.setCurrentStep("walking to bank");
+            if (Utils.random(100) < 30) say("inv full, going to bank");
+        }
+
+        int[] bank = WorldKnowledge.findNearestLocation(WorldKnowledge.BANKS, bot.getX(), bot.getY());
+        if (bank == null) {
+            // No banks indexed - bail.
+            bankingMode = false;
+            return;
+        }
+        int dx = bot.getX() - bank[0];
+        int dy = bot.getY() - bank[1];
+        boolean atBank = (dx * dx + dy * dy) <= 9; // within 3 tiles
+
+        if (!atBank) {
+            // Walk or teleport to the bank.
+            if (WorldKnowledge.isWalkingDistance(bot.getX(), bot.getY(), bank[0], bank[1])) {
+                BotPathing.walkTo(bot, bank[0], bank[1]);
+            } else {
+                attemptTeleportTo(bank[0], bank[1], bot.getX(), bot.getY());
+            }
+            return;
+        }
+
+        // We're at the bank - deposit. depositAllInventory(false) skips the
+        // banking-interface refresh that needs a live client. Bots' equipped
+        // tools stay in equipment slots, so they can resume skilling after.
+        try {
+            bot.getBank().depositAllInventory(false);
+            if (Utils.random(100) < 50) say(bankChatter());
+        } catch (Throwable t) {
+            System.err.println("[BANK-ERROR] " + bot.getDisplayName() + ": " + t);
+        }
+        bankingMode = false;
+        goal.setCurrentStep("returning from bank");
+        // Walk back to where we left off skilling. If we can't (lost the
+        // tile somehow), the next tick will pick a fresh training method.
+        if (bankReturnTile != null) {
+            BotPathing.walkTo(bot, bankReturnTile.getX(), bankReturnTile.getY());
+        }
+    }
+
+    private static final String[] BANK_CHATTER = {
+        "another inv banked", "wts logs (after bank)", "back to it",
+        "deposit -> chop -> deposit, the loop", "okay refreshed"
+    };
+    private String bankChatter() { return BANK_CHATTER[Utils.random(BANK_CHATTER.length)]; }
 
     /**
      * NEW: Goal-driven decision making - the heart of intelligent behavior
