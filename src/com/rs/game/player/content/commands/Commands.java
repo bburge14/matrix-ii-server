@@ -2088,27 +2088,29 @@ public final class Commands {
 		// ::roofs varbit ID v  - probe a specific varbit (e.g. ::roofs varbit 6896 1)
 		// ::roofs config ID v  - probe a specific config (e.g. ::roofs config 170 1)
 		// ::roofs all v        - blast ALL the common candidate IDs (1=hide, 0=show)
+		// Note: variable names like rfId/rfV intentionally avoid colliding with
+		// the unbraced `int id` in case "modelid" earlier in this same switch.
 		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("varbit") && cmd.length >= 4) {
-		    int id = Integer.parseInt(cmd[2]);
-		    int v = Integer.parseInt(cmd[3]);
-		    player.getVarsManager().sendVarBit(id, v);
-		    player.getPackets().sendGameMessage("Set varbit " + id + " = " + v);
+		    int rfId = Integer.parseInt(cmd[2]);
+		    int rfV = Integer.parseInt(cmd[3]);
+		    player.getVarsManager().sendVarBit(rfId, rfV);
+		    player.getPackets().sendGameMessage("Set varbit " + rfId + " = " + rfV);
 		    return true;
 		}
 		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("config") && cmd.length >= 4) {
-		    int id = Integer.parseInt(cmd[2]);
-		    int v = Integer.parseInt(cmd[3]);
-		    player.getVarsManager().sendVar(id, v);
-		    player.getPackets().sendGameMessage("Set config " + id + " = " + v);
+		    int rfId = Integer.parseInt(cmd[2]);
+		    int rfV = Integer.parseInt(cmd[3]);
+		    player.getVarsManager().sendVar(rfId, rfV);
+		    player.getPackets().sendGameMessage("Set config " + rfId + " = " + rfV);
 		    return true;
 		}
 		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("all")) {
-		    int v = cmd.length >= 3 ? Integer.parseInt(cmd[2]) : 1;
-		    int[] varbits = { 4084, 4085, 6896, 4087, 5398 };
-		    int[] configs = { 170, 171, 1737 };
-		    for (int id : varbits) player.getVarsManager().sendVarBit(id, v);
-		    for (int id : configs) player.getVarsManager().sendVar(id, v);
-		    player.getPackets().sendGameMessage("Blasted roof candidates with value " + v + ". Walk in/out of a building to test.");
+		    int rfV = cmd.length >= 3 ? Integer.parseInt(cmd[2]) : 1;
+		    int[] roofVarbits = { 4084, 4085, 6896, 4087, 5398 };
+		    int[] roofConfigs = { 170, 171, 1737 };
+		    for (int candidate : roofVarbits) player.getVarsManager().sendVarBit(candidate, rfV);
+		    for (int candidate : roofConfigs) player.getVarsManager().sendVar(candidate, rfV);
+		    player.getPackets().sendGameMessage("Blasted roof candidates with value " + rfV + ". Walk in/out of a building to test.");
 		    return true;
 		}
 		boolean hide;
