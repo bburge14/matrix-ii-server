@@ -2039,6 +2039,84 @@ public final class Commands {
 		GameLauncher.initDelayedShutdown(delay);
 		return true;
 
+	    case "tpto": {
+		// One-shot teleport to another player by display name (real or bot).
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::tpto playerName");
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').trim();
+		for (Player other : com.rs.game.World.getPlayers()) {
+		    if (other == null || other.hasFinished()) continue;
+		    String dn = other.getDisplayName();
+		    if (dn != null && dn.toLowerCase().equals(want)) {
+			player.setNextWorldTile(new WorldTile(other.getX(), other.getY(), other.getPlane()));
+			player.getPackets().sendGameMessage("Teleported to " + dn + " at " + other.getX() + "," + other.getY() + ",p" + other.getPlane());
+			return true;
+		    }
+		}
+		player.getPackets().sendGameMessage("No online player named '" + want + "'.");
+		return true;
+	    }
+
+	    case "spectate": {
+		// ::spectate <name>  -> follow that player every tick
+		// ::spectate off     -> stop spectating
+		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("off")) {
+		    com.rs.bot.spectate.BotSpectator.stop(player);
+		    player.getPackets().sendGameMessage("Stopped spectating.");
+		    return true;
+		}
+		if (cmd.length < 2) {
+		    String cur = com.rs.bot.spectate.BotSpectator.getTargetName(player);
+		    player.getPackets().sendPanelBoxMessage(cur == null
+			? "Use: ::spectate name  (or ::spectate off)"
+			: "Currently spectating: " + cur + ". Use ::spectate off to stop.");
+		    return true;
+		}
+		String want = cmd[1];
+		if (com.rs.bot.spectate.BotSpectator.start(player, want)) {
+		    player.getPackets().sendGameMessage("Spectating " + want + ". Use ::spectate off to stop.");
+		} else {
+		    player.getPackets().sendGameMessage("No online player named '" + want + "'.");
+		}
+		return true;
+	    }
+
+	    case "botinfo": {
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::botinfo botName");
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').trim();
+		for (Player other : com.rs.game.World.getPlayers()) {
+		    if (other == null || other.hasFinished()) continue;
+		    String dn = other.getDisplayName();
+		    if (dn == null || !dn.toLowerCase().equals(want)) continue;
+		    StringBuilder sb = new StringBuilder();
+		    sb.append(dn).append(" @ ").append(other.getX()).append(",").append(other.getY())
+			.append(",p").append(other.getPlane())
+			.append(" region=").append(other.getRegionId())
+			.append(" idx=").append(other.getIndex())
+			.append(" started=").append(other.hasStarted())
+			.append(" finished=").append(other.hasFinished());
+		    if (other instanceof com.rs.bot.AIPlayer) {
+			com.rs.bot.AIPlayer bot = (com.rs.bot.AIPlayer) other;
+			com.rs.bot.BotBrain brain = bot.getBrain();
+			if (brain != null) {
+			    sb.append(" state=").append(brain.getCurrentState());
+			    sb.append(" activity=").append(brain.getCurrentActivity());
+			    com.rs.bot.ai.Goal g = brain.getCurrentGoal();
+			    sb.append(" goal=").append(g == null ? "null" : g.getDescription());
+			}
+		    }
+		    player.getPackets().sendGameMessage(sb.toString());
+		    return true;
+		}
+		player.getPackets().sendGameMessage("No online player named '" + want + "'.");
+		return true;
+	    }
+
 	    case "emote":
 		if (cmd.length < 2) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::emote id");
