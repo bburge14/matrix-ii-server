@@ -2101,6 +2101,33 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "testxp": {
+		// ::testxp <skill> <amount>  - call Skills.addXp directly to verify
+		// the XP pipeline works regardless of NPC combat definitions.
+		// If this DOES give XP, the issue is in the combat path (NPC has
+		// DEFAULT_DEFINITION, or getMaxHitpoints==1, or similar). If this
+		// DOES NOT give XP either, the issue is in Skills.addXp or its
+		// gates (xpLocked, isCanPvp, ...).
+		if (cmd.length < 3) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::testxp <skillId 0-25> <amount>");
+		    return true;
+		}
+		try {
+		    int skill = Integer.parseInt(cmd[1]);
+		    double amount = Double.parseDouble(cmd[2]);
+		    int beforeXp = (int) player.getSkills().getXp(skill);
+		    player.getSkills().addXp(skill, amount);
+		    int afterXp = (int) player.getSkills().getXp(skill);
+		    int gained = afterXp - beforeXp;
+		    player.getPackets().sendGameMessage("addXp(skill=" + skill + ", amount=" + amount + ") -> "
+			+ gained + " xp gained. xpLocked=" + player.isXpLocked()
+			+ ", canPvp=" + player.isCanPvp());
+		} catch (Exception e) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::testxp <skillId 0-25> <amount>. Skills: 0=Atk 1=Def 2=Str 3=HP 4=Range 6=Mag");
+		}
+		return true;
+	    }
+
 	    case "xprate":
 	    case "xpmode": {
 		// ::xprate         - show current mode + rates
