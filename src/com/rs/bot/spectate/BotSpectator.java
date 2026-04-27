@@ -35,6 +35,14 @@ public final class BotSpectator {
         if (target == null) return false;
         spectator.getTemporaryAttributtes().put(ATTR_KEY, target.getDisplayName());
         ensureTicker();
+        // Hide the spectator's character model so they're effectively a
+        // floating camera. Their appearance regenerates with hidePlayer=true
+        // and other clients will skip drawing them. We restore on stop().
+        try {
+            spectator.getAppearence().setHidden(true);
+        } catch (Throwable t) {
+            // best-effort; spectate still works without the hide
+        }
         // Snap immediately so the spectator doesn't wait a tick to catch up.
         spectator.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
         return true;
@@ -43,6 +51,11 @@ public final class BotSpectator {
     /** Stop spectating. */
     public static void stop(Player spectator) {
         spectator.getTemporaryAttributtes().remove(ATTR_KEY);
+        try {
+            spectator.getAppearence().setHidden(false);
+        } catch (Throwable t) {
+            // ignore - spectator can still toggle visibility manually
+        }
     }
 
     /** True if this player is currently spectating someone. */
