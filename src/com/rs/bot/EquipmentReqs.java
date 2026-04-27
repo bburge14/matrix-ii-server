@@ -147,8 +147,6 @@ public final class EquipmentReqs {
                 return new int[] { NONE, 1 };
             case 11283: // Dragonfire shield - 75 def
                 return new int[] { Skills.DEFENCE, 75 };
-            case 11724: // Bandos chest already handled
-                return new int[] { Skills.DEFENCE, 65 };
             case 13738: case 13740: case 13742: case 13744: // Spirit shields
                 return new int[] { Skills.DEFENCE, 75 };
 
