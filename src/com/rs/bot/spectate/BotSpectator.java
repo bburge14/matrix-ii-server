@@ -36,10 +36,10 @@ public final class BotSpectator {
         spectator.getTemporaryAttributtes().put(ATTR_KEY, target.getDisplayName());
         ensureTicker();
         try { spectator.getAppearence().setHidden(true); } catch (Throwable ignore) {}
-        // Hide roofs so we can see indoor scenes through ceilings.
+        // Try the canonical 718 roof varbit anyway. Costs nothing if the
+        // cache uses a different ID; helps if it ever does respect 4084.
         setRoofsHidden(spectator, true);
         spectator.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
-        applySpectateCamera(spectator, target);
         return true;
     }
 
@@ -99,42 +99,21 @@ public final class BotSpectator {
                     if (target == null) {
                         // Target logged out / despawned; release the spectate.
                         p.getTemporaryAttributtes().remove(ATTR_KEY);
-                        try { p.getPackets().sendResetCamera(); } catch (Throwable ignore) {}
                         try { p.getAppearence().setHidden(false); } catch (Throwable ignore) {}
                         continue;
                     }
                     if (target == p) continue; // can't spectate self
                     if (!samePos(p, target)) {
+                        // Snap to the target's tile. Keeping the spectator
+                        // physically AT the target means the client's natural
+                        // auto-roof-remove triggers for whatever building
+                        // the target is in - we don't need a global roof
+                        // toggle (which doesn't work on this cache anyway).
                         p.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
                     }
-                    applySpectateCamera(p, target);
                 }
             }
         }, 0, 0); // run every tick forever
-    }
-
-    /**
-     * Behind-and-above third-person camera over the target. Sits at ~900z
-     * so we're under most roofs (which clip around 1100z), offset 6 tiles
-     * SW so the angle reads as a normal RS isometric view rather than
-     * a satellite map. Look target is on the bot's tile near ground level.
-     */
-    private static void applySpectateCamera(Player spectator, Player target) {
-        try {
-            // Camera position: 6 tiles SW of target, ~3 storeys up. The
-            // diagonal offset gives a familiar isometric angle.
-            int posX = target.getX() - 6;
-            int posY = target.getY() - 6;
-            int posLocalX = new WorldTile(posX, posY, target.getPlane()).getXInScene(spectator);
-            int posLocalY = new WorldTile(posX, posY, target.getPlane()).getYInScene(spectator);
-            spectator.getPackets().sendCameraPos(posLocalX, posLocalY, 900);
-            // Look target: bot's tile, near ground.
-            int lookLocalX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
-            int lookLocalY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
-            spectator.getPackets().sendCameraLook(lookLocalX, lookLocalY, 200);
-        } catch (Throwable t) {
-            // Camera packets are best-effort; spectate still works without them
-        }
     }
 
     private static boolean samePos(Player a, Player b) {
