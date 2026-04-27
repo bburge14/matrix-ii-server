@@ -99,6 +99,7 @@ public final class BotSpectator {
                     if (target == null) {
                         // Target logged out / despawned; release the spectate.
                         p.getTemporaryAttributtes().remove(ATTR_KEY);
+                        try { p.getPackets().sendResetCamera(); } catch (Throwable ignore) {}
                         try { p.getAppearence().setHidden(false); } catch (Throwable ignore) {}
                         continue;
                     }
@@ -107,13 +108,35 @@ public final class BotSpectator {
                         // Snap to the target's tile. Keeping the spectator
                         // physically AT the target means the client's natural
                         // auto-roof-remove triggers for whatever building
-                        // the target is in - we don't need a global roof
-                        // toggle (which doesn't work on this cache anyway).
+                        // the target is in.
                         p.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
                     }
+                    applySpectateCamera(p, target);
                 }
             }
         }, 0, 0); // run every tick forever
+    }
+
+    /**
+     * Vertical top-down camera directly above the target. Avoids the wall-
+     * clip problem - the lens is high above the bot's tile, looking
+     * straight down, so it can never end up inside a wall texture. Auto-
+     * roof-remove still triggers because the spectator's character sits
+     * on the target's tile (we follow them every tick).
+     */
+    private static void applySpectateCamera(Player spectator, Player target) {
+        try {
+            int sceneX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
+            int sceneY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
+            // Camera position: directly above target, ~1800 z. Above wall
+            // height (~600-1000z) but below the global roof clip so the
+            // auto-removed roof tile stays auto-removed.
+            spectator.getPackets().sendCameraPos(sceneX, sceneY, 1800);
+            // Look target: bot's tile, near ground.
+            spectator.getPackets().sendCameraLook(sceneX, sceneY, 200);
+        } catch (Throwable t) {
+            // Camera packets are best-effort; spectate still works without them
+        }
     }
 
     private static boolean samePos(Player a, Player b) {
