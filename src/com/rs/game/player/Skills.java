@@ -483,7 +483,13 @@ public final class Skills implements Serializable {
 						CombatEventNPC.startRandomEvent(player, skill);
 				}
 			}
-			exp *= getXPRate(getLevelForXp(skill), combatSkill);//combatSkill ? Settings.getCombatXpRate(player) : Settings.getXpRate(player);
+			// Use the player's actual xpRateMode rather than a level-scaled
+			// formula. The previous behaviour (getXPRate(level, combat)) made
+			// xpRateMode entirely cosmetic - at low levels combat capped at
+			// ~2.5x even on the "x100 fast" mode. Switch back to the
+			// per-player rate from Settings so ::xprate actually does
+			// something visible while killing monsters.
+			exp *= combatSkill ? Settings.getCombatXpRate(player) : Settings.getXpRate(player);
 			
 	//		exp *= player.isExtremeDonator() ? rate + 2 : player.isDonator() ? rate + 1 : rate;
 			/*if (player.hasVotedInLast12Hours()) {
