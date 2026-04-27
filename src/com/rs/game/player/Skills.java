@@ -474,7 +474,12 @@ public final class Skills implements Serializable {
 			exp *= 1.025;
 		boolean combatSkill = skill == SUMMONING || (skill >= ATTACK && skill <= MAGIC);
 		double bonus = 0;
-		if (!forceRSXp && (!player.isCanPvp() || !combatSkill)) {
+		// Removed CorruptionX-era gate `!player.isCanPvp() || !combatSkill`
+		// which only applied the rate multiplier inside PvP zones for
+		// non-combat skills, and forced combat XP to ignore xpRateMode
+		// entirely outside the wilderness. Base RS gives the rate
+		// multiplier to ALL skills regardless of PvP state.
+		if (!forceRSXp) {
 			if(exp < RANDOM_EVENT_EXP && CombatEventNPC.canRandomEvent(player)) {
 				trackXPREvent += exp;
 				if(trackXPREvent >= RANDOM_EVENT_EXP) {

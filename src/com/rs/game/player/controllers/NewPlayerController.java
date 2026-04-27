@@ -267,8 +267,11 @@ public class NewPlayerController extends Controller {
 		String ip = player.getSession() != null ? player.getSession().getIP() : null;
 		if (ip != null && !ips.contains(ip)) {
 			ips.add(ip);
-			player.getInventory().addItem(new Item(995, 3001337));
-			player.getInventory().addItem(new Item(386, 100));
+			// CorruptionX gave new players 3,001,337 coins + 100 sharks. Base
+			// RS gives a sensible starter: a small coin pouch and a few
+			// pieces of starting food. Adjust to taste.
+			player.getInventory().addItem(new Item(995, 1000));
+			player.getInventory().addItem(new Item(386, 5));
 		} else {
 			player.getPackets().sendGameMessage("You have already received starting items on another account.");
 			player.getSquealOfFortune().setDailySpins(0);
