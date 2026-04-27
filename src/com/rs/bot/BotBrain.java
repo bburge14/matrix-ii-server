@@ -665,16 +665,18 @@ public class BotBrain {
     }
 
     private void intelligentWalkTo(int targetX, int targetY, int currentX, int currentY) {
-        // Use the engine's RouteFinder so bots route around walls/objects
-        // instead of jamming into them with check=true addWalkSteps. If no
-        // route exists (e.g., target is inside a wall, bot is trapped), we
-        // wiggle to break out of the dead-end.
-        boolean ok = BotPathing.walkTo(bot, targetX, targetY);
-        if (!ok) BotPathing.wiggle(bot, 4);
+        // BotPathing.walkTo returns true if RouteFinder fully resolved the
+        // path, false if we fell back to a clip-aware straight-line walk.
+        // Either way the bot moves toward the target - we only wiggle when
+        // the queue is still empty AFTER the call (true dead-end).
+        boolean routed = BotPathing.walkTo(bot, targetX, targetY);
+        if (!routed && bot.getWalkSteps().isEmpty()) {
+            BotPathing.wiggle(bot, 4);
+        }
         if (Utils.random(50) < 1) {
             System.out.println("[INTELLIGENT-WALK] " + bot.getDisplayName()
                 + " " + currentX + "," + currentY + " -> " + targetX + "," + targetY
-                + " (route=" + ok + ")");
+                + " (route=" + routed + ")");
         }
     }
 
