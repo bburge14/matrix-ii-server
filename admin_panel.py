@@ -397,6 +397,17 @@ class BotsFrame(ctk.CTkFrame):
         for label, val in (("All", "all"), ("Online only", "online"), ("Offline only", "offline")):
             ctk.CTkRadioButton(search_frame, text=label, variable=self.online_filter, value=val, command=self._apply_filter).pack(side="left", padx=8)
 
+        # Archetype filter dropdown - populated dynamically from the
+        # bots that come back from the API so it covers whatever is
+        # actually in the pool (skiller, melee, ranged, mage, ...).
+        ctk.CTkLabel(search_frame, text="Archetype:").pack(side="left", padx=(20, 4))
+        self.archetype_filter = tk.StringVar(value="all")
+        self.archetype_menu = ctk.CTkOptionMenu(search_frame, values=["all"],
+                                                variable=self.archetype_filter,
+                                                command=lambda _: self._apply_filter(),
+                                                width=120)
+        self.archetype_menu.pack(side="left", padx=4)
+
         tree_frame = ctk.CTkFrame(self)
         tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -424,6 +435,7 @@ class BotsFrame(ctk.CTkFrame):
         self.menu.add_separator()
         self.menu.add_command(label="Spawn",   command=lambda: self._row_action("spawn"))
         self.menu.add_command(label="Despawn", command=lambda: self._row_action("despawn"))
+        self.menu.add_command(label="Respawn (despawn + spawn)", command=lambda: self._row_action("respawn"))
         self.menu.add_separator()
         self.menu.add_command(label="Delete (PERMANENT)", command=lambda: self._row_action("delete"))
         self.tree.bind("<Button-3>", self._on_right_click)
@@ -458,11 +470,16 @@ class BotsFrame(ctk.CTkFrame):
     def _apply_filter(self):
         q = self.search_var.get().lower()
         f = self.online_filter.get()
+        a = self.archetype_filter.get() if hasattr(self, "archetype_filter") else "all"
+        # Refresh archetype dropdown with whatever archetypes appeared in
+        # the latest bot fetch. Keep "all" at the top.
+        self._refresh_archetype_menu()
         rows = []
         for b in self.all_bots:
             if q and q not in b.get("name", "").lower(): continue
             if f == "online" and not b.get("online"): continue
             if f == "offline" and b.get("online"): continue
+            if a != "all" and (b.get("archetype", "") or "") != a: continue
             rows.append(b)
         rows.sort(key=lambda r: str(r.get(self.sort_col, "")), reverse=self.sort_rev)
         self.tree.delete(*self.tree.get_children())
@@ -481,6 +498,23 @@ class BotsFrame(ctk.CTkFrame):
         if self.sort_col == col: self.sort_rev = not self.sort_rev
         else: self.sort_col = col; self.sort_rev = False
         self._apply_filter()
+
+    def _refresh_archetype_menu(self):
+        """Rebuild the archetype dropdown from the current bot list."""
+        if not hasattr(self, "archetype_menu"): return
+        seen = set()
+        for b in self.all_bots:
+            arch = (b.get("archetype") or "").strip()
+            if arch: seen.add(arch)
+        values = ["all"] + sorted(seen)
+        try:
+            self.archetype_menu.configure(values=values)
+        except Exception:
+            pass
+        # Reset to "all" if the previously-selected archetype no longer
+        # exists in the pool.
+        if self.archetype_filter.get() not in values:
+            self.archetype_filter.set("all")
 
     def _read_count(self, default=10):
         try:
@@ -522,45 +556,64 @@ class BotsFrame(ctk.CTkFrame):
         if not messagebox.askyesno("Confirm again", f"Really delete {len(offline)} bots? Final."): return
         threading.Thread(target=lambda: self._bulk_delete(offline), daemon=True).start()
 
+    # ===== Bulk actions =====
+    # Three actions (spawn / despawn / delete) used to have identical
+    # loop-and-count code. Collapsed into _bulk_run which takes a label,
+    # the names, and a per-name callable that returns the API response.
+    BULK_ACTIONS = {
+        "spawn":   ("Spawn",   None,
+                    lambda api, n: api.bots_spawn(name=n)),
+        "despawn": ("Despawn", None,
+                    lambda api, n: api.bots_despawn(name=n)),
+        "delete":  ("Delete",  "PERMANENTLY DELETE {n} bot(s)?",
+                    lambda api, n: api.bots_delete(n)),
+        "respawn": ("Respawn", None,
+                    None),  # special - handled inline (despawn then spawn)
+    }
+
     def _bulk_action(self, action):
         names = self._selected_names()
-        if not names: return messagebox.showinfo("No selection", "Select one or more bots first.")
-        if action == "delete":
-            if not messagebox.askyesno("Delete selected", f"PERMANENTLY DELETE {len(names)} bot(s)?"): return
-            threading.Thread(target=lambda: self._bulk_delete(names), daemon=True).start()
-        elif action == "spawn":
-            threading.Thread(target=lambda: self._bulk_spawn(names), daemon=True).start()
-        elif action == "despawn":
-            threading.Thread(target=lambda: self._bulk_despawn(names), daemon=True).start()
+        if not names:
+            return messagebox.showinfo("No selection", "Select one or more bots first.")
+        meta = self.BULK_ACTIONS.get(action)
+        if meta is None: return
+        label, confirm_template, fn = meta
+        if confirm_template:
+            if not messagebox.askyesno(label + " selected",
+                                       confirm_template.format(n=len(names))):
+                return
+        if action == "respawn":
+            threading.Thread(target=lambda: self._bulk_respawn(names), daemon=True).start()
+        else:
+            threading.Thread(target=lambda: self._bulk_run(label, names, fn), daemon=True).start()
 
-    def _bulk_delete(self, names):
+    def _bulk_run(self, label, names, fn):
         ok = fail = 0
         for n in names:
             try:
-                if self.api.bots_delete(n).get("ok"): ok += 1
-                else: fail += 1
-            except Exception: fail += 1
-        self.after(0, lambda: self._show_bulk("Delete", ok, fail))
+                resp = fn(self.api, n)
+                if resp and resp.get("ok"):
+                    ok += 1
+                else:
+                    fail += 1
+            except Exception:
+                fail += 1
+        self.after(0, lambda: self._show_bulk(label, ok, fail))
         self.after(0, self.refresh)
 
-    def _bulk_spawn(self, names):
+    def _bulk_respawn(self, names):
         ok = fail = 0
         for n in names:
             try:
-                if self.api.bots_spawn(name=n).get("ok"): ok += 1
-                else: fail += 1
-            except Exception: fail += 1
-        self.after(0, lambda: self._show_bulk("Spawn", ok, fail))
-        self.after(0, self.refresh)
-
-    def _bulk_despawn(self, names):
-        ok = fail = 0
-        for n in names:
-            try:
-                if self.api.bots_despawn(name=n).get("ok"): ok += 1
-                else: fail += 1
-            except Exception: fail += 1
-        self.after(0, lambda: self._show_bulk("Despawn", ok, fail))
+                self.api.bots_despawn(name=n)
+                resp = self.api.bots_spawn(name=n)
+                if resp and resp.get("ok"):
+                    ok += 1
+                else:
+                    fail += 1
+            except Exception:
+                fail += 1
+        self.after(0, lambda: self._show_bulk("Respawn", ok, fail))
         self.after(0, self.refresh)
 
     def _show_bulk(self, label, ok, fail):
@@ -594,6 +647,11 @@ class BotsFrame(ctk.CTkFrame):
                 if action == "spawn":     self.api.bots_spawn(name=name)
                 elif action == "despawn": self.api.bots_despawn(name=name)
                 elif action == "delete":  self.api.bots_delete(name)
+                elif action == "respawn":
+                    # despawn first (no-op if already offline), then spawn.
+                    try: self.api.bots_despawn(name=name)
+                    except Exception: pass
+                    self.api.bots_spawn(name=name)
                 self.after(0, self.refresh)
             except Exception as e:
                 error_msg = str(e)
