@@ -1,5 +1,6 @@
 package com.rs.bot.ai;
 
+import com.rs.bot.AIPlayer;
 import java.io.Serializable;
 import java.util.*;
 
@@ -129,10 +130,12 @@ public class Goal implements Serializable {
     // ===== Progress Management =====
     
     public void updateProgress(double newProgress) {
+        // The progress field is now display-only - HUD and logs may show
+        // "73% done" for a sense of activity, but real completion is
+        // gated by Goal.isCompleted(bot) which reads actual game state.
+        // We deliberately do NOT auto-complete on progress >= 1.0
+        // anymore - that was the fake-timer behaviour.
         this.progress = Math.max(0.0, Math.min(1.0, newProgress));
-        if (this.progress >= 1.0 && status == Status.ACTIVE) {
-            complete();
-        }
     }
     
     public void incrementProgress(double increment) {
@@ -188,6 +191,31 @@ public class Goal implements Serializable {
     private boolean isBlocked(String blockerId) {
         // Placeholder - would check actual game state
         return false;
+    }
+
+    // ===== Real game-state predicates =====
+
+    /**
+     * Is this goal already accomplished by the bot's current state?
+     * Checks real skill levels, equipment, inventory, bank, and wealth via
+     * GoalStateChecker. Used by GoalStack to auto-complete goals that are
+     * already met (e.g. bot already has rune armor) and by the goal
+     * generator to skip goals that are already done.
+     */
+    public boolean isCompleted(AIPlayer bot) {
+        if (bot == null) return false;
+        GoalType type = getData("goalType", GoalType.class);
+        if (type == null) return false;
+        return GoalStateChecker.isMet(bot, type.getRequirementKey(), type.getRequirementValue());
+    }
+
+    /**
+     * Is this goal worth pursuing? Right now this is just "not yet
+     * completed". Future hooks (prerequisites, archetype gating, mood)
+     * can layer on top.
+     */
+    public boolean isRelevant(AIPlayer bot) {
+        return !isCompleted(bot);
     }
     
     // ===== Data Storage =====
