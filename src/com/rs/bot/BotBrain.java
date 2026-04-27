@@ -2,12 +2,15 @@ package com.rs.bot;
 
 import java.util.*;
 import com.rs.utils.Utils;
+import com.rs.game.World;
 import com.rs.game.WorldTile;
 import com.rs.game.Graphics;
 import com.rs.game.player.PublicChatMessage;
 import com.rs.game.player.Player;
 import com.rs.game.ForceTalk;
 import com.rs.game.Animation;
+import com.rs.game.tasks.WorldTask;
+import com.rs.game.tasks.WorldTasksManager;
 import com.rs.bot.ai.WorldKnowledge;
 import com.rs.bot.ai.Goal;
 import com.rs.bot.ai.GoalStack;
@@ -91,10 +94,11 @@ public class BotBrain {
     private void executeCurrentGoalActions() {
         Goal currentGoal = goalStack.getCurrentGoal();
         if (currentGoal == null) return;
-        // If the bot still has queued steps from a prior tick, let processMovement
-        // consume them before we enqueue more. This is what was broken before:
-        // we kept overwriting the queue with single-tile micro-steps and the
-        // bot looked frozen.
+        // Skip while a prior teleport is still casting (lock = isLocked()) or the
+        // walkSteps queue still has tiles to consume. Both cases mean the bot is
+        // mid-action and re-queueing now would either stomp the cast or pile up
+        // micro-steps on top of an in-flight path.
+        if (bot.isLocked()) return;
         if (!bot.getWalkSteps().isEmpty()) return;
         executeGoalActions(currentGoal);
     }
@@ -667,15 +671,66 @@ public class BotBrain {
     }
 
     private void attemptTeleportTo(int targetX, int targetY, int currentX, int currentY) {
-        int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
+        // Don't queue a new teleport while one is already casting. The bot's
+        // executeCurrentGoalActions guard already skips while walkSteps is
+        // non-empty; we add isLocked() to cover the cast window before the
+        // destination tile is applied.
+        if (bot.isLocked()) return;
 
-        if (bestTeleport != null) {
-            System.out.println("[TELEPORT] " + bot.getDisplayName() + " -> " + bestTeleport[0] + "," + bestTeleport[1]);
-            bot.setNextAnimation(new Animation(714));
-            bot.setNextWorldTile(new WorldTile(bestTeleport[0], bestTeleport[1], 0));
-        } else {
+        int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
+        if (bestTeleport == null) {
             intelligentWalkTo(targetX, targetY, currentX, currentY);
+            return;
         }
+
+        final int destX = bestTeleport[0];
+        final int destY = bestTeleport[1];
+        int[] anim = pickTeleportAnimation(destX, destY);
+        final int upEmote = anim[0];
+        final int upGfx = anim[1];
+        final int downEmote = anim[2];
+        final int downGfx = anim[3];
+
+        // Cast: animation + graphics, no movement yet. Lock for 4 ticks
+        // (3 cast + 1 settle) so the brain doesn't fire another teleport mid-cast.
+        bot.setNextAnimation(new Animation(upEmote));
+        if (upGfx != -1) bot.setNextGraphics(new Graphics(upGfx));
+        bot.lock(4);
+        System.out.println("[TELEPORT] " + bot.getDisplayName() + " casting -> " + destX + "," + destY);
+
+        // Apply destination after 3 game ticks (matches real spell cast time)
+        WorldTasksManager.schedule(new WorldTask() {
+            @Override
+            public void run() {
+                if (bot.hasFinished()) return;
+                bot.setNextWorldTile(new WorldTile(destX, destY, 0));
+                if (downEmote != -1) bot.setNextAnimation(new Animation(downEmote));
+                if (downGfx != -1) bot.setNextGraphics(new Graphics(downGfx));
+            }
+        }, 3);
+    }
+
+    /**
+     * Pick the right teleport animation/graphics by destination. Returns
+     * [upEmote, upGfx, downEmote, downGfx] - downEmote/downGfx may be -1 to skip.
+     *
+     * Animation IDs cribbed from Magic.java's spellbook teleports:
+     *   1979 / 1681 - standard spellbook (Lumby/Varrock/Falador/Ardougne/Camelot)
+     *   8939 / 1576 - jewelry & object teleport (glory/ring of dueling)
+     *   9606 / 1685 - Camelot-style (older animation, used as fallback variety)
+     */
+    private int[] pickTeleportAnimation(int destX, int destY) {
+        // Glory teleports - Edgeville, Karamja, Draynor, Al-Kharid coords
+        if ((destX == 3087 && destY == 3496) || (destX == 2918 && destY == 3176)
+                || (destX == 3105 && destY == 3251) || (destX == 3293 && destY == 3163)) {
+            return new int[] { 8939, 1576, 8941, 1577 };
+        }
+        // Camelot - the Seers/Catherby area teleport
+        if (destX == 2757 && destY == 3477) {
+            return new int[] { 9606, 1685, -1, -1 };
+        }
+        // Default: standard spellbook teleport
+        return new int[] { 1979, 1681, -1, -1 };
     }
 
     private void performGoalActivity(Goal goal, int x, int y) {
@@ -715,26 +770,43 @@ public class BotBrain {
     }
 
     /**
-     * Make the bot say something visible to nearby real players.
+     * Make the bot say something visible to nearby real players, both as a
+     * chat balloon over the bot's head AND in their chat box.
      *
-     * Uses ForceTalk: a chat balloon over the bot's head that real players'
-     * LocalPlayerUpdate streams already include automatically when iterating
-     * visible players. This works for headless bots because we're not sending
-     * packets ourselves - we're just setting a field on the bot, and each real
-     * player's update loop picks it up on its own packet stream.
-     *
-     * For real chat-box public messages we'd iterate World.getPlayers(), find
-     * those within ~14 tiles, and call player.getPackets().sendPublicMessage(
-     * bot, new PublicChatMessage(text, 0)) on each. ForceTalk is the cheaper
-     * first step - balloon shows above the bot's head in-game.
+     * Two independent pieces:
+     *   1. setNextForceTalk - real players' LocalPlayerUpdate already includes
+     *      the ForceTalk mask when iterating visible players, so the balloon
+     *      shows automatically with no packet plumbing on our side.
+     *   2. broadcastPublicMessage - bots have no client, so they can't send
+     *      packets themselves. Instead we iterate nearby real players and call
+     *      sendPublicMessage on THEIR packet stream with the bot as the source.
      */
     public void say(String text) {
         if (text == null || text.isEmpty()) return;
         try {
             bot.setNextForceTalk(new ForceTalk(text));
-            System.out.println("[BotChat] " + bot.getDisplayName() + ": " + text);
+            broadcastPublicMessage(text);
         } catch (Throwable t) {
             System.err.println("[BotChat] failed for " + bot.getDisplayName() + ": " + t);
+        }
+    }
+
+    private void broadcastPublicMessage(String text) {
+        PublicChatMessage msg = new PublicChatMessage(text, 0);
+        int botX = bot.getX(), botY = bot.getY(), botPlane = bot.getPlane();
+        for (Player real : World.getPlayers()) {
+            if (real == null) continue;
+            if (real instanceof AIPlayer) continue; // bots can't render chat
+            if (!real.hasStarted() || real.hasFinished()) continue;
+            if (real.getPlane() != botPlane) continue;
+            int dx = real.getX() - botX;
+            int dy = real.getY() - botY;
+            if (dx * dx + dy * dy > 196) continue; // ~14 tile radius
+            try {
+                real.getPackets().sendPublicMessage(bot, msg);
+            } catch (Throwable ignore) {
+                // real player's session may have died mid-broadcast; skip
+            }
         }
     }
 }
