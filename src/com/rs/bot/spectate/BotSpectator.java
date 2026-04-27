@@ -35,16 +35,17 @@ public final class BotSpectator {
         if (target == null) return false;
         spectator.getTemporaryAttributtes().put(ATTR_KEY, target.getDisplayName());
         ensureTicker();
-        // Hide the spectator's character model so they're effectively a
-        // floating camera. Their appearance regenerates with hidePlayer=true
-        // and other clients will skip drawing them. We restore on stop().
+        // Hide the spectator's character model so OTHER clients don't draw
+        // them. The client always renders self locally regardless, so we
+        // also snap the camera up high looking down at the target - the
+        // self-render ends up directly under the lens, mostly invisible.
         try {
             spectator.getAppearence().setHidden(true);
         } catch (Throwable t) {
             // best-effort; spectate still works without the hide
         }
-        // Snap immediately so the spectator doesn't wait a tick to catch up.
         spectator.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
+        applySpectateCamera(spectator, target);
         return true;
     }
 
@@ -54,7 +55,12 @@ public final class BotSpectator {
         try {
             spectator.getAppearence().setHidden(false);
         } catch (Throwable t) {
-            // ignore - spectator can still toggle visibility manually
+            // ignore
+        }
+        try {
+            spectator.getPackets().sendResetCamera();
+        } catch (Throwable t) {
+            // ignore
         }
     }
 
@@ -95,14 +101,37 @@ public final class BotSpectator {
                     if (target == null) {
                         // Target logged out / despawned; release the spectate.
                         p.getTemporaryAttributtes().remove(ATTR_KEY);
+                        try { p.getPackets().sendResetCamera(); } catch (Throwable ignore) {}
+                        try { p.getAppearence().setHidden(false); } catch (Throwable ignore) {}
                         continue;
                     }
                     if (target == p) continue; // can't spectate self
-                    if (samePos(p, target)) continue;
-                    p.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
+                    if (!samePos(p, target)) {
+                        p.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
+                    }
+                    applySpectateCamera(p, target);
                 }
             }
         }, 0, 0); // run every tick forever
+    }
+
+    /**
+     * Park the spectator's camera high above the target, looking straight
+     * down. With the spectator's own tile being the same as the target's,
+     * the local self-render ends up tiny and centered with the target -
+     * the human eye reads it as "I'm watching from above."
+     */
+    private static void applySpectateCamera(Player spectator, Player target) {
+        try {
+            int sceneX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
+            int sceneY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
+            // Camera position: directly above target, ~3500 z high.
+            spectator.getPackets().sendCameraPos(sceneX, sceneY, 3500);
+            // Look at target near ground level.
+            spectator.getPackets().sendCameraLook(sceneX, sceneY, 200);
+        } catch (Throwable t) {
+            // Camera packets are best-effort; spectate still works without them
+        }
     }
 
     private static boolean samePos(Player a, Player b) {
