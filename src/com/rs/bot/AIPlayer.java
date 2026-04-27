@@ -198,7 +198,14 @@ public class AIPlayer extends Player {
                 0, 0,
                 false, false, false, false, false, false,
                 0L, 0, 765, 503,
-                null, null
+                null,
+                // Real IsaacKeyPair instead of null - packet construction
+                // (OutputStream.writePacket) dereferences this to encrypt
+                // opcodes, so passing null NPE'd every time the engine
+                // tried to send any packet to a bot. The keys are fixed
+                // dummy seeds; the encrypted bytes go straight to the
+                // MockChannel and get discarded.
+                new com.rs.utils.IsaacKeyPair(new int[] { 0, 0, 0, 0 })
             );
             // Wire up the world packet encoder. session.write() is a no-op for
             // bots (MockChannel.isConnected() == false), so packets construct
