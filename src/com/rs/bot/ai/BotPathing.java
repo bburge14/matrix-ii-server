@@ -30,11 +30,23 @@ public final class BotPathing {
 
     private BotPathing() {}
 
-    /** Walk to a specific tile on the bot's plane. Returns true if a route was found. */
+    /**
+     * Walk to a specific tile on the bot's plane. Returns true if a route
+     * was found, false if we fell back to a clipped straight-line walk.
+     * Either way the bot moves toward the target - the false return tells
+     * the caller "we couldn't fully resolve, try again next tick."
+     */
     public static boolean walkTo(AIPlayer bot, int targetX, int targetY) {
         if (bot.getX() == targetX && bot.getY() == targetY) return true;
         FixedTileStrategy strategy = new FixedTileStrategy(targetX, targetY);
-        return runRoute(bot, strategy);
+        if (runRoute(bot, strategy)) return true;
+        // RouteFinder couldn't path us there - usually because the target
+        // is outside our loaded scene (cross-region trips). Fall back to
+        // a clip-aware straight-line walk: addWalkSteps with check=true
+        // will queue tiles toward the target and stop at the first wall.
+        // We make progress and the brain can re-route next tick.
+        bot.addWalkSteps(targetX, targetY, STEP_BUDGET, true);
+        return false;
     }
 
     /** Walk adjacent to an object so the bot can interact with it. */

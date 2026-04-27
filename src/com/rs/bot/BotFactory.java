@@ -117,6 +117,7 @@ public final class BotFactory {
                 bot.getAppearence().generateAppearenceData();
             } catch (Throwable t) {
                 System.err.println("[BotFactory] equipment apply failed for " + name + ": " + t);
+                t.printStackTrace(System.err);
             }
 
             return bot;

@@ -220,7 +220,13 @@ public final class TrainingMethods {
         if (type == null) return null;
 
         Kind required = kindForGoal(type);
-        boolean rankByGp = type.getCategory() == Goal.GoalCategory.ECONOMIC;
+        // Money-grind ranking for: explicit ECONOMIC goals (BUILD_*_BANK)
+        // and equipment/weapon goals while shop interaction isn't wired -
+        // the bot grinds gold meanwhile, and once we wire shopping the
+        // gold gets converted into the actual armor/weapon.
+        String key = type.getRequirementKey();
+        boolean rankByGp = type.getCategory() == Goal.GoalCategory.ECONOMIC
+            || (key != null && (key.startsWith("equipment:") || key.startsWith("weapon:")));
 
         Method best = null;
         int bestScore = Integer.MIN_VALUE;
@@ -252,10 +258,9 @@ public final class TrainingMethods {
             || key.startsWith("skill:ranged")
             || key.startsWith("skill:magic")
             || key.startsWith("combat:"))         return Kind.COMBAT;
-        if (type.getCategory() == Goal.GoalCategory.ECONOMIC) {
-            // null = "any kind", let bestMethodFor compare across all.
-            return null;
-        }
+        // ECONOMIC goals and equipment/weapon goals fall through to "any
+        // kind, ranked by gp" - the bot picks the best-paying activity it
+        // qualifies for (the rank-by-GP path in bestMethodFor handles this).
         return null;
     }
 }
