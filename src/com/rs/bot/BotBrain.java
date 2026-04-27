@@ -11,9 +11,13 @@ import com.rs.game.ForceTalk;
 import com.rs.game.Animation;
 import com.rs.game.tasks.WorldTask;
 import com.rs.game.tasks.WorldTasksManager;
+import com.rs.bot.ai.EnvironmentScanner;
 import com.rs.bot.ai.WorldKnowledge;
 import com.rs.bot.ai.Goal;
 import com.rs.bot.ai.GoalStack;
+import com.rs.game.player.actions.Fishing;
+import com.rs.game.player.actions.Woodcutting;
+import com.rs.game.player.actions.mining.Mining;
 
 public class BotBrain {
     private AIPlayer bot;
@@ -735,32 +739,105 @@ public class BotBrain {
 
     private void performGoalActivity(Goal goal, int x, int y) {
         String desc = goal.getDescription().toLowerCase();
-        boolean log = Utils.random(100) < 5;
+
+        // If an action is already running (woodcutting, mining, fishing, etc.)
+        // let it tick and gain XP. We don't want to stomp it by setting a new
+        // action every brain tick - the existing one is already doing real work.
+        if (bot.getActionManager() != null && bot.getActionManager().getAction() != null) {
+            return;
+        }
 
         if (desc.contains("woodcutting") || desc.contains("logs")) {
-            bot.setNextAnimation(new Animation(879));
-            goalStack.updateCurrentGoal("chopping wood", 0.003);
-            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " chopping wood");
+            tryStartWoodcutting();
         } else if (desc.contains("mining") || desc.contains("ore")) {
-            bot.setNextAnimation(new Animation(625));
-            goalStack.updateCurrentGoal("mining ore", 0.002);
-            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " mining ore");
+            tryStartMining();
         } else if (desc.contains("fishing") || desc.contains("fish")) {
-            bot.setNextAnimation(new Animation(623));
-            goalStack.updateCurrentGoal("catching fish", 0.004);
-            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " fishing");
-        } else if (desc.contains("combat") || desc.contains("train")) {
-            int[] combatAnims = {422, 423, 424, 451};
-            bot.setNextAnimation(new Animation(combatAnims[Utils.random(combatAnims.length)]));
-            goalStack.updateCurrentGoal("training combat", 0.005);
-            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " training combat");
+            tryStartFishing();
         } else if (desc.contains("bank")) {
+            // Banking action wiring lives in a separate ticket; for now mark
+            // progress so the goal eventually rotates.
             goalStack.updateCurrentGoal("organizing bank", 0.01);
-            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " banking");
         } else {
+            // Combat / quest / collection goals - no real wiring yet.
             randomSmartWalk(x, y);
         }
     }
+
+    private void tryStartWoodcutting() {
+        EnvironmentScanner.TreeMatch match = EnvironmentScanner.findNearestTree(bot, 8);
+        if (match == null) {
+            // No tree at the WorldKnowledge coord - either we arrived in the
+            // wrong spot or the trees are felled. Wander a bit so we're not
+            // pinned to a stale coord forever.
+            randomSmartWalk(bot.getX(), bot.getY());
+            return;
+        }
+        // If we're not yet adjacent, walk to an adjacent tile and wait. The
+        // action will start on the next tick once we're in range.
+        if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
+            WorldTile adj = EnvironmentScanner.adjacentTile(match.object);
+            bot.addWalkSteps(adj.getX(), adj.getY(), 10, true);
+            return;
+        }
+        bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+        if (Utils.random(100) < 30) say(woodcuttingChatter());
+    }
+
+    private void tryStartMining() {
+        EnvironmentScanner.RockMatch match = EnvironmentScanner.findNearestRock(bot, 8);
+        if (match == null) {
+            randomSmartWalk(bot.getX(), bot.getY());
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
+            WorldTile adj = EnvironmentScanner.adjacentTile(match.object);
+            bot.addWalkSteps(adj.getX(), adj.getY(), 10, true);
+            return;
+        }
+        bot.getActionManager().setAction(new Mining(match.object, match.definition));
+        if (Utils.random(100) < 30) say(miningChatter());
+    }
+
+    private void tryStartFishing() {
+        EnvironmentScanner.FishMatch match = EnvironmentScanner.findNearestFishingSpot(bot, 10);
+        if (match == null) {
+            randomSmartWalk(bot.getX(), bot.getY());
+            return;
+        }
+        // Walk adjacent to the fishing-spot NPC. Spots usually sit on water
+        // so we step to a bank tile rather than onto the spot itself.
+        if (!isAdjacent(bot.getX(), bot.getY(), match.npc.getX(), match.npc.getY())) {
+            int dx = bot.getX() < match.npc.getX() ? -1 : 1;
+            bot.addWalkSteps(match.npc.getX() + dx, match.npc.getY(), 10, true);
+            return;
+        }
+        bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
+        if (Utils.random(100) < 30) say(fishingChatter());
+    }
+
+    private boolean isAdjacent(int x, int y, com.rs.game.WorldObject o) {
+        return isAdjacent(x, y, o.getX(), o.getY());
+    }
+
+    private boolean isAdjacent(int x, int y, int tx, int ty) {
+        return Math.abs(x - tx) <= 1 && Math.abs(y - ty) <= 1;
+    }
+
+    private static final String[] WOODCUTTING_CHATTER = {
+        "anyone selling axes?", "yew logs are getting boring", "lvl up!",
+        "this tree is taking forever", "teak when?", "I love woodcutting"
+    };
+    private static final String[] MINING_CHATTER = {
+        "buying gold ore", "nooo my pickaxe broke", "rune rock spawn pls",
+        "anyone here boosting?", "mining is therapeutic ngl"
+    };
+    private static final String[] FISHING_CHATTER = {
+        "wts raw lobster", "barbarian fishing best xp", "sharks sharks sharks",
+        "anyone got an extra harpoon?", "fishing > mining"
+    };
+    private String woodcuttingChatter() { return WOODCUTTING_CHATTER[Utils.random(WOODCUTTING_CHATTER.length)]; }
+    private String miningChatter() { return MINING_CHATTER[Utils.random(MINING_CHATTER.length)]; }
+    private String fishingChatter() { return FISHING_CHATTER[Utils.random(FISHING_CHATTER.length)]; }
 
     private void randomSmartWalk(int currentX, int currentY) {
         int newX = currentX + Utils.random(-5, 6);
