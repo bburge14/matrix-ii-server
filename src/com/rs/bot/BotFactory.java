@@ -109,10 +109,14 @@ public final class BotFactory {
             }
             try { bot.setArchetype(resolvedArchetype); } catch (Throwable ignored) {}
 
-            // Apply equipment loadout based on archetype + actual combat level
+            // Apply equipment loadout based on archetype + actual combat level.
+            // IMPORTANT: must use resolvedArchetype, not the raw 'archetype'
+            // arg - if caller passed "random" the latter is still "random"
+            // and BotEquipment falls through to the default melee branch,
+            // which means a mage-stat bot ends up in melee gear.
             try {
                 int cb = bot.getSkills().getCombatLevel();
-                BotEquipment.applyLoadout(bot, archetype, cb);
+                BotEquipment.applyLoadout(bot, resolvedArchetype, cb);
                 // Re-generate appearance bytes so the equipment shows up visually
                 bot.getAppearence().generateAppearenceData();
             } catch (Throwable t) {

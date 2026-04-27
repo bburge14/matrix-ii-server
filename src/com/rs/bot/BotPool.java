@@ -70,11 +70,21 @@ public final class BotPool {
     public static synchronized int generate(int count, String mode, int targetCombat, String archetype) {
         if (!initialized) initialize();
         int created = 0;
+        // Resolve "random" once per bot so the skill profile and the equipment
+        // loadout agree on what archetype the bot is. Resolving inside both
+        // BotSkillProfile.build AND BotFactory.createOffline used to roll the
+        // archetype twice independently - bots ended up with magic skills but
+        // melee gear, ranged skills with mage robes, etc.
+        String[] randomPool = {"melee", "ranged", "magic", "hybrid", "tank", "pure", "main"};
         for (int i = 0; i < count; i++) {
             String name = uniqueName();
             if (name == null) break;
-            int[] profile = BotSkillProfile.build(mode, targetCombat, archetype);
-            AIPlayer bot = BotFactory.createOffline(name, profile, archetype);
+            String resolvedArchetype = archetype;
+            if ("random".equalsIgnoreCase(archetype) || archetype == null) {
+                resolvedArchetype = randomPool[com.rs.utils.Utils.random(randomPool.length)];
+            }
+            int[] profile = BotSkillProfile.build(mode, targetCombat, resolvedArchetype);
+            AIPlayer bot = BotFactory.createOffline(name, profile, resolvedArchetype);
             if (bot == null) continue;
             byte[] data = SerializationUtilities.tryStoreObject(bot);
             if (data == null || data.length == 0) {
