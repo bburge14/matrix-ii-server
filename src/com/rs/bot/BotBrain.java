@@ -545,14 +545,14 @@ public class BotBrain {
         int newX = currentX + Utils.random(-3, 4);
         int newY = currentY + Utils.random(-3, 4);
         if (newX == currentX && newY == currentY) return;
-        bot.addWalkSteps(newX, newY, 5, false);
+        bot.addWalkSteps(newX, newY, 5, true);
     }
 
     private void purposefulWalk(int currentX, int currentY) {
         int newX = currentX + Utils.random(-6, 7);
         int newY = currentY + Utils.random(-6, 7);
         if (newX == currentX && newY == currentY) return;
-        bot.addWalkSteps(newX, newY, 10, false);
+        bot.addWalkSteps(newX, newY, 10, true);
     }
 
     private boolean scanForTrees(int x, int y) {
@@ -571,7 +571,7 @@ public class BotBrain {
     private void announceActivity(String message, boolean publicChat) {
         try {
             if (publicChat && Utils.random(100) < 60) {
-                System.out.println("[BotChat] " + bot.getDisplayName() + " says: " + message);
+                say(message); // ForceTalk balloon visible to nearby real players
             } else if (Utils.random(100) < 40) {
                 System.out.println("[BotThought] " + bot.getDisplayName() + " thinks: " + message);
             }
@@ -621,10 +621,9 @@ public class BotBrain {
     }
     private void moveTowards(int targetX, int targetY, int currentX, int currentY) {
         // Queue a real path toward the destination, capped to keep the bot
-        // reactive. addWalkSteps with check=false enqueues every intermediate
-        // tile so processMovement has work to consume across many ticks.
+        // reactive. check=true so we don't noclip through walls.
         try {
-            bot.addWalkSteps(targetX, targetY, 25, false);
+            bot.addWalkSteps(targetX, targetY, 25, true);
         } catch (Exception e) {
             bot.setNextWorldTile(new WorldTile(currentX + Utils.random(-1, 2), currentY + Utils.random(-1, 2), 0));
         }
@@ -653,13 +652,13 @@ public class BotBrain {
     }
 
     private void intelligentWalkTo(int targetX, int targetY, int currentX, int currentY) {
-        // Queue a batch of up to MAX_BATCH steps toward the destination. The
-        // movement system consumes 1-2 per game tick; the brain refills the
-        // queue once it drains. check=false bypasses world clip so bots are
-        // never blocked by missing region masks (we'll add real pathfinding
-        // once basic motion is verified).
+        // Queue a batch of up to MAX_BATCH steps toward the destination. With
+        // check=true, addWalkSteps stops at the first blocked tile so bots no
+        // longer noclip through walls. Steps queued before the blockage still
+        // run, so the bot walks until it hits an obstacle. Real A* pathfinding
+        // is the next step (RouteFinder) so bots route around blockers.
         final int MAX_BATCH = 25;
-        boolean moved = bot.addWalkSteps(targetX, targetY, MAX_BATCH, false);
+        boolean moved = bot.addWalkSteps(targetX, targetY, MAX_BATCH, true);
         if (Utils.random(50) < 1) {
             System.out.println("[INTELLIGENT-WALK] " + bot.getDisplayName()
                 + " queued path " + currentX + "," + currentY
@@ -712,6 +711,30 @@ public class BotBrain {
         int newX = currentX + Utils.random(-5, 6);
         int newY = currentY + Utils.random(-5, 6);
         if (newX == currentX && newY == currentY) return;
-        bot.addWalkSteps(newX, newY, 8, false);
+        bot.addWalkSteps(newX, newY, 8, true);
+    }
+
+    /**
+     * Make the bot say something visible to nearby real players.
+     *
+     * Uses ForceTalk: a chat balloon over the bot's head that real players'
+     * LocalPlayerUpdate streams already include automatically when iterating
+     * visible players. This works for headless bots because we're not sending
+     * packets ourselves - we're just setting a field on the bot, and each real
+     * player's update loop picks it up on its own packet stream.
+     *
+     * For real chat-box public messages we'd iterate World.getPlayers(), find
+     * those within ~14 tiles, and call player.getPackets().sendPublicMessage(
+     * bot, new PublicChatMessage(text, 0)) on each. ForceTalk is the cheaper
+     * first step - balloon shows above the bot's head in-game.
+     */
+    public void say(String text) {
+        if (text == null || text.isEmpty()) return;
+        try {
+            bot.setNextForceTalk(new ForceTalk(text));
+            System.out.println("[BotChat] " + bot.getDisplayName() + ": " + text);
+        } catch (Throwable t) {
+            System.err.println("[BotChat] failed for " + bot.getDisplayName() + ": " + t);
+        }
     }
 }
