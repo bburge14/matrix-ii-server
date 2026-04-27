@@ -104,6 +104,35 @@ public class AIPlayer extends Player {
     }
 
     @Override
+    public void processEntityUpdate() {
+        // Diagnostic: prove processMovement actually runs on bots and observe
+        // whether nextWorldTile / walkSteps are applied. Sampled at ~1% so it
+        // doesn't flood the log.
+        boolean log = com.rs.utils.Utils.random(100) < 1;
+        int beforeX = getX(), beforeY = getY();
+        com.rs.game.WorldTile pendingTele = getNextWorldTile();
+        int pendingSteps = getWalkSteps() == null ? -1 : getWalkSteps().size();
+        if (log) {
+            System.out.println("[AI-MOVE-PRE] " + getDisplayName()
+                + " pos=" + beforeX + "," + beforeY
+                + " nextTile=" + (pendingTele == null ? "null" : (pendingTele.getX() + "," + pendingTele.getY()))
+                + " queuedSteps=" + pendingSteps
+                + " started=" + hasStarted() + " finished=" + hasFinished());
+        }
+        try {
+            super.processEntityUpdate();
+        } catch (Throwable t) {
+            System.err.println("[AI-MOVE-ERR] " + getDisplayName() + ": " + t);
+            t.printStackTrace();
+        }
+        if (log) {
+            System.out.println("[AI-MOVE-POST] " + getDisplayName()
+                + " pos=" + getX() + "," + getY()
+                + " (deltaX=" + (getX() - beforeX) + " deltaY=" + (getY() - beforeY) + ")");
+        }
+    }
+
+    @Override
     public void finish() {
         // Bot-safe shutdown - skip real-player cleanup that would NPE without a session.
         // Mirrors realFinish()'s essential bits: mark finished, broadcast removal via
