@@ -194,6 +194,13 @@ public final class EquipmentReqs {
                 return new int[] { Skills.DEFENCE, 99 };
             case 19708: case 19709:  // Wilderness sword cape (req varies)
                 return new int[] { Skills.ATTACK, 60 };
+            // Quest point cape (15706 / 15707) - normally requires all
+            // quests complete, but we use a high-defence stand-in.
+            case 15706: case 15707:
+                return new int[] { Skills.DEFENCE, 80 };
+            // Achievement / task cape (29185 in some 718 caches)
+            case 29185:
+                return new int[] { Skills.DEFENCE, 80 };
 
             // ---- DEFAULT ----
             default: return new int[] { NONE, 1 };
