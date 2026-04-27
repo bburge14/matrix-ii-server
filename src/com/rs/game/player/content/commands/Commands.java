@@ -2102,12 +2102,9 @@ public final class Commands {
 	    }
 
 	    case "testxp": {
-		// ::testxp <skill> <amount>  - call Skills.addXp directly to verify
-		// the XP pipeline works regardless of NPC combat definitions.
-		// If this DOES give XP, the issue is in the combat path (NPC has
-		// DEFAULT_DEFINITION, or getMaxHitpoints==1, or similar). If this
-		// DOES NOT give XP either, the issue is in Skills.addXp or its
-		// gates (xpLocked, isCanPvp, ...).
+		// ::testxp <skill> <amount>  - call Skills.addXp directly. Forces
+		// xpLocked off and canPvp off for the duration so we can isolate
+		// whether either gate is the problem. Restores both after.
 		if (cmd.length < 3) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::testxp <skillId 0-25> <amount>");
 		    return true;
@@ -2115,15 +2112,34 @@ public final class Commands {
 		try {
 		    int skill = Integer.parseInt(cmd[1]);
 		    double amount = Double.parseDouble(cmd[2]);
+		    boolean wasLocked = player.isXpLocked();
+		    boolean wasCanPvp = player.isCanPvp();
 		    int beforeXp = (int) player.getSkills().getXp(skill);
-		    player.getSkills().addXp(skill, amount);
+
+		    player.setXpLocked(false);
+		    if (wasCanPvp) player.setCanPvp(false);
+		    double returned = player.getSkills().addXp(skill, amount);
+		    if (wasLocked) player.setXpLocked(true);
+		    if (wasCanPvp) player.setCanPvp(true);
+
 		    int afterXp = (int) player.getSkills().getXp(skill);
 		    int gained = afterXp - beforeXp;
-		    player.getPackets().sendGameMessage("addXp(skill=" + skill + ", amount=" + amount + ") -> "
-			+ gained + " xp gained. xpLocked=" + player.isXpLocked()
-			+ ", canPvp=" + player.isCanPvp());
+		    player.getPackets().sendGameMessage(
+			"addXp(" + skill + "," + amount + ") gained=" + gained
+			+ " returned=" + returned + " was xpLocked=" + wasLocked
+			+ " was canPvp=" + wasCanPvp);
+		    if (gained == 0) {
+			player.getPackets().sendGameMessage(
+			    "Even with locks bypassed, addXp returned 0. The XP pipeline itself is broken.");
+		    } else if (wasLocked) {
+			player.getPackets().sendGameMessage(
+			    "XP works when lock is bypassed. Run ::xplock off to fix permanently.");
+		    } else {
+			player.getPackets().sendGameMessage(
+			    "XP pipeline works. If combat still gives 0, your target NPC has no combat definitions.");
+		    }
 		} catch (Exception e) {
-		    player.getPackets().sendPanelBoxMessage("Use: ::testxp <skillId 0-25> <amount>. Skills: 0=Atk 1=Def 2=Str 3=HP 4=Range 6=Mag");
+		    player.getPackets().sendPanelBoxMessage("Use: ::testxp <skillId 0-25> <amount>");
 		}
 		return true;
 	    }
