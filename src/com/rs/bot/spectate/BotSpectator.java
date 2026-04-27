@@ -35,15 +35,9 @@ public final class BotSpectator {
         if (target == null) return false;
         spectator.getTemporaryAttributtes().put(ATTR_KEY, target.getDisplayName());
         ensureTicker();
-        // Hide the spectator's character model so OTHER clients don't draw
-        // them. The client always renders self locally regardless, so we
-        // also snap the camera up high looking down at the target - the
-        // self-render ends up directly under the lens, mostly invisible.
-        try {
-            spectator.getAppearence().setHidden(true);
-        } catch (Throwable t) {
-            // best-effort; spectate still works without the hide
-        }
+        try { spectator.getAppearence().setHidden(true); } catch (Throwable ignore) {}
+        // Hide roofs so we can see indoor scenes through ceilings.
+        setRoofsHidden(spectator, true);
         spectator.setNextWorldTile(new WorldTile(target.getX(), target.getY(), target.getPlane()));
         applySpectateCamera(spectator, target);
         return true;
@@ -52,16 +46,20 @@ public final class BotSpectator {
     /** Stop spectating. */
     public static void stop(Player spectator) {
         spectator.getTemporaryAttributtes().remove(ATTR_KEY);
+        try { spectator.getAppearence().setHidden(false); } catch (Throwable ignore) {}
+        try { spectator.getPackets().sendResetCamera(); } catch (Throwable ignore) {}
+        setRoofsHidden(spectator, false);
+    }
+
+    /**
+     * Toggle the client's "Remove roofs" graphic option. The 718 client
+     * reads this from varbit 4084 (0 = show, 1 = hide). Public so the
+     * ::roofs command can call it directly without going through spectate.
+     */
+    public static void setRoofsHidden(Player p, boolean hidden) {
         try {
-            spectator.getAppearence().setHidden(false);
-        } catch (Throwable t) {
-            // ignore
-        }
-        try {
-            spectator.getPackets().sendResetCamera();
-        } catch (Throwable t) {
-            // ignore
-        }
+            p.getVarsManager().sendVarBit(4084, hidden ? 1 : 0);
+        } catch (Throwable ignore) {}
     }
 
     /** True if this player is currently spectating someone. */
@@ -116,19 +114,24 @@ public final class BotSpectator {
     }
 
     /**
-     * Park the spectator's camera high above the target, looking straight
-     * down. With the spectator's own tile being the same as the target's,
-     * the local self-render ends up tiny and centered with the target -
-     * the human eye reads it as "I'm watching from above."
+     * Behind-and-above third-person camera over the target. Sits at ~900z
+     * so we're under most roofs (which clip around 1100z), offset 6 tiles
+     * SW so the angle reads as a normal RS isometric view rather than
+     * a satellite map. Look target is on the bot's tile near ground level.
      */
     private static void applySpectateCamera(Player spectator, Player target) {
         try {
-            int sceneX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
-            int sceneY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
-            // Camera position: directly above target, ~3500 z high.
-            spectator.getPackets().sendCameraPos(sceneX, sceneY, 3500);
-            // Look at target near ground level.
-            spectator.getPackets().sendCameraLook(sceneX, sceneY, 200);
+            // Camera position: 6 tiles SW of target, ~3 storeys up. The
+            // diagonal offset gives a familiar isometric angle.
+            int posX = target.getX() - 6;
+            int posY = target.getY() - 6;
+            int posLocalX = new WorldTile(posX, posY, target.getPlane()).getXInScene(spectator);
+            int posLocalY = new WorldTile(posX, posY, target.getPlane()).getYInScene(spectator);
+            spectator.getPackets().sendCameraPos(posLocalX, posLocalY, 900);
+            // Look target: bot's tile, near ground.
+            int lookLocalX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
+            int lookLocalY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
+            spectator.getPackets().sendCameraLook(lookLocalX, lookLocalY, 200);
         } catch (Throwable t) {
             // Camera packets are best-effort; spectate still works without them
         }
