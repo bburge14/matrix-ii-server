@@ -2083,6 +2083,44 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "xprate":
+	    case "xpmode": {
+		// ::xprate         - show current mode + rates
+		// ::xprate <1-4>   - switch to that mode
+		// Modes mirror NewPlayerController's character-creation dialogue:
+		//   1 = casual    (x20 xp / x40 combat / x2 drop)
+		//   2 = standard  (x40 xp / x100 combat / x1 drop)        [recommended]
+		//   3 = fast      (x100 xp / x500 combat / x0.4 drop)
+		//   4 = slow      (x5 xp / x5 combat / x2.5 drop)
+		if (cmd.length < 2) {
+		    int mode = player.getXpRateMode();
+		    String label;
+		    switch (mode) {
+			case 1: label = "casual (x20 xp)";    break;
+			case 2: label = "standard (x40 xp)";  break;
+			case 3: label = "fast (x100 xp)";     break;
+			case 4: label = "slow (x5 xp)";       break;
+			default: label = "default (x1)";
+		    }
+		    player.getPackets().sendGameMessage("Current XP rate mode: " + mode + " - " + label
+			+ ". Use: ::xprate 1|2|3|4");
+		    return true;
+		}
+		try {
+		    int mode = Integer.parseInt(cmd[1]);
+		    if (mode < 1 || mode > 4) {
+			player.getPackets().sendGameMessage("Invalid mode. Use 1 (casual), 2 (standard), 3 (fast), or 4 (slow).");
+			return true;
+		    }
+		    player.setXpRateMode(mode);
+		    player.getPackets().sendGameMessage("XP rate mode set to " + mode + ". Skill: x"
+			+ Settings.getXpRate(player) + ", Combat: x" + Settings.getCombatXpRate(player) + ".");
+		} catch (NumberFormatException e) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::xprate <1-4>");
+		}
+		return true;
+	    }
+
 	    case "roofs": {
 		// ::roofs on/off       - try the canonical varbit 4084
 		// ::roofs varbit ID v  - probe a specific varbit (e.g. ::roofs varbit 6896 1)
