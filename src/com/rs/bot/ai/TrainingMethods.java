@@ -136,8 +136,12 @@ public final class TrainingMethods {
 
     static {
         // ---- Woodcutting (location + level + tree-def filter) ----
-        ALL.add(b("Chop normal trees - Lumbridge", Kind.WOODCUTTING)
-            .skill(Skills.WOODCUTTING).lvl(1, 15).at(3096, 3468).xp(15000).gp(2000)
+        // Note: WorldKnowledge.LUMBRIDGE_TREES (3096, 3468) is mislabeled -
+        // it's actually near Edgeville/Barbarian Village and full of
+        // willows, not normal trees. Use the Draynor coord instead which
+        // is real normal trees outside Draynor village.
+        ALL.add(b("Chop normal trees - Draynor", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(1, 15).at(3101, 3263).xp(15000).gp(2000)
             .tree(TreeDefinitions.NORMAL).build());
         ALL.add(b("Chop oak trees - Varrock", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(15, 30).at(3280, 3420).xp(22000).gp(8000)

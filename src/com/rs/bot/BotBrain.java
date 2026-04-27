@@ -50,6 +50,8 @@ public class BotBrain {
     private boolean bankingMode;
     /** Where to walk back to once the bank trip is done. */
     private WorldTile bankReturnTile;
+    /** Wallclock at which we last swept the GE for completed offers. */
+    private long lastGECollectionTick;
     private String currentActivity;
 
     public BotBrain(AIPlayer bot) {
@@ -92,6 +94,18 @@ public class BotBrain {
                 triggerBurnoutVacation();
             }
             lastGoalCheck = currentTime;
+        }
+
+        // GE sweep: every 60s, pull settled offers back. Cheap if there's
+        // nothing to collect, prevents items sitting forever in the GE
+        // even when the bot doesn't bank.
+        if (currentTime - lastGECollectionTick > 60_000) {
+            try {
+                com.rs.bot.ai.BotTrading.collectCompletedOffers(bot);
+            } catch (Throwable t) {
+                // ignore - non-critical
+            }
+            lastGECollectionTick = currentTime;
         }
 
         // Drive movement every tick. Goal evaluation runs every 10s, but the
@@ -178,14 +192,32 @@ public class BotBrain {
             return;
         }
 
-        // We're at the bank - deposit. depositAllInventory(false) skips the
-        // banking-interface refresh that needs a live client. Bots' equipped
-        // tools stay in equipment slots, so they can resume skilling after.
+        // We're at the bank.
+        // Step 1: place GE sell offers for tradeable resources (logs, ore,
+        // raw fish) so they actually convert into coins on the market
+        // instead of piling up in the bank as raw stock.
+        try {
+            int placed = com.rs.bot.ai.BotTrading.sellInventoryOnGE(bot);
+            if (placed > 0 && Utils.random(100) < 40) {
+                say("listed " + placed + " offers on GE");
+            }
+        } catch (Throwable t) {
+            System.err.println("[GE-ERROR] sell for " + bot.getDisplayName() + ": " + t);
+        }
+        // Step 2: dump whatever's left into the bank. Tools (axes/picks)
+        // stay safely in equipment slots so the bot can resume skilling.
         try {
             bot.getBank().depositAllInventory(false);
             if (Utils.random(100) < 50) say(bankChatter());
         } catch (Throwable t) {
             System.err.println("[BANK-ERROR] " + bot.getDisplayName() + ": " + t);
+        }
+        // Step 3: pull any settled GE offers back. Coins/leftover items
+        // come straight to inventory; if it overflows, GE handles it.
+        try {
+            com.rs.bot.ai.BotTrading.collectCompletedOffers(bot);
+        } catch (Throwable t) {
+            System.err.println("[GE-ERROR] collect for " + bot.getDisplayName() + ": " + t);
         }
         bankingMode = false;
         goal.setCurrentStep("returning from bank");
