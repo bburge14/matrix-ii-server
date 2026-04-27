@@ -316,14 +316,21 @@ public final class Settings {
 
 	}
 
-	public static final String[] ANNOUNCEMENT_TEXTS = new String[] { "Killing players can result in pk points rewards, check quest tab for more information.",
-		"Squeal of fortune spins can be obtained by killing various monsters, donating or simply voting for them.", "Vote rewards can be claimed by using the ::claim command.",
-		"The yell channel is only available for special ranks, the easiest way to get access is by donating. ::donate",
-		"Monthly and lifetime donator subscriptions available, type ::donate to get yours today!",
-		"If you ever need any help check out ::help, talk to the Oracle of Dawn or join the 'Help' Friends chat.", "We have an all in one money making guide on our ::wiki.",
-		"Check out the vote shop for awesome ::vote rewards!", "The easiest trick for some extra cash every 12 hours is voting, get started by typing ::vote.",
-		"Voting increases your drop and XP rates by 25% for 12 hours.", "Training teleports are available at the Oracle of Dawn.",
-		"Safe Pking is available in the teleports section at the Oracle of Dawn.", "Skilling and miscellaneous guides can be read on our ::wiki.", };
+	// Announcement strings rewritten away from CorruptionX's PK / vote /
+	// donator monetization toward base-RS skilling / quest / community
+	// hooks. Re-tune the wording to whatever your server theme is.
+	public static final String[] ANNOUNCEMENT_TEXTS = new String[] {
+		"Welcome to " + SERVER_NAME + "! Talk to the Oracle of Dawn for guidance.",
+		"Train any skill from 1 to 99 - check your skills tab to see what to work on.",
+		"The Grand Exchange is the best place to buy and sell items with other players.",
+		"Lumbridge is the best place for new players to start - cows, trees, and a free bank!",
+		"Need a hand? Type ::help or join the 'Help' Friends chat.",
+		"Skilling and quest guides can be read on our ::wiki.",
+		"Visit a bank often to deposit your loot and free up inventory space.",
+		"Higher-tier gear requires higher combat stats - train Defence, Attack, and Strength.",
+		"Try fishing, mining, woodcutting, and cooking to make money while levelling.",
+		"Members of the community keep the world alive - say hi to passers-by.",
+	};
 
 	// sof chances:
 	// 100% for common (It's a must to have 100% for common due to at least one

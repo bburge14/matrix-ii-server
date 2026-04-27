@@ -206,8 +206,14 @@ public class NewSpawnPlayerController extends Controller {
 
 	@Override
 	public void forceClose() {
-		for (int skill = 0; skill < Skills.SKILL_NAME.length; skill++)
-			player.getSkills().addXp(skill, 13034431);
+		// CorruptionX spawn-tutorial used to grant 13,034,431 XP per skill
+		// (~level 99 across the board) when the player exited the tutorial.
+		// That's a spawn-server starting point, not base RS. Drop to zero -
+		// players progress normally through the game.
+		// SPAWN_WORLD is false in your launch script so this code path
+		// doesn't actually run, but we clean it for safety.
+		// for (int skill = 0; skill < Skills.SKILL_NAME.length; skill++)
+		//     player.getSkills().addXp(skill, 13034431);
 
 		player.getHintIconsManager().removeUnsavedHintIcon();
 		player.getMusicsManager().reset();
