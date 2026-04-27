@@ -2083,6 +2083,24 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "xplock": {
+		// ::xplock         - shows current xp-lock state
+		// ::xplock on/off  - toggle (on = no XP at all, off = normal)
+		// Useful when XP gain stops mysteriously - someone may have
+		// toggled the setting via the EconomyManager settings menu.
+		if (cmd.length < 2) {
+		    player.getPackets().sendGameMessage("XP lock is currently "
+			+ (player.isXpLocked() ? "ON (no XP gain)" : "OFF (normal)")
+			+ ". Use: ::xplock on / ::xplock off");
+		    return true;
+		}
+		boolean lock = cmd[1].equalsIgnoreCase("on") || cmd[1].equalsIgnoreCase("true")
+			|| cmd[1].equalsIgnoreCase("1") || cmd[1].equalsIgnoreCase("lock");
+		player.setXpLocked(lock);
+		player.getPackets().sendGameMessage("XP lock " + (lock ? "ON - you will NOT gain XP." : "OFF - XP gain restored."));
+		return true;
+	    }
+
 	    case "xprate":
 	    case "xpmode": {
 		// ::xprate         - show current mode + rates
