@@ -1,0 +1,24 @@
+# Compiled files
+bin/
+*.class
+
+# Large dependencies that can be downloaded separately  
+lib/*.jar
+
+# Cache and data files
+cache/
+*.dat
+*.idx*
+
+# Log files
+logs/
+*.log
+
+# Player data
+data/saves/
+data/characters/
+
+# Temporary files
+*.tmp
+*.temp
+*.data
