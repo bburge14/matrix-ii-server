@@ -82,8 +82,12 @@ public final class Skills implements Serializable {
 		}
 		level[3] = 10;
 		xp[3] = 1184;
-		level[HERBLORE] = 3;
-		xp[HERBLORE] = 250;
+		// Herblore was hardcoded to level 3 / 250xp here, which gave every
+		// new account a starter herblore boost (probably leftover from
+		// "Druidic Ritual quest grants 250 xp"). Reset to 1 so accounts
+		// start at 1 in every non-HP skill like vanilla.
+		// level[HERBLORE] = 3;
+		// xp[HERBLORE] = 250;
 		xpPopup = true;
 		xpTracks = new double[3];
 		trackSkills = new boolean[3];
