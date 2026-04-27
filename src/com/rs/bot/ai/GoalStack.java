@@ -78,22 +78,31 @@ public class GoalStack {
     public Goal getCurrentGoal() {
         // Clean up invalid goals first
         cleanupInvalidGoals();
-        
+
+        // Auto-complete the current goal if real game state already
+        // satisfies it (e.g. bot reached level 99, or already owns the
+        // armor set). Avoids the old fake-timer behaviour where a bot
+        // "finished" goals it had never actually accomplished.
+        if (currentGoal != null && currentGoal.getStatus() == Goal.Status.ACTIVE
+                && currentGoal.isCompleted(bot)) {
+            completeCurrentGoal();
+        }
+
         // Generate new goals if needed
         generateGoalsIfNeeded();
-        
+
         // If no current goal or current goal is completed, get next goal
         if (currentGoal == null || currentGoal.getStatus() != Goal.Status.ACTIVE) {
             currentGoal = selectNextGoal();
             if (currentGoal != null) {
                 currentGoalStartTime = System.currentTimeMillis();
                 currentGoal.setCurrentStep("Starting goal: " + currentGoal.getDescription());
-                
+
                 // Log goal selection
                 logGoalSelection(currentGoal);
             }
         }
-        
+
         return currentGoal;
     }
     
@@ -365,10 +374,12 @@ public class GoalStack {
     }
     
     /**
-     * Remove invalid goals from a specific queue
+     * Remove invalid goals from a specific queue. Also drops goals whose
+     * target state the bot already meets - no point keeping "Get rune armor"
+     * queued for a bot already wearing rune.
      */
     private void cleanupQueue(Queue<Goal> queue) {
-        queue.removeIf(goal -> !goal.isValid());
+        queue.removeIf(goal -> !goal.isValid() || goal.isCompleted(bot));
     }
     
     /**

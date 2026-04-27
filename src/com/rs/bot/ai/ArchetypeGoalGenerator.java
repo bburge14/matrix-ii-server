@@ -56,8 +56,13 @@ public class ArchetypeGoalGenerator {
         
         // Add universal goals that all bots might want
         goals.addAll(generateUniversalGoals(bot, analysis));
-        
-        // Filter and prioritize goals based on bot's situation
+
+        // Drop goals the bot has already accomplished (real game state).
+        // Stops a bot already wearing rune from generating "get rune armor",
+        // a bot at 99 attack from generating "train attack to 99", etc.
+        goals.removeIf(g -> g == null || g.isCompleted(bot));
+
+        // Prioritize the survivors.
         return prioritizeGoals(goals, analysis);
     }
     

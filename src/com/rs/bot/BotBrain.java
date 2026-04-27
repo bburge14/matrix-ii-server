@@ -188,65 +188,26 @@ public class BotBrain {
     }
     
     /**
-     * Simulate progress on the current goal
+     * Update the goal's "current step" string for logging/HUD only.
+     *
+     * Real progress is no longer faked here - completion is determined
+     * by Goal.isCompleted(bot) in GoalStack.getCurrentGoal(), which
+     * reads actual game state (skill levels, items in equipment/
+     * inventory/bank, total wealth). Bots only "finish" a goal when the
+     * world says they have, not when a 0.001 timer says so.
      */
     private void simulateGoalProgress(Goal goal) {
-        // Simulate different types of progress based on goal category
-        double progressIncrement = 0.0;
-        String activity = currentActivity;
-        
+        String activity;
         switch (goal.getCategory()) {
-            case SKILL:
-                if (currentState == BotState.ACTIVITY) {
-                    progressIncrement = 0.001; // 0.1% progress per tick when actively training
-                    activity = "training " + extractSkillFromGoal(goal);
-                }
-                break;
-                
-            case COMBAT:
-                if (currentState == BotState.ACTIVITY) {
-                    progressIncrement = 0.0008; // Slightly slower than skills
-                    activity = "combat training";
-                }
-                break;
-                
-            case ECONOMIC:
-                if (currentState == BotState.ACTIVITY) {
-                    progressIncrement = 0.0015; // Money making is faster
-                    activity = "making money";
-                }
-                break;
-                
-            case QUEST:
-                if (currentState == BotState.ACTIVITY) {
-                    progressIncrement = 0.002; // Quests complete faster
-                    activity = "doing quest";
-                }
-                break;
-                
-            default:
-                if (currentState == BotState.ACTIVITY) {
-                    progressIncrement = 0.001;
-                    activity = "working on goal";
-                }
+            case SKILL:    activity = "training " + extractSkillFromGoal(goal); break;
+            case COMBAT:   activity = "combat training"; break;
+            case ECONOMIC: activity = "making money"; break;
+            case QUEST:    activity = "doing quest"; break;
+            default:       activity = "working on goal";
         }
-        
-        // Personality affects efficiency
-        progressIncrement *= personality.getEfficiencyMultiplier();
-        
-        // Emotional state affects efficiency
-        progressIncrement *= emotionalState.getEfficiencyModifier();
-        
-        // Random variation
-        if (Utils.random(100) < 60) { // 20% chance for bonus progress
-            progressIncrement *= 1.5;
-            activity += " (focused)";
-        }
-        
-        // Update goal progress
-        if (progressIncrement > 0) {
-            goalStack.updateCurrentGoal(activity, progressIncrement);
-        }
+        if (Utils.random(100) < 20) activity += " (focused)";
+        goal.setCurrentStep(activity);
+        currentActivity = activity;
     }
     
     /**
