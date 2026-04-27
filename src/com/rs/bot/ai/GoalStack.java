@@ -91,6 +91,15 @@ public class GoalStack {
             completeCurrentGoal();
         }
 
+        // Drop the active goal if it has no plan we can pursue. Catches
+        // goals saved to disk before TrainingMethods existed - bots came
+        // back with currentGoal = "99 Fletching" and no method covers it,
+        // so they wandered. Force-abandon kicks them back into selection.
+        if (currentGoal != null && currentGoal.getStatus() == Goal.Status.ACTIVE
+                && !currentGoal.isAchievable(bot)) {
+            forceAbandon("no plan available for this goal");
+        }
+
         // Generate new goals if needed
         generateGoalsIfNeeded();
 
@@ -484,12 +493,13 @@ public class GoalStack {
     }
     
     /**
-     * Remove invalid goals from a specific queue. Also drops goals whose
-     * target state the bot already meets - no point keeping "Get rune armor"
-     * queued for a bot already wearing rune.
+     * Remove invalid goals from a specific queue. Drops goals whose
+     * target state the bot already meets, AND goals we have no plan for
+     * (so old "99 Fletching" entries from before TrainingMethods get
+     * purged on the next cleanup pass).
      */
     private void cleanupQueue(Queue<Goal> queue) {
-        queue.removeIf(goal -> !goal.isValid() || goal.isCompleted(bot));
+        queue.removeIf(goal -> !goal.isValid() || goal.isCompleted(bot) || !goal.isAchievable(bot));
     }
     
     /**
