@@ -26,6 +26,7 @@ public class BotBrain {
     private EmotionalState emotionalState;
     private MemorySystem memory;
     private GoalStack goalStack;
+    private BurnoutSystem burnout;
 
     private BotState currentState;
     private BotState previousState;
@@ -40,6 +41,11 @@ public class BotBrain {
     // Goal-driven behavior
     private long lastGoalCheck;
     private long lastMovementTick;
+    /** Wallclock at which this bot is allowed to teleport again. Stops the
+     *  brain from spamming back-to-back teleports when the destination is
+     *  far from the nearest tele spot - the bot is forced to walk in
+     *  between, just like a real player out of runes. */
+    private long teleportCooldownUntil;
     private String currentActivity;
 
     public BotBrain(AIPlayer bot) {
@@ -48,6 +54,7 @@ public class BotBrain {
         this.emotionalState = new EmotionalState();
         this.memory = new MemorySystem();
         this.goalStack = new GoalStack(bot); // Fixed: Pass bot to constructor
+        this.burnout = new BurnoutSystem();
 
         this.currentState = BotState.IDLE;
         this.previousState = BotState.IDLE;
@@ -74,6 +81,12 @@ public class BotBrain {
         // Check goals periodically (every 10 seconds) - high-level planning only
         if (currentTime - lastGoalCheck > 10000) {
             checkAndUpdateGoals();
+            // Burnout meter ticks on the same cadence. If it fires, force-
+            // abandon the current grind and inject a vacation goal so the
+            // next selectNextGoal picks something fresh.
+            if (burnout != null && burnout.tick(bot, goalStack)) {
+                triggerBurnoutVacation();
+            }
             lastGoalCheck = currentTime;
         }
 
@@ -293,25 +306,55 @@ public class BotBrain {
         }
     }
 
-    private boolean shouldMakeMajorDecision() {
-        // High boredom or restlessness
-        if (boredomLevel > 70 || restlessness > 80) {
-            return true;
+    /**
+     * The bot has been grinding too long and the burnout system fired. Drop
+     * the current goal regardless of commitment, and inject a "vacation"
+     * goal so the next selection picks something fresh.
+     */
+    private void triggerBurnoutVacation() {
+        Goal cur = goalStack.getCurrentGoal();
+        String fromDesc = cur == null ? "(idle)" : cur.getDescription();
+        goalStack.forceAbandon("burnout - taking a break");
+        com.rs.bot.ai.GoalType vacation = BurnoutSystem.pickVacationGoal();
+        Goal vacationGoal = goalStack.injectVacation(vacation, bot);
+        String toDesc = vacationGoal == null ? vacation.getDescription() : vacationGoal.getDescription();
+        System.out.println("[BURNOUT] " + bot.getDisplayName()
+            + " is sick of '" + fromDesc + "' - going to do '" + toDesc + "' instead.");
+        if (Utils.random(100) < 60) {
+            say(burnoutChatter(fromDesc, toDesc));
         }
-        
-        // No current goal 
-        Goal currentGoal = goalStack.getCurrentGoal();
-        if (currentGoal == null) {
-            return true;
-        }
-        
-        // Goal completed or failed
-        if (currentGoal.getStatus() != Goal.Status.ACTIVE) {
-            return true;
-        }
+    }
 
-        // Random major decision (personality-driven)
-        int randomChance = personality.getRiskTolerance() > 0.6 ? 5 : 2; // Risk-takers make more major decisions
+    private static final String[] BURNOUT_CHATTER = {
+        "okay screw this, I'm done with %s for a bit",
+        "%s grind is killing me, switching to %s",
+        "anyone wanna do %s? I need a break from grinding",
+        "burnt out... going to %s",
+        "if I see one more %s I'm gonna lose it"
+    };
+
+    private String burnoutChatter(String from, String to) {
+        String tmpl = BURNOUT_CHATTER[Utils.random(BURNOUT_CHATTER.length)];
+        return String.format(tmpl, from, to);
+    }
+
+    private boolean shouldMakeMajorDecision() {
+        Goal currentGoal = goalStack.getCurrentGoal();
+
+        // No current goal => need to plan one.
+        if (currentGoal == null) return true;
+        // Goal completed or failed externally => need to pick the next.
+        if (currentGoal.getStatus() != Goal.Status.ACTIVE) return true;
+
+        // Inside the commitment window the bot stays put. Real game-state
+        // completion (level 99 reached, item acquired) still triggers a
+        // switch via the goal completing in GoalStack - that path comes
+        // through the "status != ACTIVE" branch above.
+        if (!goalStack.canSwitchGoal()) return false;
+
+        // Past commitment: small RNG chance per tick, biased by
+        // personality. Risk-takers reconsider more often.
+        int randomChance = personality.getRiskTolerance() > 0.6 ? 5 : 2;
         return Utils.random(1000) < randomChance;
     }
 
@@ -636,14 +679,28 @@ public class BotBrain {
     }
 
     private void attemptTeleportTo(int targetX, int targetY, int currentX, int currentY) {
-        // Don't queue a new teleport while one is already casting. The bot's
-        // executeCurrentGoalActions guard already skips while walkSteps is
-        // non-empty; we add isLocked() to cover the cast window before the
-        // destination tile is applied.
+        // Already mid-cast => skip.
         if (bot.isLocked()) return;
+        // Cooldown: after a teleport the bot must walk for 60s before
+        // teleporting again. This stops the spam pattern where the nearest
+        // tele spot is still 200 tiles from the actual destination, the bot
+        // teleports there, "isn't close enough", and immediately re-teleports.
+        if (System.currentTimeMillis() < teleportCooldownUntil) {
+            intelligentWalkTo(targetX, targetY, currentX, currentY);
+            return;
+        }
 
         int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
         if (bestTeleport == null) {
+            intelligentWalkTo(targetX, targetY, currentX, currentY);
+            return;
+        }
+
+        // If the teleport doesn't get us meaningfully closer, just walk
+        // instead. "Meaningfully" = at least 30% of the remaining distance.
+        long curDist = (long) Math.hypot(currentX - targetX, currentY - targetY);
+        long teleDist = (long) Math.hypot(bestTeleport[0] - targetX, bestTeleport[1] - targetY);
+        if (teleDist >= curDist * 0.7) {
             intelligentWalkTo(targetX, targetY, currentX, currentY);
             return;
         }
@@ -656,14 +713,12 @@ public class BotBrain {
         final int downEmote = anim[2];
         final int downGfx = anim[3];
 
-        // Cast: animation + graphics, no movement yet. Lock for 4 ticks
-        // (3 cast + 1 settle) so the brain doesn't fire another teleport mid-cast.
         bot.setNextAnimation(new Animation(upEmote));
         if (upGfx != -1) bot.setNextGraphics(new Graphics(upGfx));
         bot.lock(4);
+        teleportCooldownUntil = System.currentTimeMillis() + 60_000L;
         System.out.println("[TELEPORT] " + bot.getDisplayName() + " casting -> " + destX + "," + destY);
 
-        // Apply destination after 3 game ticks (matches real spell cast time)
         WorldTasksManager.schedule(new WorldTask() {
             @Override
             public void run() {

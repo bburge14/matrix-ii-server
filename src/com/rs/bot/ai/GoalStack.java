@@ -42,6 +42,8 @@ public class GoalStack {
     private Goal currentGoal;
     private String currentActivity;
     private long currentGoalStartTime;
+    /** Earliest time at which the current goal may be voluntarily switched. */
+    private long currentGoalCommitmentExpiry;
     
     public GoalStack(AIPlayer bot) {
         this.bot = bot;
@@ -60,6 +62,7 @@ public class GoalStack {
         this.currentGoal = null;
         this.currentActivity = "idle";
         this.currentGoalStartTime = 0;
+        this.currentGoalCommitmentExpiry = 0;
         
         // Initialize category progress tracking
         for (Goal.GoalCategory category : Goal.GoalCategory.values()) {
@@ -96,6 +99,8 @@ public class GoalStack {
             currentGoal = selectNextGoal();
             if (currentGoal != null) {
                 currentGoalStartTime = System.currentTimeMillis();
+                currentGoalCommitmentExpiry = currentGoalStartTime
+                    + pickCommitmentDuration(currentGoal);
                 currentGoal.setCurrentStep("Starting goal: " + currentGoal.getDescription());
 
                 // Log goal selection
@@ -146,9 +151,11 @@ public class GoalStack {
             
             // Clear current goal so next one is selected
             currentGoal = null;
+            currentGoalStartTime = 0;
+            currentGoalCommitmentExpiry = 0;
         }
     }
-    
+
     /**
      * Mark current goal as failed
      */
@@ -162,12 +169,14 @@ public class GoalStack {
             // Move to failed list
             failedGoals.add(currentGoal);
             removeGoalFromAllQueues(currentGoal);
-            
+
             // Log failure
             logGoalFailure(currentGoal, reason);
-            
+
             // Clear current goal so next one is selected
             currentGoal = null;
+            currentGoalStartTime = 0;
+            currentGoalCommitmentExpiry = 0;
         }
     }
     
@@ -187,6 +196,107 @@ public class GoalStack {
         }
     }
     
+    // ===== Commitment / stickiness =====
+
+    /**
+     * Per-category commitment durations. Bots stick with a goal at least
+     * this long before voluntarily switching. Range is randomised per pick
+     * so two combat bots don't switch on the same tick.
+     *
+     * Real player ranges in mind:
+     *   skill / collection -> 1-3 hours (actual 99 grinds are even longer
+     *                                    but we cap so burnout can fire)
+     *   combat / pvm        -> 30-90 min
+     *   economic            -> 30-90 min
+     *   quest               -> 15-60 min (quests are bursty)
+     *   social / explore    -> 5-30 min  (don't loiter)
+     */
+    private long pickCommitmentDuration(Goal goal) {
+        Goal.GoalCategory cat = goal.getCategory();
+        long min, max;
+        switch (cat) {
+            case SKILL:       min = 60*60_000L;  max = 180*60_000L; break;
+            case COLLECTION:  min = 60*60_000L;  max = 180*60_000L; break;
+            case COMBAT:      min = 30*60_000L;  max = 90*60_000L;  break;
+            case ECONOMIC:    min = 30*60_000L;  max = 90*60_000L;  break;
+            case ACHIEVEMENT: min = 30*60_000L;  max = 60*60_000L;  break;
+            case QUEST:       min = 15*60_000L;  max = 60*60_000L;  break;
+            case EXPLORATION: min = 15*60_000L;  max = 45*60_000L;  break;
+            case SOCIAL:      min = 5 *60_000L;  max = 20*60_000L;  break;
+            default:          min = 30*60_000L;  max = 60*60_000L;
+        }
+        long span = Math.max(1, max - min);
+        return min + (long)(Math.random() * span);
+    }
+
+    /**
+     * True when the brain is allowed to switch off the current goal of its
+     * own accord. Real-game-state completion always overrides this -
+     * a 99 attack goal still auto-completes mid-commitment if the bot hits
+     * 99. Burnout-driven switching uses forceAbandon() to bypass this.
+     */
+    public boolean canSwitchGoal() {
+        if (currentGoal == null) return true;
+        return System.currentTimeMillis() >= currentGoalCommitmentExpiry;
+    }
+
+    /** How long the bot has been on its current goal, in milliseconds. */
+    public long getTimeOnCurrentGoal() {
+        if (currentGoal == null || currentGoalStartTime == 0) return 0;
+        return Math.max(0, System.currentTimeMillis() - currentGoalStartTime);
+    }
+
+    public long getCommitmentExpiry() { return currentGoalCommitmentExpiry; }
+
+    /**
+     * Inject a vacation goal at the head of the short-term queue so the
+     * next selectNextGoal picks it up. Called by the burnout system after
+     * forceAbandon. Uses the existing ArchetypeGoalGenerator factory so
+     * the goal carries proper metadata for state checks.
+     */
+    public Goal injectVacation(GoalType type, com.rs.bot.AIPlayer bot) {
+        if (type == null) return null;
+        Goal g = new Goal(
+            bot.getDisplayName() + "_VACATION_" + type.name() + "_" + System.currentTimeMillis(),
+            type.getDescription(),
+            type.getDefaultPriority(),
+            type.getCategory(),
+            type.getEstimatedTime(),
+            10.0,
+            true);
+        g.setData("goalType", type);
+        g.setData("vacation", Boolean.TRUE);
+        // Push to the front of the short-term queue. ConcurrentLinkedQueue
+        // doesn't support head-insert directly, but selectNextGoal scores
+        // by urgency, so we just bump the priority and offer normally.
+        g.setPriority(Goal.Priority.URGENT);
+        if (shortTermGoals.size() >= MAX_GOALS_PER_TIER) {
+            shortTermGoals.poll(); // drop one to make room
+        }
+        shortTermGoals.offer(g);
+        return g;
+    }
+
+    /**
+     * Force-abandon the current goal regardless of commitment. Used by
+     * the burnout system when the bot has been grinding too long and
+     * needs a vacation activity.
+     */
+    public void forceAbandon(String reason) {
+        if (currentGoal == null) return;
+        Goal toAbandon = currentGoal;
+        toAbandon.abandon(reason);
+        // Only clear if the goal accepted the abandonment (some goals are
+        // marked unabandonable). If it didn't, leave it active.
+        if (toAbandon.getStatus() == Goal.Status.ABANDONED) {
+            removeGoalFromAllQueues(toAbandon);
+            logGoalAbandon(toAbandon, reason);
+            currentGoal = null;
+            currentGoalStartTime = 0;
+            currentGoalCommitmentExpiry = 0;
+        }
+    }
+
     // ===== Goal Selection Logic =====
     
     /**
