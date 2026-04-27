@@ -11,6 +11,7 @@ import com.rs.game.ForceTalk;
 import com.rs.game.Animation;
 import com.rs.game.tasks.WorldTask;
 import com.rs.game.tasks.WorldTasksManager;
+import com.rs.bot.ai.BotPathing;
 import com.rs.bot.ai.EnvironmentScanner;
 import com.rs.bot.ai.WorldKnowledge;
 import com.rs.bot.ai.Goal;
@@ -660,17 +661,16 @@ public class BotBrain {
     }
 
     private void intelligentWalkTo(int targetX, int targetY, int currentX, int currentY) {
-        // Queue a batch of up to MAX_BATCH steps toward the destination. With
-        // check=true, addWalkSteps stops at the first blocked tile so bots no
-        // longer noclip through walls. Steps queued before the blockage still
-        // run, so the bot walks until it hits an obstacle. Real A* pathfinding
-        // is the next step (RouteFinder) so bots route around blockers.
-        final int MAX_BATCH = 25;
-        boolean moved = bot.addWalkSteps(targetX, targetY, MAX_BATCH, true);
+        // Use the engine's RouteFinder so bots route around walls/objects
+        // instead of jamming into them with check=true addWalkSteps. If no
+        // route exists (e.g., target is inside a wall, bot is trapped), we
+        // wiggle to break out of the dead-end.
+        boolean ok = BotPathing.walkTo(bot, targetX, targetY);
+        if (!ok) BotPathing.wiggle(bot, 4);
         if (Utils.random(50) < 1) {
             System.out.println("[INTELLIGENT-WALK] " + bot.getDisplayName()
-                + " queued path " + currentX + "," + currentY
-                + " -> " + targetX + "," + targetY + " (ok=" + moved + ")");
+                + " " + currentX + "," + currentY + " -> " + targetX + "," + targetY
+                + " (route=" + ok + ")");
         }
     }
 
@@ -766,17 +766,11 @@ public class BotBrain {
     private void tryStartWoodcutting() {
         EnvironmentScanner.TreeMatch match = EnvironmentScanner.findNearestTree(bot, 8);
         if (match == null) {
-            // No tree at the WorldKnowledge coord - either we arrived in the
-            // wrong spot or the trees are felled. Wander a bit so we're not
-            // pinned to a stale coord forever.
-            randomSmartWalk(bot.getX(), bot.getY());
+            BotPathing.wiggle(bot, 5);
             return;
         }
-        // If we're not yet adjacent, walk to an adjacent tile and wait. The
-        // action will start on the next tick once we're in range.
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            WorldTile adj = EnvironmentScanner.adjacentTile(match.object);
-            bot.addWalkSteps(adj.getX(), adj.getY(), 10, true);
+            BotPathing.walkToObject(bot, match.object);
             return;
         }
         bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
@@ -786,12 +780,11 @@ public class BotBrain {
     private void tryStartMining() {
         EnvironmentScanner.RockMatch match = EnvironmentScanner.findNearestRock(bot, 8);
         if (match == null) {
-            randomSmartWalk(bot.getX(), bot.getY());
+            BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            WorldTile adj = EnvironmentScanner.adjacentTile(match.object);
-            bot.addWalkSteps(adj.getX(), adj.getY(), 10, true);
+            BotPathing.walkToObject(bot, match.object);
             return;
         }
         bot.getActionManager().setAction(new Mining(match.object, match.definition));
@@ -801,14 +794,11 @@ public class BotBrain {
     private void tryStartFishing() {
         EnvironmentScanner.FishMatch match = EnvironmentScanner.findNearestFishingSpot(bot, 10);
         if (match == null) {
-            randomSmartWalk(bot.getX(), bot.getY());
+            BotPathing.wiggle(bot, 5);
             return;
         }
-        // Walk adjacent to the fishing-spot NPC. Spots usually sit on water
-        // so we step to a bank tile rather than onto the spot itself.
         if (!isAdjacent(bot.getX(), bot.getY(), match.npc.getX(), match.npc.getY())) {
-            int dx = bot.getX() < match.npc.getX() ? -1 : 1;
-            bot.addWalkSteps(match.npc.getX() + dx, match.npc.getY(), 10, true);
+            BotPathing.walkToEntity(bot, match.npc);
             return;
         }
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
