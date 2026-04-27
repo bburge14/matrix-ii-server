@@ -151,8 +151,9 @@ public final class EquipmentReqs {
                 return new int[] { Skills.DEFENCE, 75 };
 
             // ---- AMULETS / RINGS / CAPES (mostly no level req) ----
+            // Note: 9747-9814 range covered in the SKILLCAPES block below.
             case 1725: case 1727: case 1731: case 1712:  // amulets of strength/power/glory/fury
-            case 6568: case 9748:                         // capes
+            case 6568:                                    // basic plain cape
             case 1733:                                    // ring of dueling
                 return new int[] { NONE, 1 };
 
