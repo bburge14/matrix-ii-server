@@ -28,9 +28,10 @@ public class BotBrain {
     private int boredomLevel;
     private int restlessness;
     private long lastMajorDecision;
-    
+
     // Goal-driven behavior
     private long lastGoalCheck;
+    private long lastMovementTick;
     private String currentActivity;
 
     public BotBrain(AIPlayer bot) {
@@ -45,6 +46,7 @@ public class BotBrain {
         this.lastDecisionTime = System.currentTimeMillis();
         this.lastStateChange = System.currentTimeMillis();
         this.lastGoalCheck = System.currentTimeMillis();
+        this.lastMovementTick = 0L;
         this.boredomLevel = 0;
         this.restlessness = 0;
         this.lastMajorDecision = System.currentTimeMillis();
@@ -60,17 +62,41 @@ public class BotBrain {
         // Update all subsystems
         updateEmotionalState();
         updateBoredomAndRestlessness();
-        
-        // Check goals periodically (every 10 seconds)
+
+        // Check goals periodically (every 10 seconds) - high-level planning only
         if (currentTime - lastGoalCheck > 10000) {
             checkAndUpdateGoals();
             lastGoalCheck = currentTime;
+        }
+
+        // Drive movement every tick. Goal evaluation runs every 10s, but the
+        // walkSteps queue only holds a few tiles so we have to keep refilling it.
+        // The guard inside executeCurrentGoalActions ensures we don't pile up
+        // steps when the bot is already walking.
+        if (currentTime - lastMovementTick >= 600) {
+            executeCurrentGoalActions();
+            lastMovementTick = currentTime;
         }
 
         // Make decisions based on current state and goals
         makeGoalDrivenDecision(currentTime);
 
         lastDecisionTime = currentTime;
+    }
+
+    /**
+     * Per-tick movement/action execution. Runs independently of the slower
+     * goal-evaluation cycle so bots keep walking smoothly between re-plans.
+     */
+    private void executeCurrentGoalActions() {
+        Goal currentGoal = goalStack.getCurrentGoal();
+        if (currentGoal == null) return;
+        // If the bot still has queued steps from a prior tick, let processMovement
+        // consume them before we enqueue more. This is what was broken before:
+        // we kept overwriting the queue with single-tile micro-steps and the
+        // bot looked frozen.
+        if (!bot.getWalkSteps().isEmpty()) return;
+        executeGoalActions(currentGoal);
     }
 
     /**
@@ -94,11 +120,11 @@ public class BotBrain {
                     enterState(recommendedState);
                 }
                 
-                // Simulate progress on the goal based on what we're doing
+                // Simulate progress on the goal based on what we're doing.
+                // Real movement/animation is driven separately every tick from
+                // executeCurrentGoalActions().
                 simulateGoalProgress(currentGoal);
-            // Execute actual actions for the goal
-            executeGoalActions(currentGoal);
-                
+
                 // Log current goal activity
                 if (Utils.random(100) < 5) { // 5% chance to log
                     System.out.println("[BotBrain] " + bot.getDisplayName() + " working on: " + 
@@ -437,24 +463,30 @@ public class BotBrain {
      * Execute actual actions based on current goal and state
      */
     private void executeGoalActions(Goal goal) {
-        System.out.println("[MOVEMENT-TEST] " + bot.getDisplayName() + " at " + bot.getX() + "," + bot.getY() + " moving randomly");
         if (goal == null) return;
         int currentX = bot.getX();
         int currentY = bot.getY();
+        if (Utils.random(200) < 1) {
+            System.out.println("[MOVEMENT-TEST] " + bot.getDisplayName() + " at " + currentX + "," + currentY + " state=" + currentState + " goal=" + goal.getDescription());
+        }
         switch (currentState) {
             case ACTIVITY:
-        if (Utils.random(100) < 15) announceActivity("Working on: " + goal.getDescription(), true);
-executeRealActivity(goal, currentX, currentY);
+                if (Utils.random(100) < 5) announceActivity("Working on: " + goal.getDescription(), true);
+                executeSmartGoalMovement(goal, currentX, currentY);
                 break;
             case BANKING:
-                executeBankingActions(currentX, currentY);
-                break;
             case TRAVELING:
-                executeTravelActions(goal, currentX, currentY);
+                executeSmartGoalMovement(goal, currentX, currentY);
                 break;
             case PLANNING:
+                if (Utils.random(100) < 30) {
+                    randomSmartWalk(currentX, currentY);
+                }
+                break;
+            case SOCIAL:
+            case IDLE:
                 if (Utils.random(100) < 10) {
-                    randomWalk(currentX, currentY);
+                    randomSmartWalk(currentX, currentY);
                 }
                 break;
         }
@@ -510,15 +542,17 @@ executeRealActivity(goal, currentX, currentY);
     }
 
     private void randomWalk(int currentX, int currentY) {
-        int newX = currentX + Utils.random(-2, 3);
-        int newY = currentY + Utils.random(-2, 3);
-        boolean moved = bot.addWalkSteps(newX, newY, -1, false); System.out.println("[WALK-DEBUG] " + bot.getDisplayName() + " addWalkSteps(" + newX + "," + newY + ") returned: " + moved);
+        int newX = currentX + Utils.random(-3, 4);
+        int newY = currentY + Utils.random(-3, 4);
+        if (newX == currentX && newY == currentY) return;
+        bot.addWalkSteps(newX, newY, 5, false);
     }
 
     private void purposefulWalk(int currentX, int currentY) {
-        int newX = currentX + Utils.random(-4, 5);
-        int newY = currentY + Utils.random(-4, 5);
-        boolean moved = bot.addWalkSteps(newX, newY, -1, false); System.out.println("[WALK-DEBUG] " + bot.getDisplayName() + " addWalkSteps(" + newX + "," + newY + ") returned: " + moved);
+        int newX = currentX + Utils.random(-6, 7);
+        int newY = currentY + Utils.random(-6, 7);
+        if (newX == currentX && newY == currentY) return;
+        bot.addWalkSteps(newX, newY, 10, false);
     }
 
     private boolean scanForTrees(int x, int y) {
@@ -586,114 +620,98 @@ executeRealActivity(goal, currentX, currentY);
         }
     }
     private void moveTowards(int targetX, int targetY, int currentX, int currentY) {
-        int deltaX = targetX - currentX;
-        int deltaY = targetY - currentY;
-        int moveDistance = 1; // Move one step at a time
-        int newX = currentX, newY = currentY;
-        if (Math.abs(deltaX) > 0) {
-            newX += deltaX > 0 ? Math.min(moveDistance, deltaX) : Math.max(-moveDistance, deltaX);
-        }
-        if (Math.abs(deltaY) > 0) {
-            newY += deltaY > 0 ? Math.min(moveDistance, deltaY) : Math.max(-moveDistance, deltaY);
-        }
+        // Queue a real path toward the destination, capped to keep the bot
+        // reactive. addWalkSteps with check=false enqueues every intermediate
+        // tile so processMovement has work to consume across many ticks.
         try {
-            boolean moved = bot.addWalkSteps(newX, newY, -1, false); System.out.println("[WALK-DEBUG] " + bot.getDisplayName() + " addWalkSteps(" + newX + "," + newY + ") returned: " + moved);
+            bot.addWalkSteps(targetX, targetY, 25, false);
         } catch (Exception e) {
             bot.setNextWorldTile(new WorldTile(currentX + Utils.random(-1, 2), currentY + Utils.random(-1, 2), 0));
         }
     }
 
     private void executeSmartGoalMovement(Goal goal, int currentX, int currentY) {
-        System.out.println("[SMART-MOVE] " + bot.getDisplayName() + " executing goal: " + goal.getDescription());
-        
         int[] targetCoords = WorldKnowledge.getBestLocationForGoal(goal, currentX, currentY);
         if (targetCoords == null) {
-            System.out.println("[SMART-MOVE] No location found for goal, doing random movement");
             randomSmartWalk(currentX, currentY);
             return;
         }
-        
+
         int targetX = targetCoords[0];
         int targetY = targetCoords[1];
-        String currentArea = WorldKnowledge.getCurrentArea(currentX, currentY);
-        
-        System.out.println("[SMART-MOVE] " + bot.getDisplayName() + " in " + currentArea + " needs to go to " + targetX + "," + targetY);
-        
+
         if (Math.abs(currentX - targetX) < 5 && Math.abs(currentY - targetY) < 5) {
-            System.out.println("[SMART-MOVE] " + bot.getDisplayName() + " arrived at destination, performing activity");
             performGoalActivity(goal, currentX, currentY);
             return;
         }
-        
+
         if (WorldKnowledge.isWalkingDistance(currentX, currentY, targetX, targetY)) {
-            System.out.println("[SMART-MOVE] Walking distance - moving towards " + targetX + "," + targetY);
             intelligentWalkTo(targetX, targetY, currentX, currentY);
         } else {
-            System.out.println("[SMART-MOVE] Too far - teleporting to " + targetX + "," + targetY);
             attemptTeleportTo(targetX, targetY, currentX, currentY);
         }
     }
 
     private void intelligentWalkTo(int targetX, int targetY, int currentX, int currentY) {
-        int deltaX = Integer.compare(targetX, currentX);
-        int deltaY = Integer.compare(targetY, currentY);
-        
-        int moveX = currentX + (deltaX * Utils.random(1, 4));
-        int moveY = currentY + (deltaY * Utils.random(1, 4));
-        
-        if (Math.abs(targetX - currentX) < 3) moveX = targetX;
-        if (Math.abs(targetY - currentY) < 3) moveY = targetY;
-        
-        boolean moved = bot.addWalkSteps(moveX, moveY, -1, false);
-        System.out.println("[INTELLIGENT-WALK] " + bot.getDisplayName() + " walking to " + moveX + "," + moveY + " (success: " + moved + ")");
+        // Queue a batch of up to MAX_BATCH steps toward the destination. The
+        // movement system consumes 1-2 per game tick; the brain refills the
+        // queue once it drains. check=false bypasses world clip so bots are
+        // never blocked by missing region masks (we'll add real pathfinding
+        // once basic motion is verified).
+        final int MAX_BATCH = 25;
+        boolean moved = bot.addWalkSteps(targetX, targetY, MAX_BATCH, false);
+        if (Utils.random(50) < 1) {
+            System.out.println("[INTELLIGENT-WALK] " + bot.getDisplayName()
+                + " queued path " + currentX + "," + currentY
+                + " -> " + targetX + "," + targetY + " (ok=" + moved + ")");
+        }
     }
 
     private void attemptTeleportTo(int targetX, int targetY, int currentX, int currentY) {
         int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
-        
+
         if (bestTeleport != null) {
-            System.out.println("[TELEPORT] " + bot.getDisplayName() + " teleporting to " + bestTeleport[0] + "," + bestTeleport[1]);
+            System.out.println("[TELEPORT] " + bot.getDisplayName() + " -> " + bestTeleport[0] + "," + bestTeleport[1]);
             bot.setNextAnimation(new Animation(714));
             bot.setNextWorldTile(new WorldTile(bestTeleport[0], bestTeleport[1], 0));
-            System.out.println("[TELEPORT-COMPLETE] " + bot.getDisplayName() + " teleported to " + bestTeleport[0] + "," + bestTeleport[1]);
         } else {
-            System.out.println("[TELEPORT-FAILED] No suitable teleport found, walking instead");
             intelligentWalkTo(targetX, targetY, currentX, currentY);
         }
     }
 
     private void performGoalActivity(Goal goal, int x, int y) {
         String desc = goal.getDescription().toLowerCase();
-        
+        boolean log = Utils.random(100) < 5;
+
         if (desc.contains("woodcutting") || desc.contains("logs")) {
             bot.setNextAnimation(new Animation(879));
             goalStack.updateCurrentGoal("chopping wood", 0.003);
-            System.out.println("[ACTIVITY] " + bot.getDisplayName() + " chopping wood");
+            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " chopping wood");
         } else if (desc.contains("mining") || desc.contains("ore")) {
             bot.setNextAnimation(new Animation(625));
             goalStack.updateCurrentGoal("mining ore", 0.002);
-            System.out.println("[ACTIVITY] " + bot.getDisplayName() + " mining ore");
+            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " mining ore");
         } else if (desc.contains("fishing") || desc.contains("fish")) {
             bot.setNextAnimation(new Animation(623));
             goalStack.updateCurrentGoal("catching fish", 0.004);
-            System.out.println("[ACTIVITY] " + bot.getDisplayName() + " fishing");
+            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " fishing");
         } else if (desc.contains("combat") || desc.contains("train")) {
             int[] combatAnims = {422, 423, 424, 451};
             bot.setNextAnimation(new Animation(combatAnims[Utils.random(combatAnims.length)]));
             goalStack.updateCurrentGoal("training combat", 0.005);
-            System.out.println("[ACTIVITY] " + bot.getDisplayName() + " training combat");
+            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " training combat");
         } else if (desc.contains("bank")) {
             goalStack.updateCurrentGoal("organizing bank", 0.01);
-            System.out.println("[ACTIVITY] " + bot.getDisplayName() + " banking");
+            if (log) System.out.println("[ACTIVITY] " + bot.getDisplayName() + " banking");
         } else {
             randomSmartWalk(x, y);
         }
     }
 
     private void randomSmartWalk(int currentX, int currentY) {
-        int newX = currentX + Utils.random(-3, 4);
-        int newY = currentY + Utils.random(-3, 4);
-        boolean moved = bot.addWalkSteps(newX, newY, -1, false);
-        System.out.println("[RANDOM-WALK] " + bot.getDisplayName() + " random walking to " + newX + "," + newY + " (success: " + moved + ")");
+        int newX = currentX + Utils.random(-5, 6);
+        int newY = currentY + Utils.random(-5, 6);
+        if (newX == currentX && newY == currentY) return;
+        bot.addWalkSteps(newX, newY, 8, false);
     }
 }
