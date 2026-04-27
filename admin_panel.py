@@ -406,9 +406,9 @@ class BotsFrame(ctk.CTkFrame):
         style.configure("Treeview.Heading", background="#1f6aa5", foreground="white", borderwidth=0)
         style.map("Treeview", background=[("selected", "#1f6aa5")])
 
-        cols = ("name", "online", "combat", "total", "x", "y", "plane")
+        cols = ("name", "online", "archetype", "combat", "total", "x", "y", "plane")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="extended")
-        for c, w in zip(cols, (200, 70, 70, 70, 70, 70, 50)):
+        for c, w in zip(cols, (200, 70, 90, 70, 70, 70, 70, 50)):
             self.tree.heading(c, text=c.title(), anchor="w", command=lambda col=c: self._sort_by(col))
             self.tree.column(c, width=w, anchor="w")
         self.tree.pack(side="left", fill="both", expand=True)
@@ -467,9 +467,11 @@ class BotsFrame(ctk.CTkFrame):
         rows.sort(key=lambda r: str(r.get(self.sort_col, "")), reverse=self.sort_rev)
         self.tree.delete(*self.tree.get_children())
         for b in rows:
+            arch = b.get("archetype", "") or ""
             self.tree.insert("", "end", values=(
                 b.get("name",""),
                 "Online" if b.get("online") else "Offline",
+                arch if b.get("online") else "-",
                 b.get("combat","-") if b.get("online") else "-",
                 b.get("total","-") if b.get("online") else "-",
                 b.get("x",""), b.get("y",""), b.get("plane","")))

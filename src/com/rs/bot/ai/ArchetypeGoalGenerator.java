@@ -57,10 +57,11 @@ public class ArchetypeGoalGenerator {
         // Add universal goals that all bots might want
         goals.addAll(generateUniversalGoals(bot, analysis));
 
-        // Drop goals the bot has already accomplished (real game state).
-        // Stops a bot already wearing rune from generating "get rune armor",
-        // a bot at 99 attack from generating "train attack to 99", etc.
-        goals.removeIf(g -> g == null || g.isCompleted(bot));
+        // Drop goals the bot has already accomplished, AND drop goals we
+        // have no plan for. Without isAchievable, bots ended up with goals
+        // like "99 Fletching" with no TrainingMethods entry, and just
+        // wandered near spawn because the brain had nothing to act on.
+        goals.removeIf(g -> g == null || !g.isAchievable(bot));
 
         // Prioritize the survivors.
         return prioritizeGoals(goals, analysis);

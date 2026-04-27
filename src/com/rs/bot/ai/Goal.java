@@ -217,6 +217,24 @@ public class Goal implements Serializable {
     public boolean isRelevant(AIPlayer bot) {
         return !isCompleted(bot);
     }
+
+    /**
+     * Is this goal something the bot has any plan for? Skill goals must
+     * have a TrainingMethods method that applies; equipment/wealth/combat
+     * goals always pass because they fall through to money-grind.
+     *
+     * Used by goal generation so bots don't get e.g. "99 Fletching"
+     * goals when there's no fletching method wired - they'd just wander.
+     */
+    public boolean isAchievable(AIPlayer bot) {
+        if (!isRelevant(bot)) return false;
+        GoalType type = getData("goalType", GoalType.class);
+        if (type == null) return true;
+        if (type.getCategory() == Goal.GoalCategory.SKILL) {
+            return com.rs.bot.ai.TrainingMethods.bestMethodFor(this, bot) != null;
+        }
+        return true;
+    }
     
     // ===== Data Storage =====
     

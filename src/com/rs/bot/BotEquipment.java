@@ -48,14 +48,30 @@ public final class BotEquipment {
 
     private static int rollWealth(int cb) {
         int roll = Utils.random(100);
-        // Low-level bots can't have high-tier gear regardless of wealth roll
-        int maxTier = cb < 40 ? 1 : (cb < 70 ? 3 : (cb < 90 ? 4 : 4));
+        // Cap tier by combat level. Real RS-equivalent thresholds:
+        //   0 (poor)      - bronze/iron/steel/black/mithril/adamant range
+        //   1 (budget)    - rune armor    (40 def, ~cb 50+)
+        //   2 (mid)       - barrows       (70 def, ~cb 80+)
+        //   3 (near-BIS)  - bandos+chaotic(80 atk/def, ~cb 100+)
+        //   4 (BIS)       - torva+drygore (90 atk/def, ~cb 120+)
+        //
+        // Per-item EquipmentReqs.canWear() is the final gate so even with
+        // a permissive cap, items that exceed actual stats won't be put
+        // on. The cap here is just so the wealth ROLL is realistic - a
+        // low-level bot doesn't try to roll BIS and end up empty-slotted.
+        int maxTier;
+        if      (cb < 30)  maxTier = 0;
+        else if (cb < 50)  maxTier = 1;
+        else if (cb < 80)  maxTier = 2;
+        else if (cb < 100) maxTier = 3;
+        else               maxTier = 4;
+
         int tier;
-        if (roll < 5)        tier = 4;  // BIS
-        else if (roll < 20)  tier = 3;  // near-BIS
-        else if (roll < 50)  tier = 2;  // mid
-        else if (roll < 85)  tier = 1;  // budget
-        else                 tier = 0;  // poor
+        if (roll < 5)        tier = 4;
+        else if (roll < 20)  tier = 3;
+        else if (roll < 50)  tier = 2;
+        else if (roll < 85)  tier = 1;
+        else                 tier = 0;
         return Math.min(tier, maxTier);
     }
 
@@ -413,6 +429,11 @@ public final class BotEquipment {
                 System.err.println("[BotEquipment] BAD item id " + itemId + " for slot " + slot);
                 return;
             }
+            // Stat gate: bots can't wear gear above their level. Silently
+            // skipping is fine - the slot stays empty if no fallback was
+            // provided. equipBest() handles fallback chains for the cases
+            // where we want a graceful downgrade.
+            if (!EquipmentReqs.canWear(bot, itemId)) return;
             bot.getEquipment().getItems().set(slot, new Item(itemId, 1));
         } catch (Throwable t) {
             System.err.println("[BotEquipment] error setting item " + itemId + " slot " + slot + ": " + t);
@@ -421,6 +442,24 @@ public final class BotEquipment {
 
     private static void equip(Player bot, int slot, Item item) {
         if (item == null || item.getId() <= 0) return;
+        if (!EquipmentReqs.canWear(bot, item.getId())) return;
         try { bot.getEquipment().getItems().set(slot, item); } catch (Throwable ignored) {}
+    }
+
+    /**
+     * Equip the highest-tier item from the candidates the bot meets the
+     * requirement for. Pass items in best-to-worst order. If none qualify,
+     * the slot is left empty (better than wrong gear). Use this in tier
+     * methods to give bots a graceful downgrade chain instead of skipping
+     * the slot when the top-tier piece is too high level.
+     */
+    private static void equipBest(Player bot, int slot, int... candidates) {
+        if (candidates == null) return;
+        for (int id : candidates) {
+            if (id <= 0) continue;
+            if (!EquipmentReqs.canWear(bot, id)) continue;
+            equip(bot, slot, id);
+            return;
+        }
     }
 }
