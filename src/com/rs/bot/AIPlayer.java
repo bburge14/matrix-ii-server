@@ -205,6 +205,10 @@ public class AIPlayer extends Player {
             // and discard harmlessly. This makes player.getPackets() non-null
             // so existing skilling/combat/inventory code doesn't NPE on bots.
             session.setEncoder(2, this);
+            System.out.println("[BOT-SPAWN] " + name
+                + " at " + getX() + "," + getY() + ",plane=" + getPlane()
+                + " regionId=" + getRegionId()
+                + " index=" + getIndex());
             // After init(): re-randomize appearance only if the stored data is broken,
             // otherwise leave the persisted Appearence as-is so the bot keeps its identity.
             if (getAppearence().getAppeareanceData() == null) {
