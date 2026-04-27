@@ -156,6 +156,45 @@ public final class EquipmentReqs {
             case 1733:                                    // ring of dueling
                 return new int[] { NONE, 1 };
 
+            // ---- SKILLCAPES - each requires level 99 in the matching skill ----
+            // Untrimmed and trimmed share the same level req. The "trimmed"
+            // variant in vanilla RS only unlocks after a SECOND 99, but we
+            // gate on the primary skill only.
+            case 9747: case 9748:  return new int[] { Skills.ATTACK,        99 };
+            case 9750: case 9751:  return new int[] { Skills.DEFENCE,       99 };
+            case 9753: case 9754:  return new int[] { Skills.STRENGTH,      99 };
+            case 9756: case 9757:  return new int[] { Skills.HITPOINTS,     99 };
+            case 9759: case 9760:  return new int[] { Skills.RANGE,         99 };
+            case 9762: case 9763:  return new int[] { Skills.PRAYER,        99 };
+            case 9765: case 9766:  return new int[] { Skills.MAGIC,         99 };
+            case 9768: case 9769:  return new int[] { Skills.COOKING,       99 };
+            case 9771: case 9772:  return new int[] { Skills.WOODCUTTING,   99 };
+            case 9774: case 9775:  return new int[] { Skills.FLETCHING,     99 };
+            case 9777: case 9778:  return new int[] { Skills.FISHING,       99 };
+            case 9780: case 9781:  return new int[] { Skills.FIREMAKING,    99 };
+            case 9783: case 9784:  return new int[] { Skills.CRAFTING,      99 };
+            case 9786: case 9787:  return new int[] { Skills.SMITHING,      99 };
+            case 9789: case 9790:  return new int[] { Skills.MINING,        99 };
+            case 9792: case 9793:  return new int[] { Skills.HERBLORE,      99 };
+            case 9795: case 9796:  return new int[] { Skills.AGILITY,       99 };
+            case 9798: case 9799:  return new int[] { Skills.THIEVING,      99 };
+            case 9801: case 9802:  return new int[] { Skills.SLAYER,        99 };
+            case 9804: case 9805:  return new int[] { Skills.FARMING,       99 };
+            case 9807: case 9808:  return new int[] { Skills.RUNECRAFTING,  99 };
+            case 9810: case 9811:  return new int[] { Skills.HUNTER,        99 };
+            case 9813: case 9814:  return new int[] { Skills.CONSTRUCTION,  99 };
+            case 9948: case 9949:  return new int[] { Skills.SUMMONING,     99 };
+            case 12169: case 12170:return new int[] { Skills.DUNGEONEERING, 120 };
+            case 18508: case 18509:return new int[] { Skills.DIVINATION,    99 };
+            // Max cape / completionist cape - hardcode a high defence
+            // requirement as a stand-in. The fully-correct check is "99
+            // in every skill" but a per-cb threshold is fine for the bot's
+            // purpose (only max-tier bots roll into these slots anyway).
+            case 20767: case 20768: case 20769: case 20770: case 20771:
+                return new int[] { Skills.DEFENCE, 99 };
+            case 19708: case 19709:  // Wilderness sword cape (req varies)
+                return new int[] { Skills.ATTACK, 60 };
+
             // ---- DEFAULT ----
             default: return new int[] { NONE, 1 };
         }

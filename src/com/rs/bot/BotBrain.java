@@ -756,8 +756,21 @@ public class BotBrain {
     }
 
     private void executeSmartGoalMovement(Goal goal, int currentX, int currentY) {
+        // First try TrainingMethods - the newer, richer plan source. It
+        // covers skill goals (with level-tier promotion), economic goals
+        // (rank-by-GP across all skills), and combat goals. WorldKnowledge
+        // is only a fallback for the few goals nothing else handles.
+        com.rs.bot.ai.TrainingMethods.Method method =
+            com.rs.bot.ai.TrainingMethods.bestMethodFor(goal, bot);
+        if (method != null) {
+            executeTrainingMethod(goal, method);
+            return;
+        }
+
         int[] targetCoords = WorldKnowledge.getBestLocationForGoal(goal, currentX, currentY);
         if (targetCoords == null) {
+            // No method, no WorldKnowledge target - the goal genuinely has
+            // no plan. Wander a bit so the bot at least animates.
             randomSmartWalk(currentX, currentY);
             return;
         }

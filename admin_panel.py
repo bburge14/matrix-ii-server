@@ -554,7 +554,9 @@ class BotsFrame(ctk.CTkFrame):
         if not offline: return messagebox.showinfo("Delete offline", "No offline bots.")
         if not messagebox.askyesno("Delete ALL offline", f"PERMANENTLY DELETE all {len(offline)} offline bots?"): return
         if not messagebox.askyesno("Confirm again", f"Really delete {len(offline)} bots? Final."): return
-        threading.Thread(target=lambda: self._bulk_delete(offline), daemon=True).start()
+        # Use the unified bulk runner with the delete API call.
+        delete_fn = self.BULK_ACTIONS["delete"][2]
+        threading.Thread(target=lambda: self._bulk_run("Delete", offline, delete_fn), daemon=True).start()
 
     # ===== Bulk actions =====
     # Three actions (spawn / despawn / delete) used to have identical
