@@ -1,0 +1,43 @@
+old_str=    private static void applySkiller(Player bot, int cb) {
+        // Skillcape (matched to a randomly-chosen skill) + matching robes
+        // Skillers display their identity through skill capes
+        int[] skillcapes = {
+            9774, 9777, 9780, 9783, 9786, 9792, 9795, 9798, 9801, 9804, 9807, 9810,  // melee skills
+            9762, 9765, 9771, 9759, 9948, 12169, 15706, 29185                         // skill capes incl summoning, dung, divin
+        };
+        equip(bot, Equipment.SLOT_CAPE, pick(skillcapes));
+
+        // Robes - colored variety
+        int[] tops = { 577, 581, 638, 640, 642, 644, 7398 };  // wizard/black/green/blue/cream/turquoise + enchanted
+        int[] btms = { 1015, 1029, 639, 641, 643, 645 };
+        equip(bot, Equipment.SLOT_CHEST, pick(tops));
+        equip(bot, Equipment.SLOT_LEGS,  pick(btms));
+        if (chance(40)) equip(bot, Equipment.SLOT_HAT, 579);  // wizard hat
+        if (chance(60)) equip(bot, Equipment.SLOT_FEET, pick(new int[]{2579, 88}));
+        // No weapon - they're skillers
+    }&new_str=    private static void applySkiller(Player bot, int cb) {
+        // Skillcape (matched to a randomly-chosen skill) + matching robes
+        int[] skillcapes = {
+            9774, 9777, 9780, 9783, 9786, 9792, 9795, 9798, 9801, 9804, 9807, 9810,  // melee skills
+            9762, 9765, 9771, 9759, 9948, 12169, 15706, 29185                         // skill capes incl summoning, dung, divin
+        };
+        equip(bot, Equipment.SLOT_CAPE, pick(skillcapes));
+
+        // FIXED: Coordinated robe sets instead of random mix  
+        int robeSet = Utils.random(6);
+        int[][] robes = {
+            { 577, 1011 },    // Blue wizard (top, bottom) - FIXED
+            { 581, 1015 },    // Black wizard  
+            { 638, 639 },     // Green
+            { 640, 641 },     // Blue
+            { 642, 643 },     // Cream
+            { 644, 645 }      // Turquoise
+        };
+        
+        equip(bot, Equipment.SLOT_CHEST, robes[robeSet][0]);  // coordinated top
+        equip(bot, Equipment.SLOT_LEGS,  robes[robeSet][1]);  // matching bottom
+        
+        if (chance(40)) equip(bot, Equipment.SLOT_HAT, 579);  // wizard hat
+        if (chance(60)) equip(bot, Equipment.SLOT_FEET, pick(new int[]{2579, 88}));
+        // No weapon - they're skillers
+    }

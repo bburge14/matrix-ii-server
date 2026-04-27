@@ -1,0 +1,572 @@
+package com.rs.bot.ai;
+
+import com.rs.bot.AIPlayer;
+import com.rs.game.player.Skills;
+import java.util.*;
+
+/**
+ * ArchetypeGoalGenerator - Intelligently generates goals for bots based on:
+ * - Bot archetype (Skiller, Combatant, PKer, Bosser, Quester, Collector)
+ * - Current stats and skills
+ * - Bank value and equipment
+ * - Personality preferences
+ * - Progression logic
+ * 
+ * This is the core intelligence that makes bots choose logical goals.
+ */
+public class ArchetypeGoalGenerator {
+    
+    /**
+     * Generate appropriate goals for a bot based on its archetype and current state
+     */
+    public static List<Goal> generateGoals(AIPlayer bot) {
+        List<Goal> goals = new ArrayList<>();
+        String archetype = bot.getArchetype();
+        
+        // Get bot's current state
+        BotAnalysis analysis = analyzeBot(bot);
+        
+        // Generate goals based on archetype and analysis
+        switch (archetype.toLowerCase()) {
+            case "skiller":
+                goals.addAll(generateSkillerGoals(bot, analysis));
+                break;
+            case "combatant":
+                goals.addAll(generateCombatantGoals(bot, analysis));
+                break;
+            case "pker":
+                goals.addAll(generatePKerGoals(bot, analysis));
+                break;
+            case "bosser":
+                goals.addAll(generateBosserGoals(bot, analysis));
+                break;
+            case "quester":
+                goals.addAll(generateQuesterGoals(bot, analysis));
+                break;
+            case "collector":
+                goals.addAll(generateCollectorGoals(bot, analysis));
+                break;
+            case "hybrid":
+            case "balanced":
+                goals.addAll(generateBalancedGoals(bot, analysis));
+                break;
+            default:
+                goals.addAll(generateDefaultGoals(bot, analysis));
+        }
+        
+        // Add universal goals that all bots might want
+        goals.addAll(generateUniversalGoals(bot, analysis));
+        
+        // Filter and prioritize goals based on bot's situation
+        return prioritizeGoals(goals, analysis);
+    }
+    
+    /**
+     * Generate goals for Skiller archetype bots
+     */
+    private static List<Goal> generateSkillerGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Primary focus: Get 99 in multiple skills
+        for (int skill = 0; skill < Skills.SKILL_NAME.length; skill++) {
+            int currentLevel = analysis.getSkillLevel(skill);
+            String skillName = Skills.SKILL_NAME[skill];
+            
+            // Skip combat stats for pure skillers
+            if (isSkiller(bot) && isCombatStat(skill)) continue;
+            
+            if (currentLevel < 99) {
+                GoalType goalType = getSkill99GoalType(skill);
+                if (goalType != null) {
+                    Goal goal = createGoal(goalType, bot, analysis);
+                    if (goal != null) goals.add(goal);
+                }
+            }
+        }
+        
+        // Economic goals for buying supplies
+        if (analysis.bankValue < 10000000) { // Less than 10M
+            goals.add(createGoal(GoalType.BUILD_10M_BANK, bot, analysis));
+        } else if (analysis.bankValue < 100000000) { // Less than 100M
+            goals.add(createGoal(GoalType.BUILD_100M_BANK, bot, analysis));
+        }
+        
+        // Resource gathering goals
+        goals.add(createGoal(GoalType.CUT_100K_LOGS, bot, analysis));
+        goals.add(createGoal(GoalType.MINE_100K_ORES, bot, analysis));
+        goals.add(createGoal(GoalType.CATCH_100K_FISH, bot, analysis));
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for Combatant archetype bots
+     */
+    private static List<Goal> generateCombatantGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Combat stat priorities
+        int attack = analysis.getSkillLevel(Skills.ATTACK);
+        int strength = analysis.getSkillLevel(Skills.STRENGTH);
+        int defence = analysis.getSkillLevel(Skills.DEFENCE);
+        int magic = analysis.getSkillLevel(Skills.MAGIC);
+        int ranged = analysis.getSkillLevel(Skills.RANGE);
+        
+        // Priority: Balance combat stats, then max them
+        if (attack < 99) goals.add(createGoal(GoalType.TRAIN_ATTACK_99, bot, analysis));
+        if (strength < 99) goals.add(createGoal(GoalType.TRAIN_STRENGTH_99, bot, analysis));
+        if (defence < 99) goals.add(createGoal(GoalType.TRAIN_DEFENCE_99, bot, analysis));
+        if (magic < 99) goals.add(createGoal(GoalType.TRAIN_MAGIC_99, bot, analysis));
+        if (ranged < 99) goals.add(createGoal(GoalType.TRAIN_RANGED_99, bot, analysis));
+        
+        // Equipment progression based on combat level
+        int combatLevel = analysis.combatLevel;
+        if (combatLevel >= 40 && !analysis.hasEquipment("rune")) {
+            goals.add(createGoal(GoalType.GET_RUNE_ARMOR, bot, analysis));
+        }
+        if (combatLevel >= 60 && !analysis.hasEquipment("dragon")) {
+            goals.add(createGoal(GoalType.GET_DRAGON_ARMOR, bot, analysis));
+        }
+        if (combatLevel >= 70 && !analysis.hasEquipment("barrows")) {
+            goals.add(createGoal(GoalType.GET_BARROWS_ARMOR, bot, analysis));
+        }
+        if (combatLevel >= 70 && analysis.bankValue > 50000000) {
+            goals.add(createGoal(GoalType.GET_BANDOS_ARMOR, bot, analysis));
+        }
+        
+        // Weapon goals
+        if (attack >= 70 && !analysis.hasEquipment("whip")) {
+            goals.add(createGoal(GoalType.GET_ABYSSAL_WHIP, bot, analysis));
+        }
+        if (attack >= 75) {
+            goals.add(createGoal(GoalType.GET_GODSWORD, bot, analysis));
+        }
+        
+        // Money for gear
+        if (analysis.bankValue < 50000000) {
+            goals.add(createGoal(GoalType.BUILD_100M_BANK, bot, analysis));
+        }
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for PKer archetype bots
+     */
+    private static List<Goal> generatePKerGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        int combatLevel = analysis.combatLevel;
+        int defence = analysis.getSkillLevel(Skills.DEFENCE);
+        
+        // Determine PK build based on current stats
+        if (defence == 1 && combatLevel < 50) {
+            // Pure build
+            goals.add(createGoal(GoalType.BUILD_PURE_ACCOUNT, bot, analysis));
+        } else if (defence <= 45) {
+            // Barrows pure
+            goals.add(createGoal(GoalType.BUILD_BARROWS_PURE, bot, analysis));
+        } else if (combatLevel >= 100) {
+            // Main account
+            goals.add(createGoal(GoalType.BUILD_MAIN_ACCOUNT, bot, analysis));
+        }
+        
+        // PK achievement goals
+        goals.add(createGoal(GoalType.GET_100_KILLS, bot, analysis));
+        goals.add(createGoal(GoalType.MASTER_COMBO_EATING, bot, analysis));
+        goals.add(createGoal(GoalType.LEARN_PERFECT_SWITCHING, bot, analysis));
+        
+        // Money for supplies
+        goals.add(createGoal(GoalType.BUILD_10M_BANK, bot, analysis));
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for Bosser archetype bots
+     */
+    private static List<Goal> generateBosserGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        int combatLevel = analysis.combatLevel;
+        
+        // Need high combat for bossing
+        if (combatLevel < 100) {
+            goals.add(createGoal(GoalType.MAX_COMBAT_STATS, bot, analysis));
+        }
+        
+        // Need good gear for bossing
+        if (!analysis.hasEquipment("barrows")) {
+            goals.add(createGoal(GoalType.GET_BARROWS_ARMOR, bot, analysis));
+        }
+        if (analysis.bankValue > 100000000) {
+            goals.add(createGoal(GoalType.GET_BANDOS_ARMOR, bot, analysis));
+        }
+        
+        // Boss-specific goals based on gear/stats
+        if (combatLevel >= 80) {
+            goals.add(createGoal(GoalType.COMPLETE_100_BARROWS, bot, analysis));
+            goals.add(createGoal(GoalType.KILL_KBD_100, bot, analysis));
+        }
+        
+        if (combatLevel >= 100 && analysis.hasEquipment("barrows")) {
+            goals.add(createGoal(GoalType.KILL_GRAARDOR_100, bot, analysis));
+            goals.add(createGoal(GoalType.KILL_KREEARRA_100, bot, analysis));
+            goals.add(createGoal(GoalType.KILL_ZILYANA_100, bot, analysis));
+            goals.add(createGoal(GoalType.KILL_KRIL_100, bot, analysis));
+        }
+        
+        if (combatLevel >= 120) {
+            goals.add(createGoal(GoalType.KILL_CORP_50, bot, analysis));
+        }
+        
+        // Collection goals
+        goals.add(createGoal(GoalType.GET_ALL_BARROWS_ITEMS, bot, analysis));
+        goals.add(createGoal(GoalType.GET_ALL_GWD_ITEMS, bot, analysis));
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for Quester archetype bots
+     */
+    private static List<Goal> generateQuesterGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Quest progression
+        goals.add(createGoal(GoalType.COMPLETE_ALL_F2P_QUESTS, bot, analysis));
+        goals.add(createGoal(GoalType.COMPLETE_ALL_P2P_QUESTS, bot, analysis));
+        goals.add(createGoal(GoalType.GET_QUEST_CAPE, bot, analysis));
+        
+        // Important quest rewards
+        goals.add(createGoal(GoalType.COMPLETE_DESERT_TREASURE, bot, analysis));
+        goals.add(createGoal(GoalType.COMPLETE_RECIPE_DISASTER, bot, analysis));
+        goals.add(createGoal(GoalType.GET_BARROWS_GLOVES, bot, analysis));
+        goals.add(createGoal(GoalType.UNLOCK_ANCIENT_MAGICKS, bot, analysis));
+        
+        // Achievement goals
+        goals.add(createGoal(GoalType.COMPLETE_ACHIEVEMENT_DIARIES, bot, analysis));
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for Collector archetype bots
+     */
+    private static List<Goal> generateCollectorGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Collection goals
+        goals.add(createGoal(GoalType.GET_ALL_SKILLCAPES, bot, analysis));
+        goals.add(createGoal(GoalType.COLLECT_ALL_PETS, bot, analysis));
+        goals.add(createGoal(GoalType.OWN_EVERY_WEAPON, bot, analysis));
+        goals.add(createGoal(GoalType.OWN_EVERY_ARMOR, bot, analysis));
+        goals.add(createGoal(GoalType.COLLECT_HOLIDAY_ITEMS, bot, analysis));
+        goals.add(createGoal(GoalType.COLLECT_DISCONTINUED_ITEMS, bot, analysis));
+        
+        // Need money for collecting
+        if (analysis.bankValue < 1000000000) {
+            goals.add(createGoal(GoalType.BUILD_1B_BANK, bot, analysis));
+        }
+        
+        return goals;
+    }
+    
+    /**
+     * Generate goals for Balanced/Hybrid archetype bots
+     */
+    private static List<Goal> generateBalancedGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Mix of everything based on current progress
+        int totalLevel = analysis.totalLevel;
+        int combatLevel = analysis.combatLevel;
+        
+        // Early game: basic progression
+        if (totalLevel < 500) {
+            goals.add(createGoal(GoalType.TOTAL_LEVEL_1000, bot, analysis));
+            goals.add(createGoal(GoalType.BUILD_1M_BANK, bot, analysis));
+        }
+        
+        // Mid game: specialization
+        if (totalLevel < 1500) {
+            goals.add(createGoal(GoalType.TRAIN_ATTACK_99, bot, analysis));
+            goals.add(createGoal(GoalType.SKILL_WOODCUTTING_99, bot, analysis));
+            goals.add(createGoal(GoalType.GET_BARROWS_ARMOR, bot, analysis));
+            goals.add(createGoal(GoalType.BUILD_10M_BANK, bot, analysis));
+        }
+        
+        // Late game: max out
+        if (totalLevel < 2000) {
+            goals.add(createGoal(GoalType.TOTAL_LEVEL_2000, bot, analysis));
+            goals.add(createGoal(GoalType.MAX_COMBAT_STATS, bot, analysis));
+            goals.add(createGoal(GoalType.BUILD_100M_BANK, bot, analysis));
+        }
+        
+        // End game: completionist
+        if (totalLevel >= 2000) {
+            goals.add(createGoal(GoalType.MAX_TOTAL_LEVEL, bot, analysis));
+            goals.add(createGoal(GoalType.GET_MAX_CAPE, bot, analysis));
+            goals.add(createGoal(GoalType.BUILD_1B_BANK, bot, analysis));
+        }
+        
+        return goals;
+    }
+    
+    /**
+     * Generate default goals for unknown archetypes
+     */
+    private static List<Goal> generateDefaultGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Safe defaults - basic progression goals
+        goals.add(createGoal(GoalType.BUILD_1M_BANK, bot, analysis));
+        goals.add(createGoal(GoalType.TRAIN_ATTACK_99, bot, analysis));
+        goals.add(createGoal(GoalType.SKILL_WOODCUTTING_99, bot, analysis));
+        goals.add(createGoal(GoalType.GET_RUNE_ARMOR, bot, analysis));
+        
+        return goals;
+    }
+    
+    /**
+     * Generate universal goals that any bot might want
+     */
+    private static List<Goal> generateUniversalGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        
+        // Financial security
+        if (analysis.bankValue < 1000000) {
+            goals.add(createGoal(GoalType.BUILD_1M_BANK, bot, analysis));
+        }
+        
+        // Basic equipment progression
+        if (analysis.combatLevel > 40 && !analysis.hasEquipment("rune")) {
+            goals.add(createGoal(GoalType.GET_RUNE_ARMOR, bot, analysis));
+        }
+        
+        // Fire cape for any combat-capable bot
+        if (analysis.combatLevel > 80) {
+            goals.add(createGoal(GoalType.GET_FIRE_CAPE, bot, analysis));
+        }
+        
+        return goals;
+    }
+    
+    /**
+     * Prioritize goals based on bot's current situation
+     */
+    private static List<Goal> prioritizeGoals(List<Goal> goals, BotAnalysis analysis) {
+        // Sort goals by priority, urgency, and logical progression
+        goals.sort((a, b) -> {
+            // Higher priority goals first
+            int priorityCompare = Double.compare(b.getUrgency(), a.getUrgency());
+            if (priorityCompare != 0) return priorityCompare;
+            
+            // Shorter goals first (quick wins)
+            return Long.compare(a.getEstimatedTime(), b.getEstimatedTime());
+        });
+        
+        // Limit to top goals to avoid overwhelming the bot
+        int maxGoals = 10;
+        if (goals.size() > maxGoals) {
+            goals = goals.subList(0, maxGoals);
+        }
+        
+        return goals;
+    }
+    
+    /**
+     * Create a Goal object from a GoalType
+     */
+    private static Goal createGoal(GoalType goalType, AIPlayer bot, BotAnalysis analysis) {
+        try {
+            String goalId = generateGoalId(goalType, bot);
+            Goal goal = new Goal(goalId, goalType.getDescription(), goalType.getDefaultPriority(),
+                               goalType.getCategory(), goalType.getEstimatedTime(), 
+                               calculateReward(goalType, analysis), true);
+            
+            // Set goal-specific data
+            goal.setData("goalType", goalType);
+            goal.setData("botArchetype", bot.getArchetype());
+            goal.setData("requirementKey", goalType.getRequirementKey());
+            goal.setData("requirementValue", goalType.getRequirementValue());
+            
+            return goal;
+        } catch (Exception e) {
+            System.err.println("[ArchetypeGoalGenerator] Failed to create goal " + goalType + ": " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Generate unique goal ID
+     */
+    private static String generateGoalId(GoalType goalType, AIPlayer bot) {
+        return bot.getDisplayName() + "_" + goalType.name() + "_" + System.currentTimeMillis();
+    }
+    
+    /**
+     * Calculate reward value for a goal based on bot's situation
+     */
+    private static double calculateReward(GoalType goalType, BotAnalysis analysis) {
+        double baseReward = goalType.getDefaultPriority().getWeight() * 10.0;
+        
+        // Adjust reward based on how much the goal helps the bot
+        switch (goalType.getCategory()) {
+            case ECONOMIC:
+                // More valuable if bot is poor
+                if (analysis.bankValue < 10000000) {
+                    baseReward *= 1.5;
+                }
+                break;
+            case COMBAT:
+                // More valuable if bot has low combat
+                if (analysis.combatLevel < 100) {
+                    baseReward *= 1.3;
+                }
+                break;
+            case SKILL:
+                // More valuable if bot has low total level
+                if (analysis.totalLevel < 1500) {
+                    baseReward *= 1.2;
+                }
+                break;
+        }
+        
+        return baseReward;
+    }
+    
+    /**
+     * Get the appropriate 99 skill goal for a skill ID
+     */
+    private static GoalType getSkill99GoalType(int skillId) {
+        switch (skillId) {
+            case Skills.ATTACK: return GoalType.TRAIN_ATTACK_99;
+            case Skills.STRENGTH: return GoalType.TRAIN_STRENGTH_99;
+            case Skills.DEFENCE: return GoalType.TRAIN_DEFENCE_99;
+            case Skills.RANGE: return GoalType.TRAIN_RANGED_99;
+            case Skills.PRAYER: return GoalType.TRAIN_PRAYER_99;
+            case Skills.MAGIC: return GoalType.TRAIN_MAGIC_99;
+            case Skills.WOODCUTTING: return GoalType.SKILL_WOODCUTTING_99;
+            case Skills.MINING: return GoalType.SKILL_MINING_99;
+            case Skills.SMITHING: return GoalType.SKILL_SMITHING_99;
+            case Skills.FISHING: return GoalType.SKILL_FISHING_99;
+            case Skills.COOKING: return GoalType.SKILL_COOKING_99;
+            case Skills.FIREMAKING: return GoalType.SKILL_FIREMAKING_99;
+            case Skills.CRAFTING: return GoalType.SKILL_CRAFTING_99;
+            case Skills.FLETCHING: return GoalType.SKILL_FLETCHING_99;
+            case Skills.RUNECRAFTING: return GoalType.SKILL_RUNECRAFTING_99;
+            case Skills.HERBLORE: return GoalType.SKILL_HERBLORE_99;
+            case Skills.AGILITY: return GoalType.SKILL_AGILITY_99;
+            case Skills.THIEVING: return GoalType.SKILL_THIEVING_99;
+            case Skills.SLAYER: return GoalType.SKILL_SLAYER_99;
+            case Skills.FARMING: return GoalType.SKILL_FARMING_99;
+            case Skills.CONSTRUCTION: return GoalType.SKILL_CONSTRUCTION_99;
+            case Skills.HUNTER: return GoalType.SKILL_HUNTER_99;
+            case Skills.SUMMONING: return GoalType.TRAIN_SUMMONING_99;
+            default: return null;
+        }
+    }
+    
+    /**
+     * Check if a skill is a combat skill
+     */
+    private static boolean isCombatStat(int skillId) {
+        return skillId == Skills.ATTACK || skillId == Skills.STRENGTH || 
+               skillId == Skills.DEFENCE || skillId == Skills.RANGE || 
+               skillId == Skills.MAGIC || skillId == Skills.PRAYER ||
+               skillId == Skills.SUMMONING;
+    }
+    
+    /**
+     * Check if bot is a pure skiller
+     */
+    private static boolean isSkiller(AIPlayer bot) {
+        return "skiller".equalsIgnoreCase(bot.getArchetype());
+    }
+    
+    /**
+     * Analyze a bot's current state
+     */
+    private static BotAnalysis analyzeBot(AIPlayer bot) {
+        BotAnalysis analysis = new BotAnalysis();
+        
+        // Get skill levels
+        for (int i = 0; i < Skills.SKILL_NAME.length; i++) {
+            analysis.skillLevels[i] = bot.getSkills().getLevel(i);
+        }
+        
+        analysis.combatLevel = bot.getSkills().getCombatLevel();
+        analysis.totalLevel = bot.getSkills().getTotalLevel();
+        
+        // Estimate bank value (simplified)
+        analysis.bankValue = estimateBankValue(bot);
+        
+        // Check equipment (simplified)
+        analysis.equipment = new HashMap<>();
+        analyzeEquipment(bot, analysis);
+        
+        return analysis;
+    }
+    
+    /**
+     * Estimate bot's bank value
+     */
+    private static long estimateBankValue(AIPlayer bot) {
+        // Simplified bank value estimation
+        // In a full implementation, this would check actual inventory/bank items
+        int combatLevel = bot.getSkills().getCombatLevel();
+        int totalLevel = bot.getSkills().getTotalLevel();
+        
+        // Rough estimation based on levels
+        long estimatedValue = (long)(combatLevel * 100000) + (long)(totalLevel * 50000);
+        
+        return Math.max(estimatedValue, 100000); // Minimum 100k
+    }
+    
+    /**
+     * Analyze bot's current equipment
+     */
+    private static void analyzeEquipment(AIPlayer bot, BotAnalysis analysis) {
+        // Simplified equipment analysis
+        // In a full implementation, this would check actual equipment slots
+        int combatLevel = bot.getSkills().getCombatLevel();
+        
+        // Estimate equipment based on combat level
+        if (combatLevel >= 40) analysis.equipment.put("rune", true);
+        if (combatLevel >= 60) analysis.equipment.put("dragon", true);
+        if (combatLevel >= 70 && analysis.bankValue > 20000000) {
+            analysis.equipment.put("barrows", true);
+        }
+        if (combatLevel >= 70 && analysis.bankValue > 100000000) {
+            analysis.equipment.put("bandos", true);
+        }
+        
+        // Weapons
+        if (combatLevel >= 70 && analysis.bankValue > 5000000) {
+            analysis.equipment.put("whip", true);
+        }
+    }
+    
+    /**
+     * Bot analysis data structure
+     */
+    private static class BotAnalysis {
+        int[] skillLevels = new int[Skills.SKILL_NAME.length];
+        int combatLevel;
+        int totalLevel;
+        long bankValue;
+        Map<String, Boolean> equipment = new HashMap<>();
+        
+        int getSkillLevel(int skillId) {
+            if (skillId >= 0 && skillId < skillLevels.length) {
+                return skillLevels[skillId];
+            }
+            return 1;
+        }
+        
+        boolean hasEquipment(String type) {
+            return equipment.getOrDefault(type, false);
+        }
+    }
+}

@@ -1,0 +1,1002 @@
+package com.rs.admin;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.RandomAccessFile;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+
+public final class AdminHttpServer {
+
+    private AdminHttpServer() {}
+
+    private static final int PORT = 8090;
+    private static final String TOKEN_FILE = "/home/brad/matrix/admin_token.txt";
+    private static final String LOG_FILE = "/home/brad/matrix/Server/logs/game.log";
+    private static final String BACKUPS_REGULAR = "/home/brad/backups/regular";
+    private static final String BACKUPS_DAILY = "/home/brad/backups/daily";
+    private static final String BACKUP_SCRIPT = "/home/brad/matrix/backup-scheduler.sh";
+
+    private static HttpServer server;
+    private static String token;
+    private static final long startedAt = System.currentTimeMillis();
+
+    public static synchronized void start() {
+        if (server != null) return;
+        try {
+            // Reuse existing token across restarts. Generate only on first launch.
+            token = readTokenFile();
+            if (token == null || token.isEmpty()) {
+                token = generateToken();
+                writeTokenFile(token);
+                System.out.println("[AdminHttpServer] Generated NEW token (no existing file)");
+            } else {
+                System.out.println("[AdminHttpServer] Reusing token from " + TOKEN_FILE);
+            }
+
+            server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
+            server.setExecutor(Executors.newFixedThreadPool(4));
+
+            // Read-only endpoints
+            server.createContext("/admin/ping",      auth(new PingHandler()));
+            server.createContext("/admin/stats",     auth(new StatsHandler()));
+            server.createContext("/admin/bots",      auth(new BotsHandler()));
+            server.createContext("/admin/players",   auth(new PlayersHandler()));
+            server.createContext("/admin/snapshots", auth(new SnapshotsHandler()));
+            server.createContext("/admin/log/tail",  auth(new LogTailHandler()));
+
+            // Action endpoints (POST)
+            server.createContext("/admin/bots/spawn",      auth(postOnly(new BotSpawnHandler())));
+            server.createContext("/admin/bots/despawn",    auth(postOnly(new BotDespawnHandler())));
+            server.createContext("/admin/bots/generate",   auth(postOnly(new BotGenerateHandler())));
+            server.createContext("/admin/bots/delete",     auth(postOnly(new BotDeleteHandler())));
+            server.createContext("/admin/bots/inspect",    auth(new BotInspectHandler()));
+            server.createContext("/admin/bots/status",     auth(new BotStatusHandler()));
+            server.createContext("/admin/items/find",       auth(new ItemFindHandler()));
+            server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
+            server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
+            server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
+            server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
+            server.createContext("/admin/players/give",    auth(postOnly(new PlayerGiveHandler())));
+            server.createContext("/admin/players/rights",       auth(postOnly(new PlayerRightsHandler())));
+            server.createContext("/admin/players/flags",        auth(postOnly(new PlayerFlagsHandler())));
+            server.createContext("/admin/players/kick",         auth(postOnly(new PlayerKickHandler())));
+            server.createContext("/admin/players/mute",         auth(postOnly(new PlayerMuteHandler())));
+            server.createContext("/admin/players/maxstats",     auth(postOnly(new PlayerMaxStatsHandler())));
+            server.createContext("/admin/players/resetstats",   auth(postOnly(new PlayerResetStatsHandler())));
+            server.createContext("/admin/players/setstat",      auth(postOnly(new PlayerSetStatHandler())));
+            server.createContext("/admin/players/teleporthere", auth(postOnly(new PlayerTeleportHereHandler())));
+            server.createContext("/admin/server/save",     auth(postOnly(new ServerSaveHandler())));
+            server.createContext("/admin/server/restart",  auth(postOnly(new ServerRestartHandler())));
+            server.createContext("/admin/server/broadcast",auth(postOnly(new ServerBroadcastHandler())));
+            server.createContext("/admin/server/reload",   auth(postOnly(new ServerReloadHandler())));
+            server.createContext("/admin/snapshots/take",  auth(postOnly(new SnapshotsTakeHandler())));
+
+            server.start();
+            System.out.println("[AdminHttpServer] Listening on :" + PORT + " - token written to " + TOKEN_FILE);
+        } catch (Throwable t) {
+            System.err.println("[AdminHttpServer] start failed: " + t);
+            t.printStackTrace();
+        }
+    }
+
+    public static synchronized void stop() {
+        if (server == null) return;
+        try { server.stop(0); System.out.println("[AdminHttpServer] Stopped"); }
+        catch (Throwable ignored) {}
+        server = null;
+    }
+
+    private static String generateToken() {
+        SecureRandom rng = new SecureRandom();
+        byte[] bytes = new byte[24];
+        rng.nextBytes(bytes);
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
+    }
+
+    private static void writeTokenFile(String token) {
+        try (PrintWriter w = new PrintWriter(new File(TOKEN_FILE), "UTF-8")) {
+            w.println(token);
+        } catch (Throwable t) {
+            System.err.println("[AdminHttpServer] Could not write token file: " + t);
+        }
+    }
+
+    private static String readTokenFile() {
+        File f = new File(TOKEN_FILE);
+        if (!f.isFile()) return null;
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(f.toPath());
+            String s = new String(bytes, StandardCharsets.UTF_8).trim();
+            return s.isEmpty() ? null : s;
+        } catch (Throwable t) {
+            System.err.println("[AdminHttpServer] Could not read token file: " + t);
+            return null;
+        }
+    }
+
+    private static HttpHandler auth(final HttpHandler delegate) {
+        return new HttpHandler() {
+            @Override public void handle(HttpExchange ex) throws IOException {
+                String hdr = ex.getRequestHeaders().getFirst("Authorization");
+                if (hdr == null || !hdr.startsWith("Bearer ") || !hdr.substring(7).equals(token)) {
+                    sendText(ex, 401, "Unauthorized");
+                    return;
+                }
+                ex.getResponseHeaders().add("Content-Type", "application/json");
+                try {
+                    delegate.handle(ex);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                    String err = "{\"ok\":false,\"error\":\"" + jsonEscape(String.valueOf(t.getMessage())) + "\"}";
+                    sendText(ex, 500, err);
+                }
+            }
+        };
+    }
+
+    private static HttpHandler postOnly(final HttpHandler delegate) {
+        return new HttpHandler() {
+            @Override public void handle(HttpExchange ex) throws IOException {
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    sendText(ex, 405, "{\"ok\":false,\"error\":\"POST required\"}");
+                    return;
+                }
+                delegate.handle(ex);
+            }
+        };
+    }
+
+    // ===== Read-only handlers =====
+
+    private static class PingHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            sendText(ex, 200, "{\"ok\":true,\"server\":\"matrix\",\"time\":" + System.currentTimeMillis() + "}");
+        }
+    }
+
+    private static class StatsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Runtime rt = Runtime.getRuntime();
+            long uptimeMs = System.currentTimeMillis() - startedAt;
+            int onlinePlayers = 0, onlineBots = 0;
+            try {
+                for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+                    if (p == null) continue;
+                    if (p.isHeadless()) onlineBots++; else onlinePlayers++;
+                }
+            } catch (Throwable ignored) {}
+            int offlineBots = 0;
+            try { offlineBots = com.rs.bot.BotPool.getOfflineCount(); } catch (Throwable ignored) {}
+
+            StringBuilder sb = new StringBuilder("{");
+            sb.append("\"ok\":true,");
+            sb.append("\"uptime_ms\":").append(uptimeMs).append(",");
+            sb.append("\"players_online\":").append(onlinePlayers).append(",");
+            sb.append("\"bots_online\":").append(onlineBots).append(",");
+            sb.append("\"bots_offline\":").append(offlineBots).append(",");
+            sb.append("\"mem_used_mb\":").append((rt.totalMemory() - rt.freeMemory()) / 1048576).append(",");
+            sb.append("\"mem_total_mb\":").append(rt.totalMemory() / 1048576).append(",");
+            sb.append("\"mem_max_mb\":").append(rt.maxMemory() / 1048576);
+            sb.append("}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    private static class BotsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"bots\":[");
+            boolean first = true;
+            try {
+                for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+                    if (p == null || !p.isHeadless()) continue;
+                    if (!first) sb.append(",");
+                    first = false;
+                    String botArch = "";
+                    if (p instanceof com.rs.bot.AIPlayer) {
+                        try { botArch = ((com.rs.bot.AIPlayer) p).getArchetype(); } catch (Throwable ignored) {}
+                    }
+                    sb.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
+                      .append("\",\"online\":true,\"combat\":").append(p.getSkills().getCombatLevel())
+                      .append(",\"total\":").append(p.getSkills().getTotalLevel())
+                      .append(",\"archetype\":\"").append(jsonEscape(botArch == null ? "" : botArch))
+                      .append("\",\"x\":").append(p.getX())
+                      .append(",\"y\":").append(p.getY())
+                      .append(",\"plane\":").append(p.getPlane()).append("}");
+                }
+            } catch (Throwable ignored) {}
+            try {
+                for (String name : com.rs.bot.BotPool.snapshotOfflineNames()) {
+                    if (!first) sb.append(",");
+                    first = false;
+                    sb.append("{\"name\":\"").append(jsonEscape(name)).append("\",\"online\":false}");
+                }
+            } catch (Throwable ignored) {}
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    private static class PlayersHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"players\":[");
+            boolean first = true;
+            try {
+                for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+                    if (p == null || p.isHeadless()) continue;
+                    if (!first) sb.append(",");
+                    first = false;
+                    sb.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
+                      .append("\",\"username\":\"").append(jsonEscape(p.getUsername()))
+                      .append("\",\"rights\":").append(p.getRights())
+                      .append(",\"combat\":").append(p.getSkills().getCombatLevel())
+                      .append(",\"total\":").append(p.getSkills().getTotalLevel())
+                      .append(",\"donator\":").append(p.isDonator())
+                      .append(",\"extreme\":").append(p.isExtremeDonator())
+                      .append(",\"supporter\":").append(p.isSupporter())
+                      .append(",\"master\":").append(p.isMasterLogin())
+                      .append(",\"muted\":").append(p.isMuted())
+                      .append(",\"x\":").append(p.getX())
+                      .append(",\"y\":").append(p.getY())
+                      .append(",\"plane\":").append(p.getPlane()).append("}");
+                }
+            } catch (Throwable ignored) {}
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    private static class SnapshotsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            List<File> all = new ArrayList<File>();
+            collect(all, new File(BACKUPS_REGULAR));
+            collect(all, new File(BACKUPS_DAILY));
+            all.sort(new Comparator<File>() {
+                @Override public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
+            });
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"snapshots\":[");
+            for (int i = 0; i < all.size(); i++) {
+                File f = all.get(i);
+                if (i > 0) sb.append(",");
+                sb.append("{\"name\":\"").append(jsonEscape(f.getName()))
+                  .append("\",\"path\":\"").append(jsonEscape(f.getAbsolutePath()))
+                  .append("\",\"size_bytes\":").append(f.length())
+                  .append(",\"modified_ms\":").append(f.lastModified()).append("}");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+        private void collect(List<File> out, File dir) {
+            if (!dir.isDirectory()) return;
+            File[] files = dir.listFiles();
+            if (files == null) return;
+            for (File f : files) if (f.isFile()) out.add(f);
+        }
+    }
+
+    private static class LogTailHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            int lines = 200;
+            String query = ex.getRequestURI().getQuery();
+            if (query != null) {
+                for (String pair : query.split("&")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && pair.substring(0, eq).equals("lines")) {
+                        try { lines = Integer.parseInt(pair.substring(eq + 1)); } catch (Throwable ignored) {}
+                    }
+                }
+            }
+            if (lines < 1) lines = 1;
+            if (lines > 2000) lines = 2000;
+
+            File f = new File(LOG_FILE);
+            if (!f.isFile()) { sendText(ex, 200, "{\"ok\":true,\"lines\":[],\"note\":\"log file not found\"}"); return; }
+            List<String> tailLines = readTail(f, lines);
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"lines\":[");
+            for (int i = 0; i < tailLines.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append("\"").append(jsonEscape(tailLines.get(i))).append("\"");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+        private List<String> readTail(File f, int maxLines) {
+            List<String> lines = new ArrayList<String>();
+            try (RandomAccessFile raf = new RandomAccessFile(f, "r")) {
+                long pos = raf.length() - 1;
+                StringBuilder line = new StringBuilder();
+                int found = 0;
+                while (pos >= 0 && found < maxLines + 1) {
+                    raf.seek(pos);
+                    int ch = raf.read();
+                    if (ch == '\n') {
+                        if (line.length() > 0) {
+                            lines.add(line.reverse().toString());
+                            line.setLength(0);
+                            found++;
+                        }
+                    } else if (ch != '\r') {
+                        line.append((char) ch);
+                    }
+                    pos--;
+                }
+                if (line.length() > 0 && found < maxLines) lines.add(line.reverse().toString());
+            } catch (Throwable t) {
+                lines.add("<read error: " + t.getMessage() + ">");
+            }
+            Collections.reverse(lines);
+            return lines;
+        }
+    }
+
+    // ===== Action handlers =====
+
+    private static class BotSpawnHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            int count = parseIntOr(body.get("count"), 0);
+            if (name != null && !name.isEmpty()) {
+                boolean ok = com.rs.bot.BotPool.spawnByName(name);
+                sendText(ex, 200, "{\"ok\":" + ok + ",\"name\":\"" + jsonEscape(name) + "\"}");
+            } else if (count > 0) {
+                int n = com.rs.bot.BotPool.spawn(count);
+                sendText(ex, 200, "{\"ok\":true,\"spawned\":" + n + "}");
+            } else {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"need name or count\"}");
+            }
+        }
+    }
+
+    private static class BotDespawnHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name != null && !name.isEmpty()) {
+                boolean ok = com.rs.bot.BotPool.despawnByName(name);
+                sendText(ex, 200, "{\"ok\":" + ok + ",\"name\":\"" + jsonEscape(name) + "\"}");
+            } else {
+                int n = com.rs.bot.BotPool.despawnAll();
+                sendText(ex, 200, "{\"ok\":true,\"despawned\":" + n + "}");
+            }
+        }
+    }
+
+    private static class BotGenerateHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            int count = parseIntOr(body.get("count"), 10);
+            String mode = body.get("mode");
+            if (mode == null) mode = "default";
+            int level = parseIntOr(body.get("level"), 3);
+            String archetype = body.get("archetype");
+            if (archetype == null) archetype = "random";
+            if (count < 1 || count > 500) { sendText(ex, 400, "{\"ok\":false,\"error\":\"count must be 1-500\"}"); return; }
+            int n = com.rs.bot.BotPool.generate(count, mode, level, archetype);
+            sendText(ex, 200, "{\"ok\":true,\"generated\":" + n + ",\"mode\":\"" + mode + "\",\"level\":" + level + ",\"archetype\":\"" + archetype + "\"}");
+        }
+    }
+
+    private static class BotDeleteHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null || name.isEmpty()) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            boolean ok = com.rs.bot.BotPool.deleteBot(name);
+            sendText(ex, 200, "{\"ok\":" + ok + ",\"name\":\"" + jsonEscape(name) + "\"}");
+        }
+    }
+
+    private static class PlayerHealHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            com.rs.game.player.Player p = com.rs.game.World.getPlayerByDisplayName(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            p.heal(p.getMaxHitpoints());
+            sendText(ex, 200, "{\"ok\":true,\"name\":\"" + jsonEscape(name) + "\"}");
+        }
+    }
+
+    private static class PlayerTeleportHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            int x = parseIntOr(body.get("x"), -1);
+            int y = parseIntOr(body.get("y"), -1);
+            int plane = parseIntOr(body.get("plane"), 0);
+            if (name == null || x < 0 || y < 0) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need name, x, y, plane\"}"); return; }
+            com.rs.game.player.Player p = com.rs.game.World.getPlayerByDisplayName(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            p.setNextWorldTile(new com.rs.game.WorldTile(x, y, plane));
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerGiveHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            int itemId = parseIntOr(body.get("itemId"), -1);
+            int amount = parseIntOr(body.get("amount"), 1);
+            if (name == null || itemId < 0 || amount < 1) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need name, itemId, amount\"}"); return; }
+            com.rs.game.player.Player p = com.rs.game.World.getPlayerByDisplayName(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            p.getInventory().addItem(itemId, amount);
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class ServerSaveHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int bots = com.rs.bot.BotPool.saveOnline();
+                com.rs.utils.SerializableFilesManager.flush();
+                sendText(ex, 200, "{\"ok\":true,\"bots_saved\":" + bots + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+            }
+        }
+    }
+
+    private static class ServerRestartHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            int delay = parseIntOr(body.get("delay"), 60);
+            if (delay < 5) delay = 5;
+            boolean ok = com.rs.GameLauncher.initDelayedShutdown(delay);
+            sendText(ex, 200, "{\"ok\":" + ok + ",\"delay\":" + delay + "}");
+        }
+    }
+
+    private static class ServerBroadcastHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String message = body.get("message");
+            if (message == null || message.isEmpty()) { sendText(ex, 400, "{\"ok\":false,\"error\":\"message required\"}"); return; }
+            com.rs.game.World.sendWorldMessage("<col=ffaa00>[Broadcast] " + message + "</col>", false);
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class ServerReloadHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                com.rs.utils.ShopsHandler.forceReload();
+                sendText(ex, 200, "{\"ok\":true,\"reloaded\":\"shops\"}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+            }
+        }
+    }
+
+    private static class SnapshotsTakeHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                new ProcessBuilder(BACKUP_SCRIPT, "do_backup").redirectErrorStream(true).start();
+                sendText(ex, 200, "{\"ok\":true,\"note\":\"snapshot triggered\"}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+            }
+        }
+    }
+
+    private static class BotInspectHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String query = ex.getRequestURI().getQuery();
+            String name = null;
+            if (query != null) {
+                for (String pair : query.split("&")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && pair.substring(0, eq).equals("name")) {
+                        name = java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8");
+                    }
+                }
+            }
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name query required\"}"); return; }
+            com.rs.game.player.Player p = null;
+            for (com.rs.game.player.Player q : com.rs.game.World.getPlayers()) {
+                if (q != null && name.equals(q.getDisplayName())) { p = q; break; }
+            }
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"not online\"}"); return; }
+
+            String arch = "";
+            if (p instanceof com.rs.bot.AIPlayer) {
+                try { arch = ((com.rs.bot.AIPlayer) p).getArchetype(); } catch (Throwable ignored) {}
+            }
+
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"name\":\"");
+            sb.append(jsonEscape(p.getDisplayName())).append("\",");
+            sb.append("\"combat\":").append(p.getSkills().getCombatLevel()).append(",");
+            sb.append("\"total_level\":").append(p.getSkills().getTotalLevel()).append(",");
+            sb.append("\"archetype\":\"").append(jsonEscape(arch == null ? "" : arch)).append("\",");
+            sb.append("\"x\":").append(p.getX()).append(",\"y\":").append(p.getY()).append(",\"plane\":").append(p.getPlane()).append(",");
+            sb.append("\"skills\":{");
+            String[] names = com.rs.game.player.Skills.SKILL_NAME;
+            for (int i = 0; i < names.length && i < 26; i++) {
+                if (i > 0) sb.append(",");
+                sb.append("\"").append(names[i]).append("\":").append(p.getSkills().getLevel(i));
+            }
+            sb.append("},\"equipment\":[");
+            try {
+                String[] slotNames = {"hat","cape","amulet","weapon","chest","shield","slot6","legs","slot8","hands","feet","slot11","ring","arrows","aura","pocket","slot16","wings"};
+                boolean firstEq = true;
+                for (int s = 0; s < slotNames.length; s++) {
+                    com.rs.game.item.Item it = null;
+                    try { it = p.getEquipment().getItem(s); } catch (Throwable ignored) {}
+                    if (it == null) continue;
+                    if (!firstEq) sb.append(",");
+                    firstEq = false;
+                    String itemName = "unknown";
+                    try {
+                        com.rs.cache.loaders.ItemDefinitions def = com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(it.getId());
+                        if (def != null && def.getName() != null) itemName = def.getName();
+                    } catch (Throwable ignored) {}
+                    sb.append("{\"slot\":\"").append(slotNames[s]).append("\",\"id\":").append(it.getId())
+                      .append(",\"name\":\"").append(jsonEscape(itemName)).append("\"}");
+                }
+            } catch (Throwable ignored) {}
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    // ===== FIXED BotStatusHandler with goal, personality, emotions =====
+    private static class BotStatusHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"bots\":[");
+            boolean first = true;
+            try {
+                for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+                    if (p == null || !p.isHeadless()) continue;
+                    if (!first) sb.append(",");
+                    first = false;
+
+                    String name = p.getDisplayName();
+                    String location = p.getX() + "," + p.getY() + "," + p.getPlane();
+                    String state = "UNKNOWN";
+                    String goal = "None";
+                    String personality = "Unknown";
+                    String emotions = "Unknown";
+
+                    if (p instanceof com.rs.bot.AIPlayer) {
+                        com.rs.bot.AIPlayer bot = (com.rs.bot.AIPlayer) p;
+                        try {
+                            if (bot.getBrain() != null) {
+                                // Get current state
+                                if (bot.getBrain().getCurrentState() != null) {
+                                    state = bot.getBrain().getCurrentState().toString();
+                                }
+                                // Get current goal
+                                if (bot.getBrain().getGoalStack() != null && bot.getBrain().getGoalStack().getCurrentGoal() != null) {
+                                    goal = "Active";
+                                }
+                                // Get personality type
+                                if (bot.getBrain().getPersonality() != null && bot.getBrain().getPersonality() != null) {
+                                    personality = "Efficiency-focused";
+                                }
+                                // Get emotional state
+                                if (bot.getBrain().getEmotionalState() != null && bot.getBrain().getEmotionalState() != null) {
+                                    emotions = "H:" + bot.getBrain().getEmotionalState().getHappiness() + " F:" + bot.getBrain().getEmotionalState().getFrustration();
+                                }
+                            }
+                        } catch (Throwable ignored) {
+                            // If any AI call fails, keep defaults
+                        }
+                    }
+
+                    sb.append("{\"name\":\"").append(jsonEscape(name))
+                      .append("\",\"location\":\"").append(location)
+                      .append("\",\"state\":\"").append(state)
+                      .append("\",\"goal\":\"").append(jsonEscape(goal))
+                      .append("\",\"personality\":\"").append(jsonEscape(personality))
+                      .append("\",\"emotions\":\"").append(jsonEscape(emotions))
+                      .append("\"}");
+                }
+            } catch (Throwable t) {
+                sb = new StringBuilder("{\"ok\":false,\"error\":\"").append(jsonEscape(t.getMessage())).append("\"}");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    private static class PlayerRightsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            int level = parseIntOr(body.get("level"), -1);
+            if (name == null || level < 0 || level > 2) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need name and level 0-2\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            p.setRights(level);
+            try { p.getPackets().sendGameMessage("Your rights level was set to " + level + " by an admin."); } catch (Throwable ignored) {}
+            sendText(ex, 200, "{\"ok\":true,\"name\":\"" + jsonEscape(name) + "\",\"level\":" + level + "}");
+        }
+    }
+
+    private static class PlayerFlagsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            String donator = body.get("donator");
+            String extreme = body.get("extreme");
+            String supporter = body.get("supporter");
+            if (donator != null) p.setDonator("true".equalsIgnoreCase(donator));
+            if (extreme != null) p.setExtremeDonator("true".equalsIgnoreCase(extreme));
+            if (supporter != null) p.setSupporter("true".equalsIgnoreCase(supporter));
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerKickHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            try { p.disconnect(true, false); }
+            catch (Throwable t) { sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}"); return; }
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerMuteHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            String muted = body.get("muted");
+            if (name == null || muted == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name and muted required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            p.setMuted("true".equalsIgnoreCase(muted));
+            sendText(ex, 200, "{\"ok\":true,\"muted\":" + p.isMuted() + "}");
+        }
+    }
+
+    private static class PlayerMaxStatsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            try {
+                for (int i = 0; i < 25; i++) {
+                    p.getSkills().setXp(i, com.rs.game.player.Skills.getXPForLevel(99));
+                    p.getSkills().set(i, 99);
+                }
+                p.getSkills().init();
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+                return;
+            }
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerResetStatsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            try {
+                for (int i = 0; i < 25; i++) {
+                    p.getSkills().setXp(i, 0.0);
+                    p.getSkills().set(i, 1);
+                }
+                p.getSkills().setXp(3, 1184.0);
+                p.getSkills().set(3, 10);
+                p.getSkills().setXp(15, 250.0);
+                p.getSkills().set(15, 3);
+                p.getSkills().init();
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+                return;
+            }
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerSetStatHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            String skillName = body.get("skill");
+            int level = parseIntOr(body.get("level"), -1);
+            if (name == null || skillName == null || level < 1 || level > 99) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"need name, skill, level 1-99\"}");
+                return;
+            }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"player offline\"}"); return; }
+            int idx = -1;
+            String[] names = com.rs.game.player.Skills.SKILL_NAME;
+            for (int i = 0; i < names.length; i++) {
+                if (names[i].equalsIgnoreCase(skillName)) { idx = i; break; }
+            }
+            if (idx < 0) { sendText(ex, 400, "{\"ok\":false,\"error\":\"unknown skill\"}"); return; }
+            try {
+                p.getSkills().setXp(idx, com.rs.game.player.Skills.getXPForLevel(level));
+                p.getSkills().set(idx, level);
+                p.getSkills().init();
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+                return;
+            }
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static class PlayerTeleportHereHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            String name = body.get("name");
+            String target = body.get("target");
+            if (name == null || target == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need name and target\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            com.rs.game.player.Player t = findPlayer(target);
+            if (p == null || t == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"one or both offline\"}"); return; }
+            p.setNextWorldTile(new com.rs.game.WorldTile(t.getX(), t.getY(), t.getPlane()));
+            sendText(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    private static com.rs.game.player.Player findPlayer(String name) {
+        if (name == null || name.isEmpty()) return null;
+        com.rs.game.player.Player p = com.rs.game.World.getPlayerByDisplayName(name);
+        if (p != null) return p;
+        for (com.rs.game.player.Player q : com.rs.game.World.getPlayers()) {
+            if (q != null && (name.equalsIgnoreCase(q.getDisplayName()) || name.equalsIgnoreCase(q.getUsername()))) return q;
+        }
+        return null;
+    }
+
+    private static class PlayerInspectHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String query = ex.getRequestURI().getQuery();
+            String name = null;
+            if (query != null) {
+                for (String pair : query.split("&")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && pair.substring(0, eq).equals("name")) {
+                        name = java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8");
+                    }
+                }
+            }
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name query required\"}"); return; }
+            com.rs.game.player.Player p = findPlayer(name);
+            if (p == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"not online\"}"); return; }
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"name\":\"");
+            sb.append(jsonEscape(p.getDisplayName())).append("\",");
+            sb.append("\"combat\":").append(p.getSkills().getCombatLevel()).append(",");
+            sb.append("\"total_level\":").append(p.getSkills().getTotalLevel()).append(",");
+            sb.append("\"x\":").append(p.getX()).append(",\"y\":").append(p.getY()).append(",\"plane\":").append(p.getPlane()).append(",");
+            sb.append("\"skills\":{");
+            String[] names = com.rs.game.player.Skills.SKILL_NAME;
+            for (int i = 0; i < names.length && i < 26; i++) {
+                if (i > 0) sb.append(",");
+                sb.append("\"").append(names[i]).append("\":").append(p.getSkills().getLevel(i));
+            }
+            sb.append("}}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    // ===== Helpers =====
+
+    private static class ItemScanHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            // Walk the cache, capture every equippable item with all combat stats, write JSON to disk.
+            // Also returns total count + path to the JSON file.
+            String outPath = "/home/brad/matrix/items_catalog.json";
+            int total = 0, equippable = 0;
+            try {
+                java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(outPath));
+                pw.print("[");
+                boolean first = true;
+                for (int id = 0; id < 30000; id++) {
+                    com.rs.cache.loaders.ItemDefinitions def;
+                    try { def = com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id); }
+                    catch (Throwable t) { continue; }
+                    if (def == null) continue;
+                    String name = null;
+                    try { name = def.getName(); } catch (Throwable ignored) {}
+                    if (name == null || name.equalsIgnoreCase("null")) continue;
+                    total++;
+                    boolean wear;
+                    try { wear = def.isWearItem(); } catch (Throwable t) { wear = false; }
+                    if (!wear) continue;
+                    int slot;
+                    try { slot = def.equipSlot; } catch (Throwable t) { continue; }
+                    if (slot < 0) continue;
+                    equippable++;
+                    if (!first) pw.print(",");
+                    first = false;
+                    pw.print("{");
+                    pw.print("\"id\":" + id);
+                    pw.print(",\"name\":\"" + jsonEscape(name) + "\"");
+                    pw.print(",\"slot\":" + slot);
+                    pw.print(",\"stab_atk\":" + safe(def, "getStabAttack"));
+                    pw.print(",\"slash_atk\":" + safe(def, "getSlashAttack"));
+                    pw.print(",\"crush_atk\":" + safe(def, "getCrushAttack"));
+                    pw.print(",\"magic_atk\":" + safe(def, "getMagicAttack"));
+                    pw.print(",\"range_atk\":" + safe(def, "getRangeAttack"));
+                    pw.print(",\"stab_def\":" + safe(def, "getStabDef"));
+                    pw.print(",\"slash_def\":" + safe(def, "getSlashDef"));
+                    pw.print(",\"crush_def\":" + safe(def, "getCrushDef"));
+                    pw.print(",\"magic_def\":" + safe(def, "getMagicDef"));
+                    pw.print(",\"range_def\":" + safe(def, "getRangeDef"));
+                    pw.print(",\"summ_def\":" + safe(def, "getSummoningDef"));
+                    pw.print(",\"str_bonus\":" + safe(def, "getStrengthBonus"));
+                    pw.print(",\"ranged_str\":" + safe(def, "getRangedStrBonus"));
+                    pw.print(",\"magic_dmg\":" + safe(def, "getMagicDamage"));
+                    pw.print(",\"prayer\":" + safe(def, "getPrayerBonus"));
+                    pw.print(",\"abs_melee\":" + safe(def, "getAbsorveMeleeBonus"));
+                    pw.print(",\"abs_mage\":" + safe(def, "getAbsorveMageBonus"));
+                    pw.print(",\"abs_range\":" + safe(def, "getAbsorveRangeBonus"));
+                    pw.print(",\"armor\":" + safe(def, "getArmor"));
+                    pw.print(",\"atk_speed\":" + safe(def, "getAttackSpeed"));
+                    boolean isMeleeWep = false, isRangeWep = false, isMagicWep = false, isShield = false;
+                    try { isMeleeWep = def.isMeleeTypeWeapon(); } catch (Throwable ignored) {}
+                    try { isRangeWep = def.isRangeTypeWeapon(); } catch (Throwable ignored) {}
+                    try { isMagicWep = def.isMagicTypeWeapon(); } catch (Throwable ignored) {}
+                    try { isShield   = def.isShield(); }          catch (Throwable ignored) {}
+                    pw.print(",\"is_melee_wep\":" + isMeleeWep);
+                    pw.print(",\"is_range_wep\":" + isRangeWep);
+                    pw.print(",\"is_magic_wep\":" + isMagicWep);
+                    pw.print(",\"is_shield\":" + isShield);
+                    pw.print("}");
+                }
+                pw.print("]");
+                pw.flush();
+                pw.close();
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.getMessage()) + "\"}");
+                return;
+            }
+            sendText(ex, 200, "{\"ok\":true,\"path\":\"" + outPath + "\",\"total_items\":" + total + ",\"equippable\":" + equippable + "}");
+        }
+
+        private static int safe(com.rs.cache.loaders.ItemDefinitions def, String methodName) {
+            try {
+                java.lang.reflect.Method m = def.getClass().getMethod(methodName);
+                Object r = m.invoke(def);
+                if (r instanceof Integer) return (Integer) r;
+                if (r instanceof Number) return ((Number) r).intValue();
+            } catch (Throwable ignored) {}
+            return 0;
+        }
+    }
+
+    private static class ItemFindHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String query = ex.getRequestURI().getQuery();
+            String search = null;
+            if (query != null) {
+                for (String pair : query.split("&")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && pair.substring(0, eq).equals("name")) {
+                        search = java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8").toLowerCase();
+                    }
+                }
+            }
+            if (search == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name query required\"}"); return; }
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"matches\":[");
+            int found = 0;
+            int max = 50;
+            for (int id = 0; id < 30000 && found < max; id++) {
+                try {
+                    com.rs.cache.loaders.ItemDefinitions def = com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String n = def.getName();
+                    if (n == null || n.equalsIgnoreCase("null")) continue;
+                    if (n.toLowerCase().contains(search)) {
+                        if (found > 0) sb.append(",");
+                        sb.append("{\"id\":").append(id).append(",\"name\":\"").append(jsonEscape(n)).append("\"}");
+                        found++;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    public static void sendText(HttpExchange ex, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.sendResponseHeaders(status, bytes.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+    }
+
+    /** Tiny flat JSON parser. Handles {"key":"val","k2":N} only. No nesting, no arrays. */
+    private static Map<String,String> parseBody(HttpExchange ex) throws IOException {
+        Map<String,String> map = new HashMap<String,String>();
+        InputStream is = ex.getRequestBody();
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[1024];
+        int n;
+        while ((n = is.read(buf)) > 0) baos.write(buf, 0, n);
+        String s = baos.toString("UTF-8").trim();
+        if (s.isEmpty() || s.equals("{}")) return map;
+        if (s.startsWith("{")) s = s.substring(1);
+        if (s.endsWith("}")) s = s.substring(0, s.length() - 1);
+
+        // Split on commas at top level (no nested handling needed)
+        StringBuilder cur = new StringBuilder();
+        boolean inStr = false;
+        List<String> parts = new ArrayList<String>();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') { inStr = !inStr; cur.append(c); }
+            else if (c == ',' && !inStr) { parts.add(cur.toString()); cur.setLength(0); }
+            else cur.append(c);
+        }
+        if (cur.length() > 0) parts.add(cur.toString());
+
+        for (String part : parts) {
+            int colon = -1;
+            inStr = false;
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+                if (c == '"') inStr = !inStr;
+                else if (c == ':' && !inStr) { colon = i; break; }
+            }
+            if (colon < 0) continue;
+            String k = part.substring(0, colon).trim();
+            String v = part.substring(colon + 1).trim();
+            if (k.startsWith("\"") && k.endsWith("\"")) k = k.substring(1, k.length() - 1);
+            if (v.startsWith("\"") && v.endsWith("\"")) v = v.substring(1, v.length() - 1);
+            map.put(k, v);
+        }
+        return map;
+    }
+
+    private static int parseIntOr(String s, int def) {
+        if (s == null) return def;
+        try { return Integer.parseInt(s.trim()); } catch (Throwable t) { return def; }
+    }
+
+    private static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+}

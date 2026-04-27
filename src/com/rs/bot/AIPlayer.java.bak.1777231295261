@@ -1,0 +1,21 @@
+old_str=    /** Bot identity: "melee", "ranged", "magic", "tank", "pure", "main", "hybrid", "skiller", "f2p", "maxed". */
+    private String archetype = "random";
+
+    public BotBrain getBrain() { return brain; }
+    public void setBrain(BotBrain brain) { this.brain = brain; }
+
+    public String getArchetype() { return archetype; }
+    public void setArchetype(String a) { this.archetype = a; }&new_str=    /** Bot identity: "melee", "ranged", "magic", "tank", "pure", "main", "hybrid", "skiller", "f2p", "maxed". */
+    private String archetype = "random";
+    
+    /** Whether this bot spawns with weapons sheathed (true) or unsheathed (false). */
+    private boolean weaponSheathe = true;  // default sheathed
+
+    public BotBrain getBrain() { return brain; }
+    public void setBrain(BotBrain brain) { this.brain = brain; }
+
+    public String getArchetype() { return archetype; }
+    public void setArchetype(String a) { this.archetype = a; }
+    
+    public boolean getWeaponSheathe() { return weaponSheathe; }
+    public void setWeaponSheathe(boolean sheathe) { this.weaponSheathe = sheathe; }
