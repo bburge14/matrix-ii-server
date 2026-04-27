@@ -118,22 +118,38 @@ public final class BotSpectator {
     }
 
     /**
-     * Vertical top-down camera directly above the target. Avoids the wall-
-     * clip problem - the lens is high above the bot's tile, looking
-     * straight down, so it can never end up inside a wall texture. Auto-
-     * roof-remove still triggers because the spectator's character sits
-     * on the target's tile (we follow them every tick).
+     * First-person follow-cam over the target's shoulder. Camera sits 1
+     * tile behind the bot in the direction they're facing, slightly higher
+     * than head height, looking at a point ~8 tiles ahead. As the bot
+     * turns, the camera turns with them - feels like "watching through
+     * the bot's eyes."
+     *
+     * Avoids the wall-clip problem because the camera is elevated above
+     * wall geometry (z=500 is roughly head height + a bit). Auto-roof-
+     * remove still triggers because the spectator stays on the bot's tile.
      */
     private static void applySpectateCamera(Player spectator, Player target) {
         try {
-            int sceneX = new WorldTile(target.getX(), target.getY(), target.getPlane()).getXInScene(spectator);
-            int sceneY = new WorldTile(target.getX(), target.getY(), target.getPlane()).getYInScene(spectator);
-            // Camera position: directly above target, ~1800 z. Above wall
-            // height (~600-1000z) but below the global roof clip so the
-            // auto-removed roof tile stays auto-removed.
-            spectator.getPackets().sendCameraPos(sceneX, sceneY, 1800);
-            // Look target: bot's tile, near ground.
-            spectator.getPackets().sendCameraLook(sceneX, sceneY, 200);
+            // Convert the bot's 14-bit angle back into a unit (dx, dy).
+            // direction = atan2(-dx, -dy) * 2607.59... so reverse it:
+            double angle = target.getDirection() / 2607.5945876176133;
+            double dx = -Math.sin(angle);
+            double dy = -Math.cos(angle);
+
+            // Camera position: 1 tile behind the bot in their facing
+            // direction, ~head height + a bit so we can see over them.
+            int posWorldX = (int) Math.round(target.getX() - dx);
+            int posWorldY = (int) Math.round(target.getY() - dy);
+            int posLocalX = new WorldTile(posWorldX, posWorldY, target.getPlane()).getXInScene(spectator);
+            int posLocalY = new WorldTile(posWorldX, posWorldY, target.getPlane()).getYInScene(spectator);
+            spectator.getPackets().sendCameraPos(posLocalX, posLocalY, 500);
+
+            // Look target: 8 tiles ahead of the bot, at chest height.
+            int lookWorldX = (int) Math.round(target.getX() + dx * 8);
+            int lookWorldY = (int) Math.round(target.getY() + dy * 8);
+            int lookLocalX = new WorldTile(lookWorldX, lookWorldY, target.getPlane()).getXInScene(spectator);
+            int lookLocalY = new WorldTile(lookWorldX, lookWorldY, target.getPlane()).getYInScene(spectator);
+            spectator.getPackets().sendCameraLook(lookLocalX, lookLocalY, 300);
         } catch (Throwable t) {
             // Camera packets are best-effort; spectate still works without them
         }
