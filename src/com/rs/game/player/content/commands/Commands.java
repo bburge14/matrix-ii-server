@@ -2084,19 +2084,39 @@ public final class Commands {
 	    }
 
 	    case "roofs": {
-		// ::roofs on / off - toggle the client's Remove Roofs graphic option
-		boolean hide = cmd.length >= 2 && (cmd[1].equalsIgnoreCase("on")
-			|| cmd[1].equalsIgnoreCase("hide")
-			|| cmd[1].equalsIgnoreCase("true")
-			|| cmd[1].equalsIgnoreCase("1"));
-		// "::roofs" with no arg: hide. "::roofs off" / "show" / "0": show.
+		// ::roofs on/off       - try the canonical varbit 4084
+		// ::roofs varbit ID v  - probe a specific varbit (e.g. ::roofs varbit 6896 1)
+		// ::roofs config ID v  - probe a specific config (e.g. ::roofs config 170 1)
+		// ::roofs all v        - blast ALL the common candidate IDs (1=hide, 0=show)
+		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("varbit") && cmd.length >= 4) {
+		    int id = Integer.parseInt(cmd[2]);
+		    int v = Integer.parseInt(cmd[3]);
+		    player.getVarsManager().sendVarBit(id, v);
+		    player.getPackets().sendGameMessage("Set varbit " + id + " = " + v);
+		    return true;
+		}
+		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("config") && cmd.length >= 4) {
+		    int id = Integer.parseInt(cmd[2]);
+		    int v = Integer.parseInt(cmd[3]);
+		    player.getVarsManager().sendVar(id, v);
+		    player.getPackets().sendGameMessage("Set config " + id + " = " + v);
+		    return true;
+		}
+		if (cmd.length >= 2 && cmd[1].equalsIgnoreCase("all")) {
+		    int v = cmd.length >= 3 ? Integer.parseInt(cmd[2]) : 1;
+		    int[] varbits = { 4084, 4085, 6896, 4087, 5398 };
+		    int[] configs = { 170, 171, 1737 };
+		    for (int id : varbits) player.getVarsManager().sendVarBit(id, v);
+		    for (int id : configs) player.getVarsManager().sendVar(id, v);
+		    player.getPackets().sendGameMessage("Blasted roof candidates with value " + v + ". Walk in/out of a building to test.");
+		    return true;
+		}
+		boolean hide;
 		if (cmd.length < 2) hide = true;
-		else if (cmd[1].equalsIgnoreCase("off")
-			|| cmd[1].equalsIgnoreCase("show")
-			|| cmd[1].equalsIgnoreCase("false")
-			|| cmd[1].equalsIgnoreCase("0")) hide = false;
+		else hide = !(cmd[1].equalsIgnoreCase("off") || cmd[1].equalsIgnoreCase("show")
+			|| cmd[1].equalsIgnoreCase("false") || cmd[1].equalsIgnoreCase("0"));
 		com.rs.bot.spectate.BotSpectator.setRoofsHidden(player, hide);
-		player.getPackets().sendGameMessage("Roofs are now " + (hide ? "hidden" : "shown") + ".");
+		player.getPackets().sendGameMessage("Roofs " + (hide ? "hidden" : "shown") + " (varbit 4084). If that did nothing, try ::roofs all 1 to probe other IDs.");
 		return true;
 	    }
 
