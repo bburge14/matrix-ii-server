@@ -3517,7 +3517,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Fred Binder, 0
 14912 - 2919 3460 0
 //RSBOT DUMPED - null, 0
-14977 - 2915 3461 0
+//14977 - 2915 3461 0  -- Kal'gerion demon removed per user (HP 33750 confirmed)
 //RSBOT DUMPED - Fishing spot, 0
 14907 - 2912 3461 0
 //RSBOT DUMPED - Troll commando, 2
