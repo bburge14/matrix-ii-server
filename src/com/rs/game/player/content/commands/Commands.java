@@ -2255,18 +2255,25 @@ public final class Commands {
 		return true;
 	    }
 
-	    case "loadout": {
+	    case "tpshop": {
+		// ::tpshop <name> - teleport to a skill-economy shop NPC.
+		// Free-zone: forester, fishmonger, oretrader, tanner.
+		// DZ:        dzskilling, dzcombat, dzbuffet,
+		//            dzmining, dzwoodcutting, dzfishing, dzrcpc, dzcrafting, dzsummoning
 		if (cmd.length < 2) {
-		    player.getPackets().sendPanelBoxMessage("Use: ::loadout melee|range|mage");
+		    player.getPackets().sendPanelBoxMessage(
+			"Free zone: forester, fishmonger, oretrader, tanner. " +
+			"DZ entrance: dzskilling, dzcombat, dzbuffet. " +
+			"DZ skill zones: dzmining, dzwoodcutting, dzfishing, dzrcpc, dzcrafting, dzsummoning.");
 		    return true;
 		}
-		applyBossingLoadout(player, cmd[1].toLowerCase());
-		return true;
-	    }
-
-	    case "topup": {
-		topUpBossingConsumables(player);
-		player.getPackets().sendGameMessage("Topped up: sharks, super combat, prayer pots, sara brews, super restore.");
+		WorldTile shopDest = shopTile(cmd[1].toLowerCase());
+		if (shopDest == null) {
+		    player.getPackets().sendGameMessage("Unknown shop '" + cmd[1] + "'.");
+		    return true;
+		}
+		player.setNextWorldTile(shopDest);
+		player.getPackets().sendGameMessage("Teleported to " + cmd[1] + ".");
 		return true;
 	    }
 
@@ -3402,114 +3409,6 @@ public final class Commands {
 	target.setNextGraphics(new Graphics(3402));
     }
 
-    // ===== Bossing convenience helpers =====
-
-    /**
-     * Equip a max-tier preset for the given style and fill the inventory
-     * with bossing consumables. Wipes existing equipment + inventory.
-     */
-    private static void applyBossingLoadout(Player p, String style) {
-	int[] slots;
-	String label;
-	switch (style) {
-	    case "melee":
-		// Torva head/body/legs, TokHaar-Kal cape, Fury, Steadfast,
-		// Torva gloves, Drygore longsword + offhand, Berserker ring (i).
-		slots = new int[14];
-		java.util.Arrays.fill(slots, -1);
-		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20135;
-		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 20770;
-		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 6585;
-		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 26579;
-		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20139;
-		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 26581;
-		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20143;
-		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20147;
-		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20149;
-		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11773;
-		label = "melee";
-		break;
-	    case "range":
-		// Pernix set, Ava's, Fury, Chaotic crossbow + off, Glaiven boots,
-		// Archers ring (i), Royal bolts.
-		slots = new int[14];
-		java.util.Arrays.fill(slots, -1);
-		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20151;
-		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 20068;
-		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 6585;
-		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 18357;
-		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20155;
-		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 18359;
-		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20159;
-		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20163;
-		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20165;
-		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11771;
-		slots[com.rs.game.player.Equipment.SLOT_ARROWS]  = 24339;
-		label = "range";
-		break;
-	    case "mage":
-		// Virtus set, Soul Wars cape, Saradomin's hiss, Chaotic staff,
-		// Arcane spirit shield, Ragefire, Seers ring (i).
-		slots = new int[14];
-		java.util.Arrays.fill(slots, -1);
-		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20167;
-		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 13332;
-		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 12603;
-		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 18355;
-		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20171;
-		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 13738;
-		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20175;
-		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20179;
-		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20173;
-		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11770;
-		label = "mage";
-		break;
-	    default:
-		p.getPackets().sendGameMessage("Unknown style '" + style + "'. Use melee, range, or mage.");
-		return;
-	}
-
-	// Wipe & equip
-	for (int i = 0; i < 14; i++) {
-	    p.getEquipment().getItems().set(i, null);
-	}
-	for (int i = 0; i < slots.length; i++) {
-	    if (slots[i] <= 0) continue;
-	    int qty = (i == com.rs.game.player.Equipment.SLOT_ARROWS) ? 5000 : 1;
-	    p.getEquipment().getItems().set(i, new com.rs.game.item.Item(slots[i], qty));
-	}
-	p.getEquipment().refresh(0, 1, 2, 3, 4, 5, 7, 9, 10, 12, 13);
-	p.getAppearence().generateAppearenceData();
-	p.getCombatDefinitions().refreshBonuses();
-
-	// Wipe & refill inventory
-	p.getInventory().getItems().reset();
-	topUpBossingConsumables(p);
-	p.getInventory().refresh();
-
-	p.getPackets().sendGameMessage("Equipped " + label + " bossing loadout.");
-    }
-
-    /** Add bossing consumables to inventory, skipping anything already present. */
-    private static void topUpBossingConsumables(Player p) {
-	// Sharks (385) x14, Super combat potion (4) (15333) x4,
-	// Prayer potion (4) (2434) x4, Saradomin brew (4) (6685) x2,
-	// Super restore (4) (3024) x4.
-	addIfRoom(p, 385, 14);
-	addIfRoom(p, 15333, 4);
-	addIfRoom(p, 2434, 4);
-	addIfRoom(p, 6685, 2);
-	addIfRoom(p, 3024, 4);
-    }
-
-    private static void addIfRoom(Player p, int itemId, int amount) {
-	if (p.getInventory().getFreeSlots() <= 0
-		&& !com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId).isStackable()) {
-	    return;
-	}
-	p.getInventory().addItem(itemId, amount);
-    }
-
     /**
      * Boss practice arena coords. RS3 layout for the major bosses; some
      * spawns may not exist on this server yet, in which case the player
@@ -3540,6 +3439,39 @@ public final class Commands {
 	    case "td":
 	    case "tormented":
 		return new WorldTile(2455, 5178, 0);
+	    default: return null;
+	}
+    }
+
+    /**
+     * Skill-economy shop NPC tiles. Free-zone NPCs and DZ zone supply NPCs.
+     */
+    private static WorldTile shopTile(String name) {
+	switch (name) {
+	    // Free-zone shops (planet 0)
+	    case "forester":     return new WorldTile(3092, 3231, 0);
+	    case "fishmonger":   return new WorldTile(3025, 3221, 0);
+	    case "oretrader":    return new WorldTile(2964, 3380, 0);
+	    case "tanner":
+	    case "bonesman":     return new WorldTile(3270, 3192, 0);
+	    // DZ entrance hub (plane 1)
+	    case "dzskilling":   return new WorldTile(3787, 4358, 1);
+	    case "dzcombat":     return new WorldTile(3789, 4360, 1);
+	    case "dzbuffet":     return new WorldTile(3785, 4362, 1);
+	    // DZ skill-zone supply NPCs (plane 1)
+	    case "dzmining":     return new WorldTile(3757, 4394, 1);
+	    case "dzrcpc":
+	    case "dzrunecraft":
+	    case "dzconstruction":
+	    case "dzprayer":     return new WorldTile(3757, 4419, 1);
+	    case "dzwoodcutting":
+	    case "dzwc":         return new WorldTile(3785, 4429, 1);
+	    case "dzfishing":    return new WorldTile(3807, 4405, 1);
+	    case "dzcrafting":
+	    case "dzsmithing":
+	    case "dzcooking":
+	    case "dzfiremaking": return new WorldTile(3811, 4380, 1);
+	    case "dzsummoning":  return new WorldTile(3787, 4393, 1);
 	    default: return null;
 	}
     }

@@ -414,6 +414,19 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("DZCombatMaster", npc);
 		else if (npc.getId() == 1308) // DZ Bossing Buffet (donator-gated)
 		    player.getDialogueManager().startDialogue("DZBossingBuffet", npc);
+		// DZ skill-zone supply NPCs (all donator-gated in dialogue)
+		else if (npc.getId() == 30)   // DZ Mining @ (3757, 4394)
+		    player.getDialogueManager().startDialogue("DZMiningSupplies", npc);
+		else if (npc.getId() == 6533) // DZ Runecraft/Construction/Prayer @ (3757, 4419)
+		    player.getDialogueManager().startDialogue("DZRcConPraSupplies", npc);
+		else if (npc.getId() == 6534) // DZ Woodcutting @ (3785, 4429)
+		    player.getDialogueManager().startDialogue("DZWoodcuttingSupplies", npc);
+		else if (npc.getId() == 6535) // DZ Fishing @ (3807, 4405)
+		    player.getDialogueManager().startDialogue("DZFishingSupplies", npc);
+		else if (npc.getId() == 596)  // DZ Crafting/Smithing/Cooking/Firemaking @ (3811, 4380)
+		    player.getDialogueManager().startDialogue("DZArtisanSupplies", npc);
+		else if (npc.getId() == 1053) // DZ Summoning @ (3787, 4393)
+		    player.getDialogueManager().startDialogue("DZSummoningSupplies", npc);
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)

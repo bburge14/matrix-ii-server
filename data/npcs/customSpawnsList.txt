@@ -40,3 +40,10 @@
 1308 - 3785 4362 1
 // Training Dummy (passive, high HP, low damage, OP XP)
 5919 - 3791 4360 1
+// DZ skill-zone supply NPCs (donator-only via dialogue gate)
+30 - 3757 4394 1
+6533 - 3757 4419 1
+6534 - 3785 4429 1
+6535 - 3807 4405 1
+596 - 3811 4380 1
+1053 - 3787 4393 1
