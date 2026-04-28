@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Jack Oval - Crafting. Opens shop 19 on Talk-to. */
-public class CraftingMaster extends Dialogue {
+/** Marcus Everburn - Firemaking. Opens shop 218 on Talk-to. */
+public class FiremakingMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Threads, needles, chisels, glassblowing pipes.");
-		ShopsHandler.openShop(player, 19);
+		player.getPackets().sendGameMessage("Welcome. Logs, tinderboxes, oil lanterns - light it all up.");
+		ShopsHandler.openShop(player, 218);
 		end();
 	}
 

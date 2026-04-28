@@ -3483,6 +3483,54 @@ public final class Commands {
 	    case "runecraft":
 	    case "wizard":
 	    case "distentor":    return new WorldTile(3104, 3162, 0);  // Wizard Distentor
+	    // Burthorpe/Taverly skill masters (existing cache NPCs)
+	    case "smithing":
+	    case "martin":
+	    case "steelweaver":  return new WorldTile(2892, 3532, 0);  // Martin Steelweaver
+	    case "tobias":       return new WorldTile(2901, 3502, 0);  // Tobias Bronzearms (mining)
+	    case "crafting":
+	    case "jack":
+	    case "oval":         return new WorldTile(2884, 3516, 0);  // Jack Oval
+	    case "agility":
+	    case "drill":
+	    case "hartman":      return new WorldTile(2933, 3544, 0);  // Drill Sergeant Hartman
+	    case "carwen":
+	    case "essencebinder":return new WorldTile(2924, 3549, 0);  // Carwen
+	    case "clara":        return new WorldTile(2929, 3554, 0);  // Apprentice Clara
+	    case "firemaking":
+	    case "marcus":
+	    case "everburn":     return new WorldTile(2927, 3475, 0);  // Marcus Everburn
+	    case "hunter":
+	    case "ayleth":
+	    case "beaststalker": return new WorldTile(2907, 3481, 0);  // Ayleth Beaststalker
+	    case "nicholas":
+	    case "angle":        return new WorldTile(2887, 3480, 0);  // Nicholas Angle (fishing)
+	    case "alison":
+	    case "elmshaper":    return new WorldTile(2923, 3472, 0);  // Alison Elmshaper (fletching)
+	    case "construction":
+	    case "alfred":
+	    case "stonemason":   return new WorldTile(2900, 3455, 0);  // Alfred Stonemason
+	    case "slayer":
+	    case "jacquelyn":
+	    case "manslaughter": return new WorldTile(2901, 3399, 0);  // Jacquelyn Manslaughter
+	    case "thieving":
+	    case "nails":
+	    case "newton":       return new WorldTile(2886, 3455, 0);  // Nails Newton
+	    case "farming":
+	    case "jones":        return new WorldTile(2885, 3455, 0);  // Head Farmer Jones
+	    case "combat":
+	    case "denulth":
+	    case "commander":    return new WorldTile(2904, 3533, 0);  // Commander Denulth
+	    case "diviner":
+	    case "divination":   return new WorldTile(2923, 3524, 0);  // Diviner
+	    case "ranger":
+	    case "range":        return new WorldTile(2912, 3531, 0);  // Master Ranger
+	    case "mage":
+	    case "magic":        return new WorldTile(2914, 3531, 0);  // Master Mage
+	    // DZ moved coords
+	    case "dzfiremaking": return new WorldTile(3787, 4427, 1);
+	    case "dzcrafting2":
+	    case "dzartisan":    return new WorldTile(3815, 4382, 1);  // moved per user
 	    // DZ entrance hub (plane 1)
 	    case "dzskilling":   return new WorldTile(3787, 4358, 1);
 	    case "dzcombat":     return new WorldTile(3789, 4360, 1);
@@ -3498,8 +3546,7 @@ public final class Commands {
 	    case "dzfishing":    return new WorldTile(3807, 4405, 1);
 	    case "dzcrafting":
 	    case "dzsmithing":
-	    case "dzcooking":
-	    case "dzfiremaking": return new WorldTile(3811, 4380, 1);
+	    case "dzcooking":    return new WorldTile(3815, 4382, 1);  // moved per user (was 3811, 4380)
 	    case "dzsummoning":  return new WorldTile(3787, 4393, 1);
 	    default: return null;
 	}

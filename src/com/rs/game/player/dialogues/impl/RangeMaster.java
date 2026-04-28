@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Jack Oval - Crafting. Opens shop 19 on Talk-to. */
-public class CraftingMaster extends Dialogue {
+/** Master Ranger - Range. Opens shop 223 on Talk-to. */
+public class RangeMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Threads, needles, chisels, glassblowing pipes.");
-		ShopsHandler.openShop(player, 19);
+		player.getPackets().sendGameMessage("Crossbows, arrows, bolts, dragonhide. Aim true.");
+		ShopsHandler.openShop(player, 223);
 		end();
 	}
 

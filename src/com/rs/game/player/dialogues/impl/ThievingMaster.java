@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Jack Oval - Crafting. Opens shop 19 on Talk-to. */
-public class CraftingMaster extends Dialogue {
+/** Nails Newton - Thieving. Opens shop 219 on Talk-to. */
+public class ThievingMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Threads, needles, chisels, glassblowing pipes.");
-		ShopsHandler.openShop(player, 19);
+		player.getPackets().sendGameMessage("I trade in lockpicks and rogue gear. No questions asked.");
+		ShopsHandler.openShop(player, 219);
 		end();
 	}
 

@@ -418,6 +418,40 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
 		else if (npc.getId() == 3) // Wizard Distentor (RC/Magic)
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		// Burthorpe/Taverly skill master NPCs - existing-cache themed NPCs
+		else if (npc.getId() == 14921) // Martin Steelweaver - Smithing
+		    player.getDialogueManager().startDialogue("Smithy", npc);
+		else if (npc.getId() == 5073) // Tobias Bronzearms / Ayleth Beaststalker (shared cache ID)
+		    player.getDialogueManager().startDialogue("OreTrader", npc);
+		else if (npc.getId() == 14926) // Jack Oval - Crafting
+		    player.getDialogueManager().startDialogue("CraftingMaster", npc);
+		else if (npc.getId() == 15272) // Drill Sergeant Hartman - Agility
+		    player.getDialogueManager().startDialogue("AgilityMaster", npc);
+		else if (npc.getId() == 15018 || npc.getId() == 14872) // Carwen Essencebinder + Apprentice Clara - RC
+		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		else if (npc.getId() == 14937) // Marcus Everburn - Firemaking
+		    player.getDialogueManager().startDialogue("FiremakingMaster", npc);
+		else if (npc.getId() == 14998) // Nicholas Angle - Fishing
+		    player.getDialogueManager().startDialogue("Fishmonger", npc);
+		else if (npc.getId() == 14942) // Alison Elmshaper - Fletching
+		    player.getDialogueManager().startDialogue("Fletcher", npc);
+		else if (npc.getId() == 15043) // Alfred Stonemason - Construction
+		    player.getDialogueManager().startDialogue("ConstructionMaster", npc);
+		else if (npc.getId() == 15108) // Jacquelyn Manslaughter - Slayer
+		    player.getDialogueManager().startDialogue("SlayerSupplies", npc);
+		else if (npc.getId() == 14957) // Nails Newton - Thieving
+		    player.getDialogueManager().startDialogue("ThievingMaster", npc);
+		else if (npc.getId() == 14959) // Head Farmer Jones - Farming
+		    player.getDialogueManager().startDialogue("FarmingMaster", npc);
+		else if (npc.getId() == 15024) // Commander Denulth - Combat
+		    player.getDialogueManager().startDialogue("CombatMaster", npc);
+		// New free-zone NPCs (placed at user-specified coords)
+		else if (npc.getId() == 15407) // Diviner @ (2923, 3524)
+		    player.getDialogueManager().startDialogue("DivinationMaster", npc);
+		else if (npc.getId() == 1585) // Master Ranger near Commander Denulth
+		    player.getDialogueManager().startDialogue("RangeMaster", npc);
+		else if (npc.getId() == 15403) // Master Mage near Commander Denulth
+		    player.getDialogueManager().startDialogue("MageMaster", npc);
 		else if (npc.getId() == 2253) // DZ Skilling Master (donator-gated)
 		    player.getDialogueManager().startDialogue("DZSkillingMaster", npc);
 		else if (npc.getId() == 9085) // DZ Combat Master (donator-gated)
@@ -437,6 +471,8 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("DZArtisanSupplies", npc);
 		else if (npc.getId() == 1053) // DZ Summoning @ (3787, 4393)
 		    player.getDialogueManager().startDialogue("DZSummoningSupplies", npc);
+		else if (npc.getId() == 6536) // DZ Firemaking @ (3787, 4427)
+		    player.getDialogueManager().startDialogue("DZFiremakingSupplies", npc);
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)

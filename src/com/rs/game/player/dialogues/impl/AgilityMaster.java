@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Jack Oval - Crafting. Opens shop 19 on Talk-to. */
-public class CraftingMaster extends Dialogue {
+/** Drill Sergeant Hartman - Agility. Opens shop 220 on Talk-to. */
+public class AgilityMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Threads, needles, chisels, glassblowing pipes.");
-		ShopsHandler.openShop(player, 19);
+		player.getPackets().sendGameMessage("Stamina pots, summer pies, and run replenishers. Now drop and give me twenty.");
+		ShopsHandler.openShop(player, 220);
 		end();
 	}
 

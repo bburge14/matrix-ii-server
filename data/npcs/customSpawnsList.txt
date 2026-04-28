@@ -42,13 +42,20 @@
 // ^ Hickton the Fletcher at Catherby
 47 - 3187 3425 0
 // ^ Smith at Varrock east anvil
-7883 - 2856 3445 0
-// ^ Master Cook at Catherby
+7883 - 2896 3442 0
+// ^ Master Cook moved to Taverly per user request
 15056 - 2921 3445 0
 // ^ Pikkupstix (Summoning Master) at Taverly
 3 - 3104 3162 0
 // ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
-// Donator zone NPCs (DZ at 3787, 4360, p1)
+// New free-zone skill masters (Burthorpe/Taverly area)
+15407 - 2923 3524 0
+// ^ Diviner (Wizard Finix variant) at user-specified coords
+1585 - 2912 3531 0
+// ^ Master Ranger near Commander Denulth
+15403 - 2914 3531 0
+// ^ Master Mage near Commander Denulth
+// Donator zone entrance NPCs
 2253 - 3787 4358 1
 9085 - 3789 4360 1
 1308 - 3785 4362 1
@@ -56,8 +63,16 @@
 5919 - 3791 4360 1
 // DZ skill-zone supply NPCs (donator-only via dialogue gate)
 30 - 3757 4394 1
-6533 - 3757 4419 1
+// ^ DZ Mining
+6533 - 3753 4418 1
+// ^ DZ RC/Prayer/Construction (moved per user)
 6534 - 3785 4429 1
+// ^ DZ Woodcutting
 6535 - 3807 4405 1
-596 - 3811 4380 1
-1053 - 3787 4393 1
+// ^ DZ Fishing (moved per user)
+596 - 3815 4382 1
+// ^ DZ Crafting/Smith/Cook/Fire (moved per user - was Fat Tony out of area)
+1053 - 3784 4404 1
+// ^ DZ Summoning (moved per user)
+6536 - 3787 4427 1
+// ^ DZ Firemaking trader (added in WC zone per user)
