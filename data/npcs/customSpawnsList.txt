@@ -28,7 +28,8 @@
 20366 - 3784 4362 1
 5445 - 3783 4362 1
 5445 - 3784 4361 1
-5445 - 3785 4362 1// Skill-economy shop NPCs (added by claude)
+5445 - 3785 4362 1
+// Skill-economy shop NPCs (added by claude)
 805 - 3092 3231 0
 311 - 3025 3221 0
 6970 - 2964 3380 0
