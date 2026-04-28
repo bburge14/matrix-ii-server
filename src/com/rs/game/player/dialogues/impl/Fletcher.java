@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Mining Guild Foreman (NPC 39) - buys ores + sells pickaxes. */
-public class OreTrader extends Dialogue {
+/** Hickton (NPC 4656) at Catherby - fletching supplies. */
+public class Fletcher extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Welcome to the Mining Guild. Got ore to sell? Need a pickaxe?");
-		ShopsHandler.openShop(player, 202);
+		player.getPackets().sendGameMessage("Welcome to my fletching shop. Bow strings, feathers, knives, all here.");
+		ShopsHandler.openShop(player, 207);
 		end();
 	}
 

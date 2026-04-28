@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Mining Guild Foreman (NPC 39) - buys ores + sells pickaxes. */
-public class OreTrader extends Dialogue {
+/** Pikkupstix (NPC 15056) at Taverly - summoning supplies + buys charms. */
+public class SummoningMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Welcome to the Mining Guild. Got ore to sell? Need a pickaxe?");
-		ShopsHandler.openShop(player, 202);
+		player.getPackets().sendGameMessage("Welcome to the summoning shop. Spirit shards, charms, pouches.");
+		ShopsHandler.openShop(player, 216);
 		end();
 	}
 

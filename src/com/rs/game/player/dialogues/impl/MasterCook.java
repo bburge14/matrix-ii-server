@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Mining Guild Foreman (NPC 39) - buys ores + sells pickaxes. */
-public class OreTrader extends Dialogue {
+/** Master Cook (NPC 7883) at Catherby - cooking supplies. */
+public class MasterCook extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Welcome to the Mining Guild. Got ore to sell? Need a pickaxe?");
-		ShopsHandler.openShop(player, 202);
+		player.getPackets().sendGameMessage("Welcome to my kitchen. Pots, pans, jugs, dough, all the cooking essentials.");
+		ShopsHandler.openShop(player, 209);
 		end();
 	}
 
