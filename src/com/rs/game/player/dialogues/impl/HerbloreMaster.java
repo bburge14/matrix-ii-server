@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Jack Oval - Crafting. Opens shop 19 on Talk-to. */
-public class CraftingMaster extends Dialogue {
+/** Poltax - Herblore. Opens shop 26 on Talk-to. */
+public class HerbloreMaster extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Threads, needles, chisels, glassblowing pipes.");
-		ShopsHandler.openShop(player, 19);
+		player.getPackets().sendGameMessage("Vials, herbs, secondaries. Mix carefully.");
+		ShopsHandler.openShop(player, 26);
 		end();
 	}
 

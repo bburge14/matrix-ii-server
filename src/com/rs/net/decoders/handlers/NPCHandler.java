@@ -230,8 +230,10 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SorceressGardenNPCs", npc);
 		else if (npc.getId() == 5563)
 		    player.getDialogueManager().startDialogue("SorceressGardenNPCs", npc);
-		else if (npc.getId() == 6892 || npc.getId() == 6893)
+		else if (npc.getId() == 6892)
 		    player.getDialogueManager().startDialogue("PetShopOwner", npc.getId());
+		else if (npc.getId() == 6893) // Master Pet Shop (sells all pets)
+		    player.getDialogueManager().startDialogue("MasterPetShop", npc);
 		else if (npc.getId() == 780)
 		    player.getDialogueManager().startDialogue("Gertrude", npc.getId());
 		else if (npc.getId() == 15907)
@@ -404,7 +406,7 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("Forester", npc);
 		else if (npc.getId() == 666) // Master Fisher Harry
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
-		else if (npc.getId() == 39) // Foreman (Mining)
+		else if (npc.getId() == 39 || npc.getId() == 1404 || npc.getId() == 14870) // Foreman + Miner Magnus + Tobias Bronzearms
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
 		else if (npc.getId() == 18) // Ellis (Tanner)
 		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
@@ -418,25 +420,54 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
 		else if (npc.getId() == 3) // Wizard Distentor (RC/Magic)
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		// Burthorpe/Taverly skill master NPCs - corrected NPC IDs from ::npchere
+		else if (npc.getId() == 14874) // Martin Steelweaver - Smithing
+		    player.getDialogueManager().startDialogue("Smithy", npc);
+		else if (npc.getId() == 14870) // Tobias Bronzearms - Mining
+		    player.getDialogueManager().startDialogue("OreTrader", npc);
+		else if (npc.getId() == 14877) // Jack Oval - Crafting
+		    player.getDialogueManager().startDialogue("CraftingMaster", npc);
+		else if (npc.getId() == 15272) // Drill Sergeant Hartman - Agility
+		    player.getDialogueManager().startDialogue("AgilityMaster", npc);
+		else if (npc.getId() == 15018) // Carwen Essencebinder - RC
+		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		    // Note: NPC 14872 (Apprentice Clara) is intercepted earlier by MiladeDeathD - skipping wire
+		else if (npc.getId() == 14937) // Marcus Everburn - Firemaking
+		    player.getDialogueManager().startDialogue("FiremakingMaster", npc);
+		else if (npc.getId() == 14879) // Nicholas Angle - Fishing
+		    player.getDialogueManager().startDialogue("Fishmonger", npc);
+		else if (npc.getId() == 14942) // Alison Elmshaper - Fletching
+		    player.getDialogueManager().startDialogue("Fletcher", npc);
+		else if (npc.getId() == 15043) // Alfred Stonemason - Construction
+		    player.getDialogueManager().startDialogue("ConstructionMaster", npc);
+		else if (npc.getId() == 15108) // Jacquelyn Manslaughter - Slayer
+		    player.getDialogueManager().startDialogue("SlayerSupplies", npc);
+		else if (npc.getId() == 14957) // Nails Newton - Thieving
+		    player.getDialogueManager().startDialogue("ThievingMaster", npc);
+		else if (npc.getId() == 14860) // Head Farmer Jones - Farming
+		    player.getDialogueManager().startDialogue("FarmingMaster", npc);
+		else if (npc.getId() == 15024) // Commander Denulth - Combat
+		    player.getDialogueManager().startDialogue("CombatMaster", npc);
+		// New free-zone NPCs (placed at user-specified coords)
+		else if (npc.getId() == 15407) // Diviner @ (2923, 3524)
+		    player.getDialogueManager().startDialogue("DivinationMaster", npc);
+		else if (npc.getId() == 1585) // Master Ranger near Commander Denulth
+		    player.getDialogueManager().startDialogue("RangeMaster", npc);
+		else if (npc.getId() == 15403) // Master Mage near Commander Denulth
+		    player.getDialogueManager().startDialogue("MageMaster", npc);
 		else if (npc.getId() == 2253) // DZ Skilling Master (donator-gated)
 		    player.getDialogueManager().startDialogue("DZSkillingMaster", npc);
 		else if (npc.getId() == 9085) // DZ Combat Master (donator-gated)
 		    player.getDialogueManager().startDialogue("DZCombatMaster", npc);
 		else if (npc.getId() == 1308) // DZ Bossing Buffet (donator-gated)
 		    player.getDialogueManager().startDialogue("DZBossingBuffet", npc);
-		// DZ skill-zone supply NPCs (all donator-gated in dialogue)
-		else if (npc.getId() == 30)   // DZ Mining @ (3757, 4394)
-		    player.getDialogueManager().startDialogue("DZMiningSupplies", npc);
-		else if (npc.getId() == 6533) // DZ Runecraft/Construction/Prayer @ (3757, 4419)
-		    player.getDialogueManager().startDialogue("DZRcConPraSupplies", npc);
-		else if (npc.getId() == 6534) // DZ Woodcutting @ (3785, 4429)
-		    player.getDialogueManager().startDialogue("DZWoodcuttingSupplies", npc);
-		else if (npc.getId() == 6535) // DZ Fishing @ (3807, 4405)
-		    player.getDialogueManager().startDialogue("DZFishingSupplies", npc);
-		else if (npc.getId() == 596)  // DZ Crafting/Smithing/Cooking/Firemaking @ (3811, 4380)
-		    player.getDialogueManager().startDialogue("DZArtisanSupplies", npc);
-		else if (npc.getId() == 1053) // DZ Summoning @ (3787, 4393)
-		    player.getDialogueManager().startDialogue("DZSummoningSupplies", npc);
+		// DZ skill-zone NPCs reuse the same NPC IDs as Burthorpe/Taverly skill
+		// masters because DZ entry is donator-gated already (no per-NPC check
+		// needed) and the bogus IDs I previously chose (6533/6534/6535/6536
+		// etc.) had no cache models so were invisible. The NEW NPC IDs
+		// (1404 Miner Magnus, 15018 Carwen, 1401 Lumberjack Leif, 666 Harry,
+		// 47 Smith, 15056 Pikkupstix, 14937 Marcus Everburn) are already
+		// wired to their dialogues elsewhere - no extra wiring needed.
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)
@@ -518,6 +549,24 @@ public class NPCHandler {
 	player.stopAll();
 	if (forceRun)
 	    player.setRun(forceRun);
+
+	// Skill-shop NPCs: right-click option 2 ("Trade" / generic) opens
+	// the same shop their Talk-to opens. Walk to the NPC first then
+	// open the shop, just like Talk-to behaviour.
+	final int skillShopId = skillShopForNpc(npc.getId());
+	if (skillShopId != -1) {
+	    player.setRouteEvent(new RouteEvent(npc, new Runnable() {
+		@Override
+		public void run() {
+		    player.faceEntity(npc);
+		    if (!player.withinDistance(npc, 2))
+			return;
+		    npc.faceEntity(player);
+		    com.rs.utils.ShopsHandler.openShop(player, skillShopId);
+		}
+	    }, true));
+	    return;
+	}
 	if (npc.getId() == 4296 || npc.getDefinitions().name.contains("Banker")
 		|| npc.getDefinitions().name.contains("banker")) {
 	    player.setRouteEvent(new RouteEvent(npc, new Runnable() {
@@ -1154,5 +1203,48 @@ public class NPCHandler {
 		    player.getPackets().sendGameMessage("Nothing interesting happens.");
 	    }
 	}));
+    }
+
+    /**
+     * Maps a skill-shop NPC ID to its shop ID. Returns -1 if the NPC isn't
+     * one of our shop NPCs. Used by handleOption2 (right-click Trade) to
+     * open the shop directly without going through the dialogue.
+     */
+    private static int skillShopForNpc(int npcId) {
+	switch (npcId) {
+	    // Free-zone skill masters (NPC IDs verified by user via ::npchere)
+	    case 1401: return 200;  // Lumberjack Leif (Woodcutting)
+	    case 666:  return 201;  // Master Fisher Harry
+	    case 14879: return 201; // Nicholas Angle (Fishing) - corrected from 14998
+	    case 39:   return 202;  // Foreman (Mining)
+	    case 1404: return 202;  // Miner Magnus
+	    case 14870: return 202; // Tobias Bronzearms (Mining) - corrected from 5073
+	    case 18:   return 203;  // Ellis (Tanner)
+	    case 4656: return 207;  // Hickton (Fletching)
+	    case 14942: return 207; // Alison Elmshaper (Fletching)
+	    case 47:   return 208;  // Smith
+	    case 14874: return 208; // Martin Steelweaver (Smithing) - corrected from 14921
+	    case 7883: return 209;  // Master Cook
+	    case 15056: return 216; // Pikkupstix (Summoning)
+	    case 3:    return 217;  // Wizard Distentor (RC)
+	    case 15018: return 217; // Carwen Essencebinder (RC)
+	    case 14937: return 218; // Marcus Everburn (Firemaking)
+	    case 14957: return 219; // Nails Newton (Thieving)
+	    case 15272: return 220; // Drill Sergeant Hartman (Agility)
+	    case 15024: return 221; // Commander Denulth (Combat)
+	    case 15407: return 222; // Diviner
+	    case 1585: return 223;  // Master Ranger
+	    case 15403: return 224; // Master Mage
+	    case 14877: return 19;  // Jack Oval -> Crafting (existing shop) - corrected from 14926
+	    case 15043: return 128; // Alfred Stonemason -> Construction (existing)
+	    case 15108: return 29;  // Jacquelyn Manslaughter -> Slayer (existing)
+	    case 14860: return 111; // Head Farmer Jones -> Farming - corrected from 14959
+	    case 6893: return 226;  // Master Pet Shop
+	    // DZ entrance NPCs (donator-gated by zone access)
+	    case 2253: return 204;  // DZ Skilling Master
+	    case 9085: return 205;  // DZ Combat Master
+	    case 1308: return 206;  // DZ Bossing Buffet
+	    default: return -1;
+	}
     }
 }

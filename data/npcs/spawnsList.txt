@@ -3517,7 +3517,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Fred Binder, 0
 14912 - 2919 3460 0
 //RSBOT DUMPED - null, 0
-14977 - 2915 3461 0
+//14977 - 2915 3461 0  -- Kal'gerion demon removed per user (HP 33750 confirmed)
 //RSBOT DUMPED - Fishing spot, 0
 14907 - 2912 3461 0
 //RSBOT DUMPED - Troll commando, 2
@@ -3535,11 +3535,11 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Man, 0
 15036 - 2926 3463 0
 //RSBOT DUMPED - null, 0
-14973 - 2908 3464 0
+//14973 - 2908 3464 0  -- Kal'gerion demon removed per user
 //RSBOT DUMPED - Woman, 0
 15040 - 2924 3464 0
 //RSBOT DUMPED - null, 0
-14975 - 2913 3465 0
+//14975 - 2913 3465 0  -- Kal'gerion demon removed per user
 //RSBOT DUMPED - Man, 0
 15037 - 2920 3466 0
 //RSBOT DUMPED - Pompous Merchant, 0
@@ -3549,7 +3549,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - null, 0
 14944 - 2929 3468 0
 //RSBOT DUMPED - null, 0
-14939 - 2924 3469 0
+//14939 - 2924 3469 0  -- Blood nihil removed per user
 //RSBOT DUMPED - Chicken, 1
 15054 - 2922 3469 0
 //RSBOT DUMPED - Chicken, 1

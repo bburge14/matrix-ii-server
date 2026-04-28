@@ -42,22 +42,41 @@
 // ^ Hickton the Fletcher at Catherby
 47 - 3187 3425 0
 // ^ Smith at Varrock east anvil
-7883 - 2856 3445 0
-// ^ Master Cook at Catherby
+7883 - 2896 3442 0
+// ^ Master Cook moved to Taverly per user request
 15056 - 2921 3445 0
 // ^ Pikkupstix (Summoning Master) at Taverly
 3 - 3104 3162 0
 // ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
-// Donator zone NPCs (DZ at 3787, 4360, p1)
+// New free-zone skill masters (Burthorpe/Taverly area)
+15407 - 2923 3524 0
+// ^ Diviner (Wizard Finix variant) at user-specified coords
+1585 - 2912 3531 0
+// ^ Master Ranger near Commander Denulth
+15403 - 2914 3531 0
+// ^ Master Mage near Commander Denulth
+// Donator zone entrance NPCs
 2253 - 3787 4358 1
 9085 - 3789 4360 1
 1308 - 3785 4362 1
 // Training Dummy (passive, high HP, low damage, OP XP)
 5919 - 3791 4360 1
-// DZ skill-zone supply NPCs (donator-only via dialogue gate)
-30 - 3757 4394 1
-6533 - 3757 4419 1
-6534 - 3785 4429 1
-6535 - 3807 4405 1
-596 - 3811 4380 1
-1053 - 3787 4393 1
+// DZ skill-zone supply NPCs (these are the same skill-master NPCs as
+// Burthorpe/Taverly - DZ is entry-gated to donators so the same shop
+// applies. Using known-good NPC IDs that exist in cache.)
+1404 - 3757 4394 1
+// ^ DZ Mining: Miner Magnus (NPC 1404)
+15018 - 3753 4418 1
+// ^ DZ RC/Pra/Con: Carwen Essencebinder duplicate
+1401 - 3785 4429 1
+// ^ DZ Woodcutting: Lumberjack Leif duplicate
+666 - 3807 4405 1
+// ^ DZ Fishing: Master Fisher Harry duplicate
+47 - 3815 4382 1
+// ^ DZ Crafting/Smith/Cook/Fire: Smith duplicate (per user request - was Fat Tony out of area)
+15056 - 3784 4404 1
+// ^ DZ Summoning: Pikkupstix duplicate
+14937 - 3787 4427 1
+// ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
+6893 - 2925 3445 0
+// ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
