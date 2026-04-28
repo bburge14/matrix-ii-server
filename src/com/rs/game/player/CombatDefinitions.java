@@ -133,12 +133,9 @@ public final class CombatDefinitions implements Serializable {
 
     public void setSheathe(boolean sheathe) {
         this.sheathe = sheathe;
+        player.setNextAnimation(new Animation(sheathe ? 18027 : 18028));
         player.getAppearence().generateAppearenceData();
     }
-		player.setNextAnimation(new Animation(sheathe ? 18027 : 18028));
-		player.getAppearence().generateAppearenceData();
-
-	}
 
 	public void setSpellBook(int id) {
 		if (id == 3)

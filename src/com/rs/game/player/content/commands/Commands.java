@@ -2255,6 +2255,49 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "loadout": {
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::loadout melee|range|mage");
+		    return true;
+		}
+		applyBossingLoadout(player, cmd[1].toLowerCase());
+		return true;
+	    }
+
+	    case "topup": {
+		topUpBossingConsumables(player);
+		player.getPackets().sendGameMessage("Topped up: sharks, super combat, prayer pots, sara brews, super restore.");
+		return true;
+	    }
+
+	    case "practice": {
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage(
+			"Bosses: vorago, kk, kq, nex, graardor, zilyana, kril, kreearra, corp, mole, kbd, td");
+		    return true;
+		}
+		WorldTile dest = bossingTile(cmd[1].toLowerCase());
+		if (dest == null) {
+		    player.getPackets().sendGameMessage("Unknown boss '" + cmd[1] + "'. Try ::practice for the list.");
+		    return true;
+		}
+		player.setNextAnimation(new Animation(8939));
+		player.setNextGraphics(new Graphics(1576));
+		final Player p = player;
+		final WorldTile d = dest;
+		final String label = cmd[1];
+		com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
+		    @Override
+		    public void run() {
+			p.setNextWorldTile(d);
+			p.setNextAnimation(new Animation(8941));
+			p.setNextGraphics(new Graphics(1577));
+			p.getPackets().sendGameMessage("Teleported to " + label + " practice arena.");
+		    }
+		}, 3);
+		return true;
+	    }
+
 	    case "emote":
 		if (cmd.length < 2) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::emote id");
@@ -3357,6 +3400,148 @@ public final class Commands {
     public static void performKickBanEmote(Player target) {
 	target.setNextAnimation(new Animation(17542));
 	target.setNextGraphics(new Graphics(3402));
+    }
+
+    // ===== Bossing convenience helpers =====
+
+    /**
+     * Equip a max-tier preset for the given style and fill the inventory
+     * with bossing consumables. Wipes existing equipment + inventory.
+     */
+    private static void applyBossingLoadout(Player p, String style) {
+	int[] slots;
+	String label;
+	switch (style) {
+	    case "melee":
+		// Torva head/body/legs, TokHaar-Kal cape, Fury, Steadfast,
+		// Torva gloves, Drygore longsword + offhand, Berserker ring (i).
+		slots = new int[14];
+		java.util.Arrays.fill(slots, -1);
+		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20135;
+		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 20770;
+		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 6585;
+		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 26579;
+		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20139;
+		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 26581;
+		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20143;
+		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20147;
+		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20149;
+		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11773;
+		label = "melee";
+		break;
+	    case "range":
+		// Pernix set, Ava's, Fury, Chaotic crossbow + off, Glaiven boots,
+		// Archers ring (i), Royal bolts.
+		slots = new int[14];
+		java.util.Arrays.fill(slots, -1);
+		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20151;
+		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 20068;
+		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 6585;
+		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 18357;
+		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20155;
+		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 18359;
+		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20159;
+		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20163;
+		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20165;
+		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11771;
+		slots[com.rs.game.player.Equipment.SLOT_ARROWS]  = 24339;
+		label = "range";
+		break;
+	    case "mage":
+		// Virtus set, Soul Wars cape, Saradomin's hiss, Chaotic staff,
+		// Arcane spirit shield, Ragefire, Seers ring (i).
+		slots = new int[14];
+		java.util.Arrays.fill(slots, -1);
+		slots[com.rs.game.player.Equipment.SLOT_HAT]     = 20167;
+		slots[com.rs.game.player.Equipment.SLOT_CAPE]    = 13332;
+		slots[com.rs.game.player.Equipment.SLOT_AMULET]  = 12603;
+		slots[com.rs.game.player.Equipment.SLOT_WEAPON]  = 18355;
+		slots[com.rs.game.player.Equipment.SLOT_CHEST]   = 20171;
+		slots[com.rs.game.player.Equipment.SLOT_SHIELD]  = 13738;
+		slots[com.rs.game.player.Equipment.SLOT_LEGS]    = 20175;
+		slots[com.rs.game.player.Equipment.SLOT_HANDS]   = 20179;
+		slots[com.rs.game.player.Equipment.SLOT_FEET]    = 20173;
+		slots[com.rs.game.player.Equipment.SLOT_RING]    = 11770;
+		label = "mage";
+		break;
+	    default:
+		p.getPackets().sendGameMessage("Unknown style '" + style + "'. Use melee, range, or mage.");
+		return;
+	}
+
+	// Wipe & equip
+	for (int i = 0; i < 14; i++) {
+	    p.getEquipment().getItems().set(i, null);
+	}
+	for (int i = 0; i < slots.length; i++) {
+	    if (slots[i] <= 0) continue;
+	    int qty = (i == com.rs.game.player.Equipment.SLOT_ARROWS) ? 5000 : 1;
+	    p.getEquipment().getItems().set(i, new com.rs.game.item.Item(slots[i], qty));
+	}
+	p.getEquipment().refresh(0, 1, 2, 3, 4, 5, 7, 9, 10, 12, 13);
+	p.getAppearence().generateAppearenceData();
+	p.getCombatDefinitions().refreshBonuses();
+
+	// Wipe & refill inventory
+	p.getInventory().getItems().reset();
+	topUpBossingConsumables(p);
+	p.getInventory().refresh();
+
+	p.getPackets().sendGameMessage("Equipped " + label + " bossing loadout.");
+    }
+
+    /** Add bossing consumables to inventory, skipping anything already present. */
+    private static void topUpBossingConsumables(Player p) {
+	// Sharks (385) x14, Super combat potion (4) (15333) x4,
+	// Prayer potion (4) (2434) x4, Saradomin brew (4) (6685) x2,
+	// Super restore (4) (3024) x4.
+	addIfRoom(p, 385, 14);
+	addIfRoom(p, 15333, 4);
+	addIfRoom(p, 2434, 4);
+	addIfRoom(p, 6685, 2);
+	addIfRoom(p, 3024, 4);
+    }
+
+    private static void addIfRoom(Player p, int itemId, int amount) {
+	if (p.getInventory().getFreeSlots() <= 0
+		&& !com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId).isStackable()) {
+	    return;
+	}
+	p.getInventory().addItem(itemId, amount);
+    }
+
+    /**
+     * Boss practice arena coords. RS3 layout for the major bosses; some
+     * spawns may not exist on this server yet, in which case the player
+     * lands at the right tile and can spawn the NPC manually.
+     */
+    private static WorldTile bossingTile(String name) {
+	switch (name) {
+	    case "vorago":   return new WorldTile(3552, 9502, 0);
+	    case "kk":
+	    case "kalphiteking":
+		return new WorldTile(3491, 5142, 0);
+	    case "kq":
+	    case "kalphitequeen":
+		return new WorldTile(3486, 9509, 0);
+	    case "nex":      return new WorldTile(2922, 5210, 0);
+	    case "graardor":
+	    case "bandos":   return new WorldTile(2864, 5354, 2);
+	    case "zilyana":
+	    case "sara":     return new WorldTile(2906, 5265, 0);
+	    case "kril":
+	    case "zammy":    return new WorldTile(2925, 5331, 2);
+	    case "kreearra":
+	    case "kree":
+	    case "arma":     return new WorldTile(2872, 5269, 2);
+	    case "corp":     return new WorldTile(2965, 4382, 2);
+	    case "mole":     return new WorldTile(1762, 5168, 0);
+	    case "kbd":      return new WorldTile(2271, 4680, 0);
+	    case "td":
+	    case "tormented":
+		return new WorldTile(2455, 5178, 0);
+	    default: return null;
+	}
     }
 
     /*
