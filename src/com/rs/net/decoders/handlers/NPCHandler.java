@@ -549,6 +549,24 @@ public class NPCHandler {
 	player.stopAll();
 	if (forceRun)
 	    player.setRun(forceRun);
+
+	// Skill-shop NPCs: right-click option 2 ("Trade" / generic) opens
+	// the same shop their Talk-to opens. Walk to the NPC first then
+	// open the shop, just like Talk-to behaviour.
+	final int skillShopId = skillShopForNpc(npc.getId());
+	if (skillShopId != -1) {
+	    player.setRouteEvent(new RouteEvent(npc, new Runnable() {
+		@Override
+		public void run() {
+		    player.faceEntity(npc);
+		    if (!player.withinDistance(npc, 2))
+			return;
+		    npc.faceEntity(player);
+		    com.rs.utils.ShopsHandler.openShop(player, skillShopId);
+		}
+	    }, true));
+	    return;
+	}
 	if (npc.getId() == 4296 || npc.getDefinitions().name.contains("Banker")
 		|| npc.getDefinitions().name.contains("banker")) {
 	    player.setRouteEvent(new RouteEvent(npc, new Runnable() {
@@ -1185,5 +1203,48 @@ public class NPCHandler {
 		    player.getPackets().sendGameMessage("Nothing interesting happens.");
 	    }
 	}));
+    }
+
+    /**
+     * Maps a skill-shop NPC ID to its shop ID. Returns -1 if the NPC isn't
+     * one of our shop NPCs. Used by handleOption2 (right-click Trade) to
+     * open the shop directly without going through the dialogue.
+     */
+    private static int skillShopForNpc(int npcId) {
+	switch (npcId) {
+	    // Free-zone skill masters
+	    case 1401: return 200;  // Lumberjack Leif (Woodcutting)
+	    case 666:  return 201;  // Master Fisher Harry
+	    case 14998: return 201; // Nicholas Angle (also Fishing)
+	    case 39:   return 202;  // Foreman (Mining)
+	    case 1404: return 202;  // Miner Magnus (also Mining)
+	    case 5073: return 202;  // Tobias Bronzearms (also Mining)
+	    case 18:   return 203;  // Ellis (Tanner)
+	    case 4656: return 207;  // Hickton (Fletching)
+	    case 14942: return 207; // Alison Elmshaper (also Fletching)
+	    case 47:   return 208;  // Smith
+	    case 14921: return 208; // Martin Steelweaver (also Smithing)
+	    case 7883: return 209;  // Master Cook
+	    case 15056: return 216; // Pikkupstix (Summoning)
+	    case 3:    return 217;  // Wizard Distentor (RC)
+	    case 15018: return 217; // Carwen Essencebinder (also RC)
+	    case 14937: return 218; // Marcus Everburn (Firemaking)
+	    case 14957: return 219; // Nails Newton (Thieving)
+	    case 15272: return 220; // Drill Sergeant Hartman (Agility)
+	    case 15024: return 221; // Commander Denulth (Combat)
+	    case 15407: return 222; // Diviner
+	    case 1585: return 223;  // Master Ranger
+	    case 15403: return 224; // Master Mage
+	    case 14926: return 19;  // Jack Oval -> Crafting (existing shop)
+	    case 15043: return 128; // Alfred Stonemason -> Construction (existing)
+	    case 15108: return 29;  // Jacquelyn Manslaughter -> Slayer (existing)
+	    case 14959: return 111; // Head Farmer Jones -> Farming (existing Vanessa shop)
+	    case 6893: return 226;  // Master Pet Shop
+	    // DZ entrance NPCs (donator-gated by zone access)
+	    case 2253: return 204;  // DZ Skilling Master
+	    case 9085: return 205;  // DZ Combat Master
+	    case 1308: return 206;  // DZ Bossing Buffet
+	    default: return -1;
+	}
     }
 }
