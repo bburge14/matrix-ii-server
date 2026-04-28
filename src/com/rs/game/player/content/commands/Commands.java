@@ -1262,11 +1262,22 @@ public final class Commands {
 		return true;
 
 	    case "god":
-		player.setHitpoints(1000000);
-		player.getEquipment().setEquipmentHpIncrease(player.getMaxHitpoints() - 9900);
-		for (int i = 0; i < 8; i++)
-		    player.getCombatDefinitions().getStats()[i] = 50000;
+	    case "godmode": {
+		// Toggle real invulnerability + max HP. Player.applyHit zeros all
+		// melee/range/magic hits when invulnerable=true. Toggle off
+		// restores normal damage handling.
+		boolean now = !player.isInvulnerable();
+		player.setInvulnerable(now);
+		if (now) {
+		    player.setHitpoints(player.getMaxHitpoints());
+		    player.getPrayer().restorePrayer(player.getSkills().getLevelForXp(Skills.PRAYER) * 10);
+		    player.setRunEnergy(100);
+		    player.getPackets().sendGameMessage("Godmode ON. You are invulnerable.");
+		} else {
+		    player.getPackets().sendGameMessage("Godmode OFF. You are mortal again.");
+		}
 		return true;
+	    }
 
 	    case "prayertest":
 		player.getEffectsManager().startEffect(new Effect(EffectType.PROTECTION_DISABLED, 8));

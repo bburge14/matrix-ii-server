@@ -251,6 +251,7 @@ public final class AdminHttpServer {
                       .append(",\"donator\":").append(p.isDonator())
                       .append(",\"extreme\":").append(p.isExtremeDonator())
                       .append(",\"supporter\":").append(p.isSupporter())
+                      .append(",\"invulnerable\":").append(p.isInvulnerable())
                       .append(",\"master\":").append(p.isMasterLogin())
                       .append(",\"muted\":").append(p.isMuted())
                       .append(",\"x\":").append(p.getX())
@@ -643,9 +644,18 @@ public final class AdminHttpServer {
             String donator = body.get("donator");
             String extreme = body.get("extreme");
             String supporter = body.get("supporter");
+            String invul = body.get("invulnerable");
             if (donator != null) p.setDonator("true".equalsIgnoreCase(donator));
             if (extreme != null) p.setExtremeDonator("true".equalsIgnoreCase(extreme));
             if (supporter != null) p.setSupporter("true".equalsIgnoreCase(supporter));
+            if (invul != null) {
+                boolean on = "true".equalsIgnoreCase(invul);
+                p.setInvulnerable(on);
+                if (on) {
+                    p.setHitpoints(p.getMaxHitpoints());
+                    try { p.setRunEnergy(100); } catch (Throwable ignore) {}
+                }
+            }
             sendText(ex, 200, "{\"ok\":true}");
         }
     }

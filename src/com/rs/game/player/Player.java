@@ -2834,6 +2834,10 @@ public class Player extends Entity {
 	this.invulnerable = invulnerable;
     }
 
+    public boolean isInvulnerable() {
+	return invulnerable;
+    }
+
     public double getHpBoostMultiplier() {
 	return hpBoostMultiplier;
     }
