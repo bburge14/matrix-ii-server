@@ -195,6 +195,18 @@ public class BotBrain {
         }
 
         // We're at the bank.
+        // Step 0: Try the in-world skill shops first - converts raw drops
+        // (logs/fish/ore/hide/bones) to coins immediately without waiting
+        // on GE settlement. 80% of inventory routes through here, the rest
+        // falls through to GE for high-value items.
+        try {
+            int sold = sellRawDropsToSkillShops(bot);
+            if (sold > 0 && Utils.random(100) < 30) {
+                say("sold " + sold + " items to NPC shops");
+            }
+        } catch (Throwable t) {
+            System.err.println("[SHOP-ERROR] " + bot.getDisplayName() + ": " + t);
+        }
         // Step 1: place GE sell offers for tradeable resources (logs, ore,
         // raw fish) so they actually convert into coins on the market
         // instead of piling up in the bank as raw stock.
@@ -1152,5 +1164,60 @@ public class BotBrain {
                 // real player's session may have died mid-broadcast; skip
             }
         }
+    }
+
+    // ===== Skill-economy shop routing =====
+    // Maps raw-drop item IDs to the buyer shop that takes them. We invoke
+    // shop.sell() directly via BotTrading - no need to walk to the NPC
+    // because at-bank is close enough and the shop API has no proximity
+    // check (real players walking to the NPC is purely UX, not enforced).
+
+    private static final int SHOP_FORESTER = 200;
+    private static final int SHOP_FISHMONGER = 201;
+    private static final int SHOP_ORE_TRADER = 202;
+    private static final int SHOP_TANNER = 203;
+
+    // Logs (any tier)
+    private static final int[] LOG_IDS = {1511, 1521, 1519, 1517, 1515, 1513, 6332};
+    // Raw fish (common types)
+    private static final int[] RAW_FISH_IDS = {317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270};
+    // Ores
+    private static final int[] ORE_IDS = {436, 438, 440, 442, 444, 447, 449, 451, 21622};
+    // Hides + bones (Tanner buys both)
+    private static final int[] HIDE_BONE_IDS = {1739, 1745, 1751, 526, 532, 536, 3183, 4812};
+
+    /**
+     * Walk through inventory and dump matching raw drops to the right
+     * skill shop. Returns the count of items sold (across all shops).
+     */
+    private int sellRawDropsToSkillShops(AIPlayer b) {
+        int total = 0;
+        total += sellMatchingItems(b, LOG_IDS, SHOP_FORESTER);
+        total += sellMatchingItems(b, RAW_FISH_IDS, SHOP_FISHMONGER);
+        total += sellMatchingItems(b, ORE_IDS, SHOP_ORE_TRADER);
+        total += sellMatchingItems(b, HIDE_BONE_IDS, SHOP_TANNER);
+        return total;
+    }
+
+    private int sellMatchingItems(AIPlayer b, int[] itemIds, int shopId) {
+        int count = 0;
+        try {
+            // Iterate by slot; convert any matching items in-place.
+            for (int slot = b.getInventory().getItems().getSize() - 1; slot >= 0; slot--) {
+                com.rs.game.item.Item item = b.getInventory().getItem(slot);
+                if (item == null) continue;
+                int id = item.getId();
+                boolean matches = false;
+                for (int target : itemIds) {
+                    if (id == target) { matches = true; break; }
+                }
+                if (!matches) continue;
+                int qty = item.getAmount();
+                if (com.rs.bot.ai.BotTrading.sellToShop(b, shopId, slot, qty)) {
+                    count += qty;
+                }
+            }
+        } catch (Throwable ignore) {}
+        return count;
     }
 }

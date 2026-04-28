@@ -399,6 +399,21 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SaniBoch", false);
 		else if (npc.getId() == 15149)
 		    player.getDialogueManager().startDialogue("MasterOfFear", 0);
+		// Skill-economy shop NPCs (added by claude)
+		else if (npc.getId() == 805) // Forester (logs)
+		    player.getDialogueManager().startDialogue("Forester", npc);
+		else if (npc.getId() == 311) // Fishmonger (raw fish)
+		    player.getDialogueManager().startDialogue("Fishmonger", npc);
+		else if (npc.getId() == 6970) // Ore Trader
+		    player.getDialogueManager().startDialogue("OreTrader", npc);
+		else if (npc.getId() == 2274) // Tanner & Bonesman
+		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
+		else if (npc.getId() == 2253) // DZ Skilling Master (donator-gated)
+		    player.getDialogueManager().startDialogue("DZSkillingMaster", npc);
+		else if (npc.getId() == 9085) // DZ Combat Master (donator-gated)
+		    player.getDialogueManager().startDialogue("DZCombatMaster", npc);
+		else if (npc.getId() == 1308) // DZ Bossing Buffet (donator-gated)
+		    player.getDialogueManager().startDialogue("DZBossingBuffet", npc);
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)
