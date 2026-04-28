@@ -326,7 +326,12 @@ public class Player extends Entity {
     private int redStoneCount;
     private long redStoneDelay;
 
-    private boolean xpLocked;
+    // xpLocked was persisted; CorruptionX-era accounts that toggled it
+    // ended up with it permanently true and got no XP. Make it transient
+    // so every login starts unlocked. EconomyManager's settings toggle
+    // still works for the current session if anyone wants to lock XP
+    // intentionally.
+    private transient boolean xpLocked;
     private boolean yellOff;
 
     private String yellColor = "ff0000";

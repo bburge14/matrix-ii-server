@@ -467,9 +467,19 @@ public final class Skills implements Serializable {
 	}
 
 	public double addXp(int skill, double exp, boolean forceRSXp) {
+		// One-shot diagnostic: log every XP grant so we can pinpoint why
+		// real combat returns 0 even when ::testxp works. Remove once we
+		// confirm XP flows correctly.
+		System.out.println("[XP] " + player.getDisplayName()
+			+ " skill=" + skill + " exp=" + exp
+			+ " forceRSXp=" + forceRSXp
+			+ " xpLocked=" + player.isXpLocked()
+			+ " canPvp=" + player.isCanPvp());
 		player.getControlerManager().trackXP(skill, (int) exp);
-		if (player.isXpLocked())
+		if (player.isXpLocked()) {
+			System.out.println("[XP] -> dropped (xpLocked)");
 			return 0;
+		}
 		if (player.getAuraManager().usingWisdom())
 			exp *= 1.025;
 		boolean combatSkill = skill == SUMMONING || (skill >= ATTACK && skill <= MAGIC);
