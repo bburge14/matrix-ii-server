@@ -76,3 +76,5 @@
 // ^ DZ Summoning (moved per user)
 6536 - 3787 4427 1
 // ^ DZ Firemaking trader (added in WC zone per user)
+6893 - 2925 3445 0
+// ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly

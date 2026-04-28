@@ -230,8 +230,10 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SorceressGardenNPCs", npc);
 		else if (npc.getId() == 5563)
 		    player.getDialogueManager().startDialogue("SorceressGardenNPCs", npc);
-		else if (npc.getId() == 6892 || npc.getId() == 6893)
+		else if (npc.getId() == 6892)
 		    player.getDialogueManager().startDialogue("PetShopOwner", npc.getId());
+		else if (npc.getId() == 6893) // Master Pet Shop (sells all pets)
+		    player.getDialogueManager().startDialogue("MasterPetShop", npc);
 		else if (npc.getId() == 780)
 		    player.getDialogueManager().startDialogue("Gertrude", npc.getId());
 		else if (npc.getId() == 15907)

@@ -3527,6 +3527,10 @@ public final class Commands {
 	    case "range":        return new WorldTile(2912, 3531, 0);  // Master Ranger
 	    case "mage":
 	    case "magic":        return new WorldTile(2914, 3531, 0);  // Master Mage
+	    case "pet":
+	    case "pets":
+	    case "petshop":
+	    case "masterpet":    return new WorldTile(2925, 3445, 0);  // Master Pet Shop
 	    // DZ moved coords
 	    case "dzfiremaking": return new WorldTile(3787, 4427, 1);
 	    case "dzcrafting2":
