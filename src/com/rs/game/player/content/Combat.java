@@ -51,10 +51,15 @@ public final class Combat {
 	}
 
 	public static void giveXP(Entity from, double totalXP) {
-		if(totalXP == 0)
+		System.out.println("[CombatXP] giveXP fired: totalXP=" + totalXP
+			+ " totalDmg=" + from.getTotalDamageReceived()
+			+ " sources=" + (from.getReceivedDamage() == null ? 0 : from.getReceivedDamage().size()));
+		if(totalXP == 0) {
+			System.out.println("[CombatXP] -> dropped (totalXP=0)");
 			return;
+		}
 		Map<Entity, Integer>  dmgReceived = from.getReceivedDamage();
-		
+
 		int totalDmgReceived = from.getTotalDamageReceived();
 		
 		for(Entity source : dmgReceived.keySet()) {
