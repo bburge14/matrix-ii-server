@@ -49,6 +49,8 @@ public final class TrainingMethods {
         public final TreeDefinitions treeDef;
         public final RockDefinitions rockDef;
         public final FishingSpots fishDef;
+        // Combat-only: NPC IDs to attack at this location.
+        public final int[] npcIds;
 
         private Method(Builder b) {
             this.description = b.description;
@@ -64,6 +66,7 @@ public final class TrainingMethods {
             this.treeDef = b.treeDef;
             this.rockDef = b.rockDef;
             this.fishDef = b.fishDef;
+            this.npcIds = b.npcIds;
         }
 
         public boolean isApplicable(AIPlayer bot) {
@@ -116,6 +119,7 @@ public final class TrainingMethods {
         TreeDefinitions treeDef;
         RockDefinitions rockDef;
         FishingSpots fishDef;
+        int[] npcIds = new int[0];
         Builder(String d, Kind k) { description = d; kind = k; }
         Builder skill(int s) { skill = s; return this; }
         Builder lvl(int min, int max) { minLevel = min; maxLevel = max; return this; }
@@ -127,6 +131,7 @@ public final class TrainingMethods {
         Builder tree(TreeDefinitions t) { treeDef = t; return this; }
         Builder rock(RockDefinitions r) { rockDef = r; return this; }
         Builder fish(FishingSpots f) { fishDef = f; return this; }
+        Builder npcs(int... ids) { npcIds = ids; return this; }
         Method build() { return new Method(this); }
     }
 
@@ -197,16 +202,16 @@ public final class TrainingMethods {
             .fish(FishingSpots.HARPOON).build());
 
         // ---- Combat training ----
-        // These are placeholders that just route the bot to the right area.
-        // Real combat (PlayerCombat controller) isn't wired yet, so the bot
-        // will arrive at the spot and idle until that pass. As soon as we
-        // wire combat the methods become functional with no other change.
+        // Coords/IDs verified against spawnsList.txt.
         ALL.add(b("Train combat - Lumbridge cows", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(1, 30).at(3257, 3266).xp(10000).cb(1).build());
-        ALL.add(b("Train combat - Varrock guards", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(30, 60).at(3210, 3379).xp(25000).cb(30).build());
+            .skill(Skills.ATTACK).lvl(1, 30).at(3027, 3307).xp(10000).cb(1)
+            .npcs(81, 11238).build());
+        ALL.add(b("Train combat - Falador guards", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(30, 60).at(2964, 3396).xp(25000).cb(30)
+            .npcs(9).build());
         ALL.add(b("Train combat - Rock crabs", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(60, 99).at(2673, 3709).xp(45000).cb(60).build());
+            .skill(Skills.ATTACK).lvl(60, 99).at(2721, 3726).xp(45000).cb(60)
+            .npcs(1265).build());
     }
 
     private static Builder b(String d, Kind k) { return new Builder(d, k); }

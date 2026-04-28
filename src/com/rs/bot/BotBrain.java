@@ -17,8 +17,10 @@ import com.rs.bot.ai.WorldKnowledge;
 import com.rs.bot.ai.Goal;
 import com.rs.bot.ai.GoalStack;
 import com.rs.game.player.actions.Fishing;
+import com.rs.game.player.actions.PlayerCombatNew;
 import com.rs.game.player.actions.Woodcutting;
 import com.rs.game.player.actions.mining.Mining;
+import com.rs.game.npc.NPC;
 
 public class BotBrain {
     private AIPlayer bot;
@@ -193,6 +195,18 @@ public class BotBrain {
         }
 
         // We're at the bank.
+        // Step 0: Try the in-world skill shops first - converts raw drops
+        // (logs/fish/ore/hide/bones) to coins immediately without waiting
+        // on GE settlement. 80% of inventory routes through here, the rest
+        // falls through to GE for high-value items.
+        try {
+            int sold = sellRawDropsToSkillShops(bot);
+            if (sold > 0 && Utils.random(100) < 30) {
+                say("sold " + sold + " items to NPC shops");
+            }
+        } catch (Throwable t) {
+            System.err.println("[SHOP-ERROR] " + bot.getDisplayName() + ": " + t);
+        }
         // Step 1: place GE sell offers for tradeable resources (logs, ore,
         // raw fish) so they actually convert into coins on the market
         // instead of piling up in the bank as raw stock.
@@ -989,13 +1003,89 @@ public class BotBrain {
     }
 
     private void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
-        // Combat itself isn't wired yet (no PlayerCombat hook for bots).
-        // For now the bot stands in the right training area until that
-        // pass. Once combat is wired this method picks the right NPC
-        // and starts attacking. Just log the intent for now.
-        if (Utils.random(100) < 5) {
-            System.out.println("[COMBAT-STUB] " + bot.getDisplayName()
-                + " arrived at " + method.description + " - awaiting combat wiring.");
+        // Retreat first if we're low on HP. Eat from inventory if we have
+        // food, otherwise stop attacking and walk back to safety.
+        if (handleLowHpRetreat()) return;
+
+        // Already attacking something? Let PlayerCombatNew finish its loop.
+        if (bot.getActionManager().getAction() instanceof PlayerCombatNew) return;
+
+        if (method.npcIds == null || method.npcIds.length == 0) return;
+
+        NPC target = EnvironmentScanner.findNearestNPC(bot, 12, method.npcIds);
+        if (target == null) {
+            // No spawn nearby - wiggle around the location until one respawns
+            // or comes into range.
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+
+        // PlayerCombatNew handles its own approach + attack-distance logic
+        // (melee = adjacent, ranged/magic = within sight). Just hand it the
+        // target and let it run.
+        bot.getActionManager().setAction(new PlayerCombatNew(target));
+        if (Utils.random(100) < 20) say(combatChatter());
+    }
+
+    /**
+     * If HP <= 30% try to eat. If no food, stop combat and walk a few
+     * tiles away. Returns true if we acted (caller should not start a
+     * new combat action this tick).
+     */
+    private boolean handleLowHpRetreat() {
+        int hp = bot.getHitpoints();
+        int maxHp = bot.getMaxHitpoints();
+        if (maxHp <= 0 || hp > maxHp * 0.30) return false;
+
+        // Try to eat the first food we own. Keep this minimal - we're not
+        // simulating proper food cooldowns, just keeping the bot alive.
+        for (int foodId : FOOD_ITEM_IDS) {
+            if (bot.getInventory().containsItem(foodId, 1)) {
+                bot.getInventory().deleteItem(foodId, 1);
+                int healAmount = healValueFor(foodId);
+                bot.heal(healAmount);
+                bot.setNextAnimation(new Animation(829)); // eat anim
+                if (Utils.random(100) < 25) say("eating up");
+                return true;
+            }
+        }
+
+        // No food - bail on combat, run a few tiles away.
+        if (bot.getActionManager().getAction() instanceof PlayerCombatNew) {
+            bot.getActionManager().forceStop();
+        }
+        int dx = Utils.random(-6, 7);
+        int dy = Utils.random(-6, 7);
+        bot.addWalkSteps(bot.getX() + dx, bot.getY() + dy, 8, true);
+        if (Utils.random(100) < 50) say("running, no food!");
+        return true;
+    }
+
+    // Common food item IDs. First-match wins, so list strongest first.
+    private static final int[] FOOD_ITEM_IDS = {
+        15272, // rocktail
+        385,   // shark
+        379,   // lobster
+        373,   // swordfish
+        7946,  // monkfish
+        333,   // trout
+        315,   // shrimp
+        2142,  // cooked karambwan
+        391    // manta ray
+    };
+
+    private static int healValueFor(int foodId) {
+        switch (foodId) {
+            case 15272: return 230; // rocktail
+            case 391:   return 220; // manta
+            case 385:   return 200; // shark
+            case 7946:  return 160; // monkfish
+            case 373:   return 140; // swordfish
+            case 379:   return 120; // lobster
+            case 333:   return 70;  // trout
+            case 2142:  return 180; // karambwan
+            case 315:   return 30;  // shrimp
+            default:    return 100;
         }
     }
 
@@ -1019,9 +1109,14 @@ public class BotBrain {
         "wts raw lobster", "barbarian fishing best xp", "sharks sharks sharks",
         "anyone got an extra harpoon?", "fishing > mining"
     };
+    private static final String[] COMBAT_CHATTER = {
+        "ez", "any teams?", "wts bones", "almost 99 attack", "one shot lol",
+        "this xp tho", "training to max", "anyone got food?"
+    };
     private String woodcuttingChatter() { return WOODCUTTING_CHATTER[Utils.random(WOODCUTTING_CHATTER.length)]; }
     private String miningChatter() { return MINING_CHATTER[Utils.random(MINING_CHATTER.length)]; }
     private String fishingChatter() { return FISHING_CHATTER[Utils.random(FISHING_CHATTER.length)]; }
+    private String combatChatter() { return COMBAT_CHATTER[Utils.random(COMBAT_CHATTER.length)]; }
 
     private void randomSmartWalk(int currentX, int currentY) {
         int newX = currentX + Utils.random(-5, 6);
@@ -1069,5 +1164,60 @@ public class BotBrain {
                 // real player's session may have died mid-broadcast; skip
             }
         }
+    }
+
+    // ===== Skill-economy shop routing =====
+    // Maps raw-drop item IDs to the buyer shop that takes them. We invoke
+    // shop.sell() directly via BotTrading - no need to walk to the NPC
+    // because at-bank is close enough and the shop API has no proximity
+    // check (real players walking to the NPC is purely UX, not enforced).
+
+    private static final int SHOP_FORESTER = 200;
+    private static final int SHOP_FISHMONGER = 201;
+    private static final int SHOP_ORE_TRADER = 202;
+    private static final int SHOP_TANNER = 203;
+
+    // Logs (any tier)
+    private static final int[] LOG_IDS = {1511, 1521, 1519, 1517, 1515, 1513, 6332};
+    // Raw fish (common types)
+    private static final int[] RAW_FISH_IDS = {317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270};
+    // Ores
+    private static final int[] ORE_IDS = {436, 438, 440, 442, 444, 447, 449, 451, 21622};
+    // Hides + bones (Tanner buys both)
+    private static final int[] HIDE_BONE_IDS = {1739, 1745, 1751, 526, 532, 536, 3183, 4812};
+
+    /**
+     * Walk through inventory and dump matching raw drops to the right
+     * skill shop. Returns the count of items sold (across all shops).
+     */
+    private int sellRawDropsToSkillShops(AIPlayer b) {
+        int total = 0;
+        total += sellMatchingItems(b, LOG_IDS, SHOP_FORESTER);
+        total += sellMatchingItems(b, RAW_FISH_IDS, SHOP_FISHMONGER);
+        total += sellMatchingItems(b, ORE_IDS, SHOP_ORE_TRADER);
+        total += sellMatchingItems(b, HIDE_BONE_IDS, SHOP_TANNER);
+        return total;
+    }
+
+    private int sellMatchingItems(AIPlayer b, int[] itemIds, int shopId) {
+        int count = 0;
+        try {
+            // Iterate by slot; convert any matching items in-place.
+            for (int slot = b.getInventory().getItems().getSize() - 1; slot >= 0; slot--) {
+                com.rs.game.item.Item item = b.getInventory().getItem(slot);
+                if (item == null) continue;
+                int id = item.getId();
+                boolean matches = false;
+                for (int target : itemIds) {
+                    if (id == target) { matches = true; break; }
+                }
+                if (!matches) continue;
+                int qty = item.getAmount();
+                if (com.rs.bot.ai.BotTrading.sellToShop(b, shopId, slot, qty)) {
+                    count += qty;
+                }
+            }
+        } catch (Throwable ignore) {}
+        return count;
     }
 }

@@ -2255,6 +2255,56 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "tpshop": {
+		// ::tpshop <name> - teleport to a skill-economy shop NPC.
+		// Free-zone: forester, fishmonger, oretrader, tanner.
+		// DZ:        dzskilling, dzcombat, dzbuffet,
+		//            dzmining, dzwoodcutting, dzfishing, dzrcpc, dzcrafting, dzsummoning
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage(
+			"Free zone: forester, fishmonger, oretrader, tanner. " +
+			"DZ entrance: dzskilling, dzcombat, dzbuffet. " +
+			"DZ skill zones: dzmining, dzwoodcutting, dzfishing, dzrcpc, dzcrafting, dzsummoning.");
+		    return true;
+		}
+		WorldTile shopDest = shopTile(cmd[1].toLowerCase());
+		if (shopDest == null) {
+		    player.getPackets().sendGameMessage("Unknown shop '" + cmd[1] + "'.");
+		    return true;
+		}
+		player.setNextWorldTile(shopDest);
+		player.getPackets().sendGameMessage("Teleported to " + cmd[1] + ".");
+		return true;
+	    }
+
+	    case "practice": {
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage(
+			"Bosses: vorago, kk, kq, nex, graardor, zilyana, kril, kreearra, corp, mole, kbd, td");
+		    return true;
+		}
+		WorldTile dest = bossingTile(cmd[1].toLowerCase());
+		if (dest == null) {
+		    player.getPackets().sendGameMessage("Unknown boss '" + cmd[1] + "'. Try ::practice for the list.");
+		    return true;
+		}
+		player.setNextAnimation(new Animation(8939));
+		player.setNextGraphics(new Graphics(1576));
+		final Player p = player;
+		final WorldTile d = dest;
+		final String label = cmd[1];
+		com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
+		    @Override
+		    public void run() {
+			p.setNextWorldTile(d);
+			p.setNextAnimation(new Animation(8941));
+			p.setNextGraphics(new Graphics(1577));
+			p.getPackets().sendGameMessage("Teleported to " + label + " practice arena.");
+		    }
+		}, 3);
+		return true;
+	    }
+
 	    case "emote":
 		if (cmd.length < 2) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::emote id");
@@ -3357,6 +3407,73 @@ public final class Commands {
     public static void performKickBanEmote(Player target) {
 	target.setNextAnimation(new Animation(17542));
 	target.setNextGraphics(new Graphics(3402));
+    }
+
+    /**
+     * Boss practice arena coords. RS3 layout for the major bosses; some
+     * spawns may not exist on this server yet, in which case the player
+     * lands at the right tile and can spawn the NPC manually.
+     */
+    private static WorldTile bossingTile(String name) {
+	switch (name) {
+	    case "vorago":   return new WorldTile(3552, 9502, 0);
+	    case "kk":
+	    case "kalphiteking":
+		return new WorldTile(3491, 5142, 0);
+	    case "kq":
+	    case "kalphitequeen":
+		return new WorldTile(3486, 9509, 0);
+	    case "nex":      return new WorldTile(2922, 5210, 0);
+	    case "graardor":
+	    case "bandos":   return new WorldTile(2864, 5354, 2);
+	    case "zilyana":
+	    case "sara":     return new WorldTile(2906, 5265, 0);
+	    case "kril":
+	    case "zammy":    return new WorldTile(2925, 5331, 2);
+	    case "kreearra":
+	    case "kree":
+	    case "arma":     return new WorldTile(2872, 5269, 2);
+	    case "corp":     return new WorldTile(2965, 4382, 2);
+	    case "mole":     return new WorldTile(1762, 5168, 0);
+	    case "kbd":      return new WorldTile(2271, 4680, 0);
+	    case "td":
+	    case "tormented":
+		return new WorldTile(2455, 5178, 0);
+	    default: return null;
+	}
+    }
+
+    /**
+     * Skill-economy shop NPC tiles. Free-zone NPCs and DZ zone supply NPCs.
+     */
+    private static WorldTile shopTile(String name) {
+	switch (name) {
+	    // Free-zone shops (planet 0)
+	    case "forester":     return new WorldTile(3092, 3231, 0);
+	    case "fishmonger":   return new WorldTile(3025, 3221, 0);
+	    case "oretrader":    return new WorldTile(2964, 3380, 0);
+	    case "tanner":
+	    case "bonesman":     return new WorldTile(3270, 3192, 0);
+	    // DZ entrance hub (plane 1)
+	    case "dzskilling":   return new WorldTile(3787, 4358, 1);
+	    case "dzcombat":     return new WorldTile(3789, 4360, 1);
+	    case "dzbuffet":     return new WorldTile(3785, 4362, 1);
+	    // DZ skill-zone supply NPCs (plane 1)
+	    case "dzmining":     return new WorldTile(3757, 4394, 1);
+	    case "dzrcpc":
+	    case "dzrunecraft":
+	    case "dzconstruction":
+	    case "dzprayer":     return new WorldTile(3757, 4419, 1);
+	    case "dzwoodcutting":
+	    case "dzwc":         return new WorldTile(3785, 4429, 1);
+	    case "dzfishing":    return new WorldTile(3807, 4405, 1);
+	    case "dzcrafting":
+	    case "dzsmithing":
+	    case "dzcooking":
+	    case "dzfiremaking": return new WorldTile(3811, 4380, 1);
+	    case "dzsummoning":  return new WorldTile(3787, 4393, 1);
+	    default: return null;
+	}
     }
 
     /*

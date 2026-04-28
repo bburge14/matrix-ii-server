@@ -399,6 +399,34 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SaniBoch", false);
 		else if (npc.getId() == 15149)
 		    player.getDialogueManager().startDialogue("MasterOfFear", 0);
+		// Skill-economy shop NPCs (added by claude)
+		else if (npc.getId() == 805) // Forester (logs)
+		    player.getDialogueManager().startDialogue("Forester", npc);
+		else if (npc.getId() == 311) // Fishmonger (raw fish)
+		    player.getDialogueManager().startDialogue("Fishmonger", npc);
+		else if (npc.getId() == 6970) // Ore Trader
+		    player.getDialogueManager().startDialogue("OreTrader", npc);
+		else if (npc.getId() == 2274) // Tanner & Bonesman
+		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
+		else if (npc.getId() == 2253) // DZ Skilling Master (donator-gated)
+		    player.getDialogueManager().startDialogue("DZSkillingMaster", npc);
+		else if (npc.getId() == 9085) // DZ Combat Master (donator-gated)
+		    player.getDialogueManager().startDialogue("DZCombatMaster", npc);
+		else if (npc.getId() == 1308) // DZ Bossing Buffet (donator-gated)
+		    player.getDialogueManager().startDialogue("DZBossingBuffet", npc);
+		// DZ skill-zone supply NPCs (all donator-gated in dialogue)
+		else if (npc.getId() == 30)   // DZ Mining @ (3757, 4394)
+		    player.getDialogueManager().startDialogue("DZMiningSupplies", npc);
+		else if (npc.getId() == 6533) // DZ Runecraft/Construction/Prayer @ (3757, 4419)
+		    player.getDialogueManager().startDialogue("DZRcConPraSupplies", npc);
+		else if (npc.getId() == 6534) // DZ Woodcutting @ (3785, 4429)
+		    player.getDialogueManager().startDialogue("DZWoodcuttingSupplies", npc);
+		else if (npc.getId() == 6535) // DZ Fishing @ (3807, 4405)
+		    player.getDialogueManager().startDialogue("DZFishingSupplies", npc);
+		else if (npc.getId() == 596)  // DZ Crafting/Smithing/Cooking/Firemaking @ (3811, 4380)
+		    player.getDialogueManager().startDialogue("DZArtisanSupplies", npc);
+		else if (npc.getId() == 1053) // DZ Summoning @ (3787, 4393)
+		    player.getDialogueManager().startDialogue("DZSummoningSupplies", npc);
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)
@@ -456,7 +484,10 @@ public class NPCHandler {
 			player.getActionManager().setAction(new Rest(true));
 			break;
 		    default:
-			player.getPackets().sendGameMessage("Nothing interesting happens.");
+			// Fallback for any NPC without a dedicated talk-to handler.
+			// Picks a friendly line based on the NPC's name pattern so
+			// every NPC at least feels alive.
+			player.getDialogueManager().startDialogue("GenericTalk", npc);
 			if (Settings.DEBUG)
 			    System.out.println("cliked 1 at npc[" + npc.getIndex() + "] id : " + npc.getId() + ", "
 				    + npc.getX() + ", " + npc.getY() + ", " + npc.getPlane());

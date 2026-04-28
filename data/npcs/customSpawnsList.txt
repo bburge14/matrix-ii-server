@@ -29,3 +29,21 @@
 5445 - 3783 4362 1
 5445 - 3784 4361 1
 5445 - 3785 4362 1
+// Skill-economy shop NPCs (added by claude)
+805 - 3092 3231 0
+311 - 3025 3221 0
+6970 - 2964 3380 0
+2274 - 3270 3192 0
+// Donator zone NPCs (DZ at 3787, 4360, p1)
+2253 - 3787 4358 1
+9085 - 3789 4360 1
+1308 - 3785 4362 1
+// Training Dummy (passive, high HP, low damage, OP XP)
+5919 - 3791 4360 1
+// DZ skill-zone supply NPCs (donator-only via dialogue gate)
+30 - 3757 4394 1
+6533 - 3757 4419 1
+6534 - 3785 4429 1
+6535 - 3807 4405 1
+596 - 3811 4380 1
+1053 - 3787 4393 1

@@ -125,6 +125,16 @@ public final class BotPool {
                 // because displayName is transient and gets wiped by serialization.
                 bot.hydrate(name);   // this calls init() which calls World.addPlayer
                 bot.start();
+                // Scatter the spawn tile so bots don't stack at START_PLAYER_LOCATION
+                // and walk in lockstep when they share a goal. Picks a random
+                // offset within +/-15 tiles of wherever they were saved.
+                try {
+                    int dx = com.rs.utils.Utils.random(-15, 16);
+                    int dy = com.rs.utils.Utils.random(-15, 16);
+                    com.rs.game.WorldTile scatter = new com.rs.game.WorldTile(
+                        bot.getX() + dx, bot.getY() + dy, bot.getPlane());
+                    bot.setNextWorldTile(scatter);
+                } catch (Throwable ignore) {}
                 bot.setBrain(new BotBrain(bot));
                 online.put(name, bot);
                 spawned++;
