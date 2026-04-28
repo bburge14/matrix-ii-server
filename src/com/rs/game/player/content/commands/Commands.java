@@ -1408,6 +1408,53 @@ public final class Commands {
 			+ player.getPlane() + ", regionId: " + player.getRegionId() + ", rx: " + player.getChunkX()
 			+ ", ry: " + player.getChunkY() + ", int: " + player.getTileHash());
 		return true;
+	    case "shoploaded":
+	    case "shopcheck": {
+		// ::shoploaded <shopId> - tells you whether a shop is loaded
+		if (cmd.length < 2) {
+		    player.getPackets().sendGameMessage("Usage: ::shoploaded <shopId>");
+		    return true;
+		}
+		try {
+		    int sid = Integer.parseInt(cmd[1]);
+		    com.rs.game.player.content.Shop sh = com.rs.utils.ShopsHandler.getShop(sid);
+		    if (sh == null) {
+			player.getPackets().sendGameMessage("Shop " + sid + ": NOT LOADED");
+		    } else {
+			player.getPackets().sendGameMessage("Shop " + sid + ": loaded (opening it now)");
+			com.rs.utils.ShopsHandler.openShop(player, sid);
+		    }
+		} catch (NumberFormatException e) {
+		    player.getPackets().sendGameMessage("Usage: ::shoploaded <shopId>");
+		}
+		return true;
+	    }
+	    case "npchere":
+	    case "nearby": {
+		// Lists all NPCs within 8 tiles with their NPC ID and name. Use
+		// this to find what an NPC's ACTUAL cache ID is - spawn-dump
+		// comments can be stale.
+		int nearRadius = 8;
+		StringBuilder sbn = new StringBuilder("Nearby NPCs:");
+		int found = 0;
+		for (com.rs.game.npc.NPC n : com.rs.game.World.getNPCs()) {
+		    if (n == null || n.hasFinished() || n.isDead()) continue;
+		    if (n.getPlane() != player.getPlane()) continue;
+		    int dx = n.getX() - player.getX();
+		    int dy = n.getY() - player.getY();
+		    if (dx * dx + dy * dy > nearRadius * nearRadius) continue;
+		    String nm = "";
+		    try { nm = n.getDefinitions().name; } catch (Throwable ignore) {}
+		    sbn.append("\n  ID=").append(n.getId())
+		       .append(" name=").append(nm == null ? "?" : nm)
+		       .append(" at (").append(n.getX()).append(",").append(n.getY()).append(")");
+		    found++;
+		    if (found >= 25) { sbn.append("\n  (truncated...)"); break; }
+		}
+		if (found == 0) sbn.append("\n  (none within ").append(nearRadius).append(" tiles)");
+		player.getPackets().sendPanelBoxMessage(sbn.toString());
+		return true;
+	    }
 	    case "ccoords":
 		selection = new StringSelection(player.getX() + ", " + player.getY() + ", " + player.getPlane());
 		clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
