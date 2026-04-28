@@ -96,6 +96,7 @@ public class ShopsHandler {
 		} catch (Throwable e) {
 			Logger.handle(e);
 		}
+		System.out.println("[ShopsHandler] loadUnpackedShops finished, loaded " + handledShops.size() + " shops. Sample present: 200=" + (handledShops.containsKey(200) ? "yes" : "no") + " 204=" + (handledShops.containsKey(204) ? "yes" : "no") + " 210=" + (handledShops.containsKey(210) ? "yes" : "no") + " 215=" + (handledShops.containsKey(215) ? "yes" : "no"));
 	}
 
 	private static void loadPackedShops() {
@@ -118,6 +119,7 @@ public class ShopsHandler {
 		} catch (Throwable e) {
 			Logger.handle(e);
 		}
+		System.out.println("[ShopsHandler] loadPackedShops finished, loaded " + handledShops.size() + " shops. Sample present: 200=" + (handledShops.containsKey(200) ? "yes" : "no") + " 204=" + (handledShops.containsKey(204) ? "yes" : "no") + " 210=" + (handledShops.containsKey(210) ? "yes" : "no") + " 215=" + (handledShops.containsKey(215) ? "yes" : "no"));
 	}
 
 	public static String readAlexString(ByteBuffer buffer) {
@@ -143,8 +145,11 @@ public class ShopsHandler {
 
 	public static boolean openShop(Player player, int key) {
 		Shop shop = getShop(key);
-		if (shop == null)
+		if (shop == null) {
+			System.out.println("[ShopsHandler] openShop: shop " + key + " not loaded (handledShops.size=" + handledShops.size() + ")");
+			player.getPackets().sendGameMessage("[debug] Shop " + key + " not loaded.");
 			return false;
+		}
 		shop.addPlayer(player);
 		return true;
 	}

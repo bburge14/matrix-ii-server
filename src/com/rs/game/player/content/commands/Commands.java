@@ -1262,11 +1262,22 @@ public final class Commands {
 		return true;
 
 	    case "god":
-		player.setHitpoints(1000000);
-		player.getEquipment().setEquipmentHpIncrease(player.getMaxHitpoints() - 9900);
-		for (int i = 0; i < 8; i++)
-		    player.getCombatDefinitions().getStats()[i] = 50000;
+	    case "godmode": {
+		// Toggle real invulnerability + max HP. Player.applyHit zeros all
+		// melee/range/magic hits when invulnerable=true. Toggle off
+		// restores normal damage handling.
+		boolean now = !player.isInvulnerable();
+		player.setInvulnerable(now);
+		if (now) {
+		    player.setHitpoints(player.getMaxHitpoints());
+		    player.getPrayer().restorePrayer(player.getSkills().getLevelForXp(Skills.PRAYER) * 10);
+		    player.setRunEnergy(100);
+		    player.getPackets().sendGameMessage("Godmode ON. You are invulnerable.");
+		} else {
+		    player.getPackets().sendGameMessage("Godmode OFF. You are mortal again.");
+		}
 		return true;
+	    }
 
 	    case "prayertest":
 		player.getEffectsManager().startEffect(new Effect(EffectType.PROTECTION_DISABLED, 8));
@@ -3448,12 +3459,30 @@ public final class Commands {
      */
     private static WorldTile shopTile(String name) {
 	switch (name) {
-	    // Free-zone shops (planet 0)
-	    case "forester":     return new WorldTile(3092, 3231, 0);
-	    case "fishmonger":   return new WorldTile(3025, 3221, 0);
-	    case "oretrader":    return new WorldTile(2964, 3380, 0);
+	    // Free-zone skill master NPCs at proper hubs (plane 0)
+	    case "forester":
+	    case "lumberjack":
+	    case "leif":         return new WorldTile(3088, 3243, 0);  // Lumberjack Leif - Draynor logs
+	    case "fishmonger":
+	    case "harry":        return new WorldTile(2856, 3432, 0);  // Master Fisher Harry - Catherby
+	    case "oretrader":
+	    case "foreman":
+	    case "mining":       return new WorldTile(3019, 3339, 0);  // Mining Guild Foreman
 	    case "tanner":
-	    case "bonesman":     return new WorldTile(3270, 3192, 0);
+	    case "ellis":
+	    case "bonesman":     return new WorldTile(3279, 3192, 0);  // Ellis - Al Kharid
+	    case "fletcher":
+	    case "hickton":      return new WorldTile(2796, 3415, 0);  // Hickton - Catherby
+	    case "smith":
+	    case "smithy":       return new WorldTile(3187, 3425, 0);  // Smith - Varrock east
+	    case "cook":
+	    case "mastercook":   return new WorldTile(2856, 3445, 0);  // Master Cook - Catherby
+	    case "summoning":
+	    case "pikkupstix":   return new WorldTile(2921, 3445, 0);  // Pikkupstix - Taverly
+	    case "rc":
+	    case "runecraft":
+	    case "wizard":
+	    case "distentor":    return new WorldTile(3104, 3162, 0);  // Wizard Distentor
 	    // DZ entrance hub (plane 1)
 	    case "dzskilling":   return new WorldTile(3787, 4358, 1);
 	    case "dzcombat":     return new WorldTile(3789, 4360, 1);

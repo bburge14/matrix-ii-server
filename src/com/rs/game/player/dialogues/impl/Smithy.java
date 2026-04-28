@@ -4,14 +4,14 @@ import com.rs.game.npc.NPC;
 import com.rs.game.player.dialogues.Dialogue;
 import com.rs.utils.ShopsHandler;
 
-/** Mining Guild Foreman (NPC 39) - buys ores + sells pickaxes. */
-public class OreTrader extends Dialogue {
+/** Smith (NPC 47) at Varrock anvil - smithing supplies + buys ores. */
+public class Smithy extends Dialogue {
 
 	@Override
 	public void start() {
 		NPC npc = (NPC) parameters[0];
-		player.getPackets().sendGameMessage("Welcome to the Mining Guild. Got ore to sell? Need a pickaxe?");
-		ShopsHandler.openShop(player, 202);
+		player.getPackets().sendGameMessage("Welcome to my forge. Hammers, bars, and gauntlets in stock.");
+		ShopsHandler.openShop(player, 208);
 		end();
 	}
 

@@ -733,6 +733,7 @@ class PlayersFrame(ctk.CTkFrame):
 
         m.add_separator()
         m.add_command(label="Heal",                 command=lambda: self._action("heal"))
+        m.add_command(label="Toggle Godmode",       command=lambda: self._action("toggle_flag", "invulnerable"))
         m.add_command(label="Give Item...",         command=lambda: self._action("give"))
         m.add_command(label="Teleport to Coords...",command=lambda: self._action("teleport"))
         m.add_separator()
@@ -825,7 +826,8 @@ class PlayersFrame(ctk.CTkFrame):
         elif kind == "toggle_flag":
             flag = args[0]
             curval = bool(p.get(flag))
-            label = {"donator":"Donator", "extreme":"Extreme Donator", "supporter":"Supporter"}[flag]
+            label = {"donator":"Donator", "extreme":"Extreme Donator",
+                     "supporter":"Supporter", "invulnerable":"Godmode"}[flag]
             new = not curval
             if messagebox.askyesno("Toggle flag", f"{name}: set {label} to {'ON' if new else 'OFF'}?"):
                 call(lambda: self.api.player_flag(name, flag, new), success=f"{label}: {'ON' if new else 'OFF'}")

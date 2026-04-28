@@ -29,11 +29,25 @@
 5445 - 3783 4362 1
 5445 - 3784 4361 1
 5445 - 3785 4362 1
-// Skill-economy shop NPCs (added by claude)
-805 - 3092 3231 0
-311 - 3025 3221 0
-6970 - 2964 3380 0
-2274 - 3270 3192 0
+// Skill-economy shop NPCs (proper themed master NPCs at skill hubs)
+1401 - 3088 3243 0
+// ^ Lumberjack Leif at Draynor Village logs
+666 - 2856 3432 0
+// ^ Master Fisher Harry at Catherby fishing
+39 - 3019 3339 0
+// ^ Mining Guild Foreman at Falador mining guild entrance
+18 - 3279 3192 0
+// ^ Ellis the Tanner at Al Kharid
+4656 - 2796 3415 0
+// ^ Hickton the Fletcher at Catherby
+47 - 3187 3425 0
+// ^ Smith at Varrock east anvil
+7883 - 2856 3445 0
+// ^ Master Cook at Catherby
+15056 - 2921 3445 0
+// ^ Pikkupstix (Summoning Master) at Taverly
+3 - 3104 3162 0
+// ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
 // Donator zone NPCs (DZ at 3787, 4360, p1)
 2253 - 3787 4358 1
 9085 - 3789 4360 1

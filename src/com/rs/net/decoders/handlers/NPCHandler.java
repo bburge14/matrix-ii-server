@@ -400,14 +400,24 @@ public class NPCHandler {
 		else if (npc.getId() == 15149)
 		    player.getDialogueManager().startDialogue("MasterOfFear", 0);
 		// Skill-economy shop NPCs (added by claude)
-		else if (npc.getId() == 805) // Forester (logs)
+		else if (npc.getId() == 1401) // Lumberjack Leif (Woodcutting)
 		    player.getDialogueManager().startDialogue("Forester", npc);
-		else if (npc.getId() == 311) // Fishmonger (raw fish)
+		else if (npc.getId() == 666) // Master Fisher Harry
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
-		else if (npc.getId() == 6970) // Ore Trader
+		else if (npc.getId() == 39) // Foreman (Mining)
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
-		else if (npc.getId() == 2274) // Tanner & Bonesman
+		else if (npc.getId() == 18) // Ellis (Tanner)
 		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
+		else if (npc.getId() == 4656) // Hickton (Fletching)
+		    player.getDialogueManager().startDialogue("Fletcher", npc);
+		else if (npc.getId() == 47) // Smith (Smithing)
+		    player.getDialogueManager().startDialogue("Smithy", npc);
+		else if (npc.getId() == 7883) // Master Cook
+		    player.getDialogueManager().startDialogue("MasterCook", npc);
+		else if (npc.getId() == 15056) // Pikkupstix (Summoning)
+		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
+		else if (npc.getId() == 3) // Wizard Distentor (RC/Magic)
+		    player.getDialogueManager().startDialogue("RcMaster", npc);
 		else if (npc.getId() == 2253) // DZ Skilling Master (donator-gated)
 		    player.getDialogueManager().startDialogue("DZSkillingMaster", npc);
 		else if (npc.getId() == 9085) // DZ Combat Master (donator-gated)

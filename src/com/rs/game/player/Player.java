@@ -608,10 +608,6 @@ public class Player extends Entity {
     // now that we inited we can start showing game
     public void start() {
 	Logger.globalLog(username, session.getIP(), new String(" has logged in."));
-	// Default map view to "huge" (mapSize=3 -> 168x168 tiles vs the
-	// stock 104x104). Players can revert with ::normmap if they
-	// prefer the tighter view.
-	setMapSize(3);
 	loadMapRegions();
 	started = true;
 	run();
@@ -2836,6 +2832,10 @@ public class Player extends Entity {
 
     public void setInvulnerable(boolean invulnerable) {
 	this.invulnerable = invulnerable;
+    }
+
+    public boolean isInvulnerable() {
+	return invulnerable;
     }
 
     public double getHpBoostMultiplier() {
