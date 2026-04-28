@@ -1431,28 +1431,51 @@ public final class Commands {
 	    }
 	    case "npchere":
 	    case "nearby": {
-		// Lists all NPCs within 8 tiles with their NPC ID and name. Use
-		// this to find what an NPC's ACTUAL cache ID is - spawn-dump
-		// comments can be stale.
-		int nearRadius = 8;
-		StringBuilder sbn = new StringBuilder("Nearby NPCs:");
-		int found = 0;
-		for (com.rs.game.npc.NPC n : com.rs.game.World.getNPCs()) {
-		    if (n == null || n.hasFinished() || n.isDead()) continue;
-		    if (n.getPlane() != player.getPlane()) continue;
-		    int dx = n.getX() - player.getX();
-		    int dy = n.getY() - player.getY();
-		    if (dx * dx + dy * dy > nearRadius * nearRadius) continue;
-		    String nm = "";
-		    try { nm = n.getDefinitions().name; } catch (Throwable ignore) {}
-		    sbn.append("\n  ID=").append(n.getId())
-		       .append(" name=").append(nm == null ? "?" : nm)
-		       .append(" at (").append(n.getX()).append(",").append(n.getY()).append(")");
-		    found++;
-		    if (found >= 25) { sbn.append("\n  (truncated...)"); break; }
+		// Lists nearby NPCs. Sends each as a separate chat message
+		// instead of a single panel-box (panel msg crashes the client
+		// when the string is large or contains weird chars).
+		int radiusArg = 6;
+		if (cmd.length >= 2) {
+		    try { radiusArg = Math.max(1, Math.min(20, Integer.parseInt(cmd[1]))); }
+		    catch (NumberFormatException ignore) {}
 		}
-		if (found == 0) sbn.append("\n  (none within ").append(nearRadius).append(" tiles)");
-		player.getPackets().sendPanelBoxMessage(sbn.toString());
+		int nearRadius = radiusArg;
+		int found = 0;
+		try {
+		    player.getPackets().sendGameMessage("Nearby NPCs (radius " + nearRadius + "):");
+		    for (com.rs.game.npc.NPC n : com.rs.game.World.getNPCs()) {
+			if (n == null || n.hasFinished() || n.isDead()) continue;
+			if (n.getPlane() != player.getPlane()) continue;
+			int dx = n.getX() - player.getX();
+			int dy = n.getY() - player.getY();
+			if (dx * dx + dy * dy > nearRadius * nearRadius) continue;
+			String nm = "?";
+			try {
+			    if (n.getDefinitions() != null && n.getDefinitions().name != null) {
+				nm = n.getDefinitions().name;
+				// Sanitize: strip any non-ASCII to avoid client crash
+				StringBuilder safe = new StringBuilder();
+				for (int i = 0; i < nm.length() && i < 32; i++) {
+				    char c = nm.charAt(i);
+				    if (c >= 32 && c < 127) safe.append(c);
+				}
+				nm = safe.length() == 0 ? "?" : safe.toString();
+			    }
+			} catch (Throwable ignore) {}
+			player.getPackets().sendGameMessage(
+			    "  ID=" + n.getId() + " " + nm + " @ (" + n.getX() + "," + n.getY() + ")");
+			found++;
+			if (found >= 15) {
+			    player.getPackets().sendGameMessage("  (truncated - " + found + "+ shown)");
+			    break;
+			}
+		    }
+		    if (found == 0) {
+			player.getPackets().sendGameMessage("  (no NPCs within " + nearRadius + " tiles)");
+		    }
+		} catch (Throwable t) {
+		    player.getPackets().sendGameMessage("npchere error: " + t.getMessage());
+		}
 		return true;
 	    }
 	    case "ccoords":

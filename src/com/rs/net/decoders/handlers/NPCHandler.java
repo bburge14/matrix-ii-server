@@ -406,7 +406,7 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("Forester", npc);
 		else if (npc.getId() == 666) // Master Fisher Harry
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
-		else if (npc.getId() == 39 || npc.getId() == 1404) // Foreman + Miner Magnus (Mining)
+		else if (npc.getId() == 39 || npc.getId() == 1404 || npc.getId() == 14870) // Foreman + Miner Magnus + Tobias Bronzearms
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
 		else if (npc.getId() == 18) // Ellis (Tanner)
 		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
@@ -420,12 +420,12 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
 		else if (npc.getId() == 3) // Wizard Distentor (RC/Magic)
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
-		// Burthorpe/Taverly skill master NPCs - existing-cache themed NPCs
-		else if (npc.getId() == 14921) // Martin Steelweaver - Smithing
+		// Burthorpe/Taverly skill master NPCs - corrected NPC IDs from ::npchere
+		else if (npc.getId() == 14874) // Martin Steelweaver - Smithing
 		    player.getDialogueManager().startDialogue("Smithy", npc);
-		else if (npc.getId() == 5073) // Tobias Bronzearms / Ayleth Beaststalker (shared cache ID)
+		else if (npc.getId() == 14870) // Tobias Bronzearms - Mining
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
-		else if (npc.getId() == 14926) // Jack Oval - Crafting
+		else if (npc.getId() == 14877) // Jack Oval - Crafting
 		    player.getDialogueManager().startDialogue("CraftingMaster", npc);
 		else if (npc.getId() == 15272) // Drill Sergeant Hartman - Agility
 		    player.getDialogueManager().startDialogue("AgilityMaster", npc);
@@ -434,7 +434,7 @@ public class NPCHandler {
 		    // Note: NPC 14872 (Apprentice Clara) is intercepted earlier by MiladeDeathD - skipping wire
 		else if (npc.getId() == 14937) // Marcus Everburn - Firemaking
 		    player.getDialogueManager().startDialogue("FiremakingMaster", npc);
-		else if (npc.getId() == 14998) // Nicholas Angle - Fishing
+		else if (npc.getId() == 14879) // Nicholas Angle - Fishing
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
 		else if (npc.getId() == 14942) // Alison Elmshaper - Fletching
 		    player.getDialogueManager().startDialogue("Fletcher", npc);
@@ -444,7 +444,7 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("SlayerSupplies", npc);
 		else if (npc.getId() == 14957) // Nails Newton - Thieving
 		    player.getDialogueManager().startDialogue("ThievingMaster", npc);
-		else if (npc.getId() == 14959) // Head Farmer Jones - Farming
+		else if (npc.getId() == 14860) // Head Farmer Jones - Farming
 		    player.getDialogueManager().startDialogue("FarmingMaster", npc);
 		else if (npc.getId() == 15024) // Commander Denulth - Combat
 		    player.getDialogueManager().startDialogue("CombatMaster", npc);
@@ -1212,22 +1212,22 @@ public class NPCHandler {
      */
     private static int skillShopForNpc(int npcId) {
 	switch (npcId) {
-	    // Free-zone skill masters
+	    // Free-zone skill masters (NPC IDs verified by user via ::npchere)
 	    case 1401: return 200;  // Lumberjack Leif (Woodcutting)
 	    case 666:  return 201;  // Master Fisher Harry
-	    case 14998: return 201; // Nicholas Angle (also Fishing)
+	    case 14879: return 201; // Nicholas Angle (Fishing) - corrected from 14998
 	    case 39:   return 202;  // Foreman (Mining)
-	    case 1404: return 202;  // Miner Magnus (also Mining)
-	    case 5073: return 202;  // Tobias Bronzearms (also Mining)
+	    case 1404: return 202;  // Miner Magnus
+	    case 14870: return 202; // Tobias Bronzearms (Mining) - corrected from 5073
 	    case 18:   return 203;  // Ellis (Tanner)
 	    case 4656: return 207;  // Hickton (Fletching)
-	    case 14942: return 207; // Alison Elmshaper (also Fletching)
+	    case 14942: return 207; // Alison Elmshaper (Fletching)
 	    case 47:   return 208;  // Smith
-	    case 14921: return 208; // Martin Steelweaver (also Smithing)
+	    case 14874: return 208; // Martin Steelweaver (Smithing) - corrected from 14921
 	    case 7883: return 209;  // Master Cook
 	    case 15056: return 216; // Pikkupstix (Summoning)
 	    case 3:    return 217;  // Wizard Distentor (RC)
-	    case 15018: return 217; // Carwen Essencebinder (also RC)
+	    case 15018: return 217; // Carwen Essencebinder (RC)
 	    case 14937: return 218; // Marcus Everburn (Firemaking)
 	    case 14957: return 219; // Nails Newton (Thieving)
 	    case 15272: return 220; // Drill Sergeant Hartman (Agility)
@@ -1235,10 +1235,10 @@ public class NPCHandler {
 	    case 15407: return 222; // Diviner
 	    case 1585: return 223;  // Master Ranger
 	    case 15403: return 224; // Master Mage
-	    case 14926: return 19;  // Jack Oval -> Crafting (existing shop)
+	    case 14877: return 19;  // Jack Oval -> Crafting (existing shop) - corrected from 14926
 	    case 15043: return 128; // Alfred Stonemason -> Construction (existing)
 	    case 15108: return 29;  // Jacquelyn Manslaughter -> Slayer (existing)
-	    case 14959: return 111; // Head Farmer Jones -> Farming (existing Vanessa shop)
+	    case 14860: return 111; // Head Farmer Jones -> Farming - corrected from 14959
 	    case 6893: return 226;  // Master Pet Shop
 	    // DZ entrance NPCs (donator-gated by zone access)
 	    case 2253: return 204;  // DZ Skilling Master
