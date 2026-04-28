@@ -12,7 +12,7 @@ public final class AIManager {
 
     /** Spawn `count` bots. The `nearby` arg is currently unused but kept for future placement logic. */
     public static synchronized int spawn(int count, Player nearby) {
-        return BotPool.addMore(count);
+        return BotPool.generate(count);
     }
 
     public static synchronized int despawnAll() {
