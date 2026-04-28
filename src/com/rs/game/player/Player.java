@@ -136,6 +136,9 @@ public class Player extends Entity {
     private transient long lockDelay; // used for doors and stuff like that
     private transient long foodDelay;
     private transient long potDelay;
+    public transient int unclaimedEctoTokens;
+    public transient int boneType = -1;
+    public transient boolean bonesGrinded;
     private transient Runnable closeInterfacesEvent;
     private transient long lastPublicMessage;
     private transient List<Integer> switchItemCache;
