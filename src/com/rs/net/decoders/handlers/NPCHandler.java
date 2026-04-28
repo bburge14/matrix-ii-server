@@ -471,7 +471,10 @@ public class NPCHandler {
 			player.getActionManager().setAction(new Rest(true));
 			break;
 		    default:
-			player.getPackets().sendGameMessage("Nothing interesting happens.");
+			// Fallback for any NPC without a dedicated talk-to handler.
+			// Picks a friendly line based on the NPC's name pattern so
+			// every NPC at least feels alive.
+			player.getDialogueManager().startDialogue("GenericTalk", npc);
 			if (Settings.DEBUG)
 			    System.out.println("cliked 1 at npc[" + npc.getIndex() + "] id : " + npc.getId() + ", "
 				    + npc.getX() + ", " + npc.getY() + ", " + npc.getPlane());

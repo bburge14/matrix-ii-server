@@ -245,6 +245,33 @@ public final class BotEquipment {
 
     private static void applyMage(Player bot, int cb) {
         int wealth = rollWealth(cb);
+        // Rune supply for any mage that's not using an unlimited-charge
+        // staff. Polypore + Chaotic staffs draw their own ammo, but the
+        // lower-tier bots end up with regular elemental staves that need
+        // air/water/earth/fire + chaos/death/blood runes.
+        try {
+            bot.getInventory().addItem(556, 5000); // air
+            bot.getInventory().addItem(555, 5000); // water
+            bot.getInventory().addItem(557, 5000); // earth
+            bot.getInventory().addItem(554, 5000); // fire
+            bot.getInventory().addItem(558, 5000); // mind (strikes)
+            bot.getInventory().addItem(562, 5000); // chaos (bolts)
+            bot.getInventory().addItem(560, 2000); // death (blasts)
+            bot.getInventory().addItem(565, 1000); // blood (waves/surges)
+        } catch (Throwable ignore) {}
+        // Pick + set an autocast spell tier based on Magic level so the bot
+        // actually starts attacking when PlayerCombatNew runs.
+        try {
+            int mag = bot.getSkills().getLevelForXp(com.rs.game.player.Skills.MAGIC);
+            int spell;
+            if      (mag >= 95) spell = 61;  // Air surge
+            else if (mag >= 75) spell = 48;  // Air wave
+            else if (mag >= 55) spell = 42;  // Air blast
+            else if (mag >= 35) spell = 32;  // Air bolt
+            else                spell = 25;  // Air strike
+            bot.getCombatDefinitions().setAutoCastSpell(spell);
+        } catch (Throwable ignore) {}
+
         if (wealth >= 4) {
             // Virtus + Polypore staff
             equip(bot, Equipment.SLOT_HAT,    20161);  // Virtus mask

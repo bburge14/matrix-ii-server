@@ -139,6 +139,14 @@ public class Player extends Entity {
     public transient int unclaimedEctoTokens;
     public transient int boneType = -1;
     public transient boolean bonesGrinded;
+    // Used by Valkyr-ported skill content (divination, daily-task hooks)
+    public transient int TASK = -1;
+    public transient int skillingtask;
+    // Used by Valkyr-ported farming system
+    public java.util.List<com.rs.game.player.content.farming.PatchStatus> farmingPatch
+        = new java.util.ArrayList<>();
+    public transient java.util.List<com.rs.game.WorldObject> rakedPatch
+        = new java.util.ArrayList<>();
     private transient Runnable closeInterfacesEvent;
     private transient long lastPublicMessage;
     private transient List<Integer> switchItemCache;
