@@ -61,20 +61,22 @@
 1308 - 3785 4362 1
 // Training Dummy (passive, high HP, low damage, OP XP)
 5919 - 3791 4360 1
-// DZ skill-zone supply NPCs (donator-only via dialogue gate)
-30 - 3757 4394 1
-// ^ DZ Mining
-6533 - 3753 4418 1
-// ^ DZ RC/Prayer/Construction (moved per user)
-6534 - 3785 4429 1
-// ^ DZ Woodcutting
-6535 - 3807 4405 1
-// ^ DZ Fishing (moved per user)
-596 - 3815 4382 1
-// ^ DZ Crafting/Smith/Cook/Fire (moved per user - was Fat Tony out of area)
-1053 - 3784 4404 1
-// ^ DZ Summoning (moved per user)
-6536 - 3787 4427 1
-// ^ DZ Firemaking trader (added in WC zone per user)
+// DZ skill-zone supply NPCs (these are the same skill-master NPCs as
+// Burthorpe/Taverly - DZ is entry-gated to donators so the same shop
+// applies. Using known-good NPC IDs that exist in cache.)
+1404 - 3757 4394 1
+// ^ DZ Mining: Miner Magnus (NPC 1404)
+15018 - 3753 4418 1
+// ^ DZ RC/Pra/Con: Carwen Essencebinder duplicate
+1401 - 3785 4429 1
+// ^ DZ Woodcutting: Lumberjack Leif duplicate
+666 - 3807 4405 1
+// ^ DZ Fishing: Master Fisher Harry duplicate
+47 - 3815 4382 1
+// ^ DZ Crafting/Smith/Cook/Fire: Smith duplicate (per user request - was Fat Tony out of area)
+15056 - 3784 4404 1
+// ^ DZ Summoning: Pikkupstix duplicate
+14937 - 3787 4427 1
+// ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly

@@ -406,7 +406,7 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("Forester", npc);
 		else if (npc.getId() == 666) // Master Fisher Harry
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
-		else if (npc.getId() == 39) // Foreman (Mining)
+		else if (npc.getId() == 39 || npc.getId() == 1404) // Foreman + Miner Magnus (Mining)
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
 		else if (npc.getId() == 18) // Ellis (Tanner)
 		    player.getDialogueManager().startDialogue("TannerBonesman", npc);
@@ -429,8 +429,9 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("CraftingMaster", npc);
 		else if (npc.getId() == 15272) // Drill Sergeant Hartman - Agility
 		    player.getDialogueManager().startDialogue("AgilityMaster", npc);
-		else if (npc.getId() == 15018 || npc.getId() == 14872) // Carwen Essencebinder + Apprentice Clara - RC
+		else if (npc.getId() == 15018) // Carwen Essencebinder - RC
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		    // Note: NPC 14872 (Apprentice Clara) is intercepted earlier by MiladeDeathD - skipping wire
 		else if (npc.getId() == 14937) // Marcus Everburn - Firemaking
 		    player.getDialogueManager().startDialogue("FiremakingMaster", npc);
 		else if (npc.getId() == 14998) // Nicholas Angle - Fishing
@@ -460,21 +461,13 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("DZCombatMaster", npc);
 		else if (npc.getId() == 1308) // DZ Bossing Buffet (donator-gated)
 		    player.getDialogueManager().startDialogue("DZBossingBuffet", npc);
-		// DZ skill-zone supply NPCs (all donator-gated in dialogue)
-		else if (npc.getId() == 30)   // DZ Mining @ (3757, 4394)
-		    player.getDialogueManager().startDialogue("DZMiningSupplies", npc);
-		else if (npc.getId() == 6533) // DZ Runecraft/Construction/Prayer @ (3757, 4419)
-		    player.getDialogueManager().startDialogue("DZRcConPraSupplies", npc);
-		else if (npc.getId() == 6534) // DZ Woodcutting @ (3785, 4429)
-		    player.getDialogueManager().startDialogue("DZWoodcuttingSupplies", npc);
-		else if (npc.getId() == 6535) // DZ Fishing @ (3807, 4405)
-		    player.getDialogueManager().startDialogue("DZFishingSupplies", npc);
-		else if (npc.getId() == 596)  // DZ Crafting/Smithing/Cooking/Firemaking @ (3811, 4380)
-		    player.getDialogueManager().startDialogue("DZArtisanSupplies", npc);
-		else if (npc.getId() == 1053) // DZ Summoning @ (3787, 4393)
-		    player.getDialogueManager().startDialogue("DZSummoningSupplies", npc);
-		else if (npc.getId() == 6536) // DZ Firemaking @ (3787, 4427)
-		    player.getDialogueManager().startDialogue("DZFiremakingSupplies", npc);
+		// DZ skill-zone NPCs reuse the same NPC IDs as Burthorpe/Taverly skill
+		// masters because DZ entry is donator-gated already (no per-NPC check
+		// needed) and the bogus IDs I previously chose (6533/6534/6535/6536
+		// etc.) had no cache models so were invisible. The NEW NPC IDs
+		// (1404 Miner Magnus, 15018 Carwen, 1401 Lumberjack Leif, 666 Harry,
+		// 47 Smith, 15056 Pikkupstix, 14937 Marcus Everburn) are already
+		// wired to their dialogues elsewhere - no extra wiring needed.
 		else if (SlayerMaster.startInteractionForId(player, npc.getId(), 1))
 		    return;
 		else if (npc.getId() == 1282)
