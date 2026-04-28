@@ -1,5 +1,65 @@
 @echo off
-title Brad's Playground
+title Brad's Playground Launcher
 cd /d "%~dp0"
-jre\bin\java.exe -Xms128m -Xmx800m -Xss2m -Dsun.java2d.noddraw=true -XX:CompileThreshold=10000 -cp "client\bin;client\clientlibs.jar" game.RS3Applet
-pause
+setlocal EnableDelayedExpansion
+
+REM ============================================================
+REM  Brad's Playground - Client Launcher with restart watchdog
+REM
+REM  Fixes for:
+REM   - Idle blackscreen   : forces pure software rendering (no
+REM                          DirectDraw, no D3D, no OpenGL). Slower
+REM                          but doesn't blackscreen when idle.
+REM   - Server-crash freeze: short network read timeout (20s) so
+REM                          dead sockets surface a disconnect
+REM                          instead of leaving the client hung.
+REM   - Crash recovery     : auto-restart loop. On clean exit,
+REM                          prompts to restart (Y in 5s, N to quit).
+REM                          On crash (non-zero exit), auto-restarts
+REM                          after 7s cooldown.
+REM ============================================================
+
+:loop
+title Brad's Playground (running)
+echo.
+echo [%TIME%] Starting client...
+echo.
+
+jre\bin\java.exe ^
+  -Xms256m -Xmx2048m -Xss2m ^
+  -XX:+UseG1GC ^
+  -XX:CompileThreshold=10000 ^
+  -Dsun.java2d.noddraw=true ^
+  -Dsun.java2d.d3d=false ^
+  -Dsun.java2d.opengl=false ^
+  -Dsun.net.client.defaultConnectTimeout=10000 ^
+  -Dsun.net.client.defaultReadTimeout=20000 ^
+  -Dnetworkaddress.cache.ttl=10 ^
+  -Dnetworkaddress.cache.negative.ttl=0 ^
+  -cp "client\bin;client\clientlibs.jar" ^
+  game.RS3Applet
+
+set EXITCODE=%errorlevel%
+title Brad's Playground (exited - code %EXITCODE%)
+echo.
+echo [%TIME%] Client exited with code %EXITCODE%.
+
+if "%EXITCODE%"=="0" (
+    echo.
+    choice /c yn /t 5 /d y /m "Restart in 5s (Y/N)"
+    if errorlevel 2 goto end
+    echo Restarting...
+) else (
+    echo Crash detected. Auto-restarting in 7 seconds...
+    echo Press Ctrl+C now to abort.
+    timeout /t 7 /nobreak > nul 2>&1
+)
+
+echo.
+goto loop
+
+:end
+echo.
+echo Goodbye.
+timeout /t 2 > nul 2>&1
+exit /b 0
