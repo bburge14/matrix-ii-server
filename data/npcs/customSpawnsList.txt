@@ -86,57 +86,84 @@
 // ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
-// === DZ Lobby Trader Hub - all skill masters consolidated in DZ lobby ===
-// Row 1 (y=4365): gathering / starter skills
-1401 - 3781 4365 1
+4906 - 2917 3445 0
+// ^ Wilfred - Woodcutting Master in Taverly skill cluster (shop 200)
+15085 - 2923 3460 0
+// ^ Nails Newton (Thieving) - moved from (2881, 3444); allowed to walk (see WALKING_TRADERS in NPCSpawns)
+// === Pickpocketable NPC cluster around Nails for thieving practice ===
+// Master Farmer 2234 already exists at (2923, 3459) - kept
+1 - 2920 3458 0
+// ^ Man (Thieving 1)
+7 - 2922 3458 0
+// ^ Farmer (Thieving 10)
+18 - 2924 3458 0
+// ^ Warrior woman (Thieving 25)
+187 - 2920 3460 0
+// ^ Rogue (Thieving 32)
+296 - 2926 3460 0
+// ^ Guard (Thieving 40)
+23 - 2920 3462 0
+// ^ Knight of Ardougne (Thieving 55)
+1905 - 2922 3462 0
+// ^ Menaphite Thug (Thieving 65)
+20 - 2924 3462 0
+// ^ Paladin (Thieving 70)
+21 - 2926 3462 0
+// ^ Hero (Thieving 80)
+2109 - 2920 3464 0
+// ^ Dwarf Trader (Thieving 90)
+// === DZ Lobby Trader Hub - 24 skill masters around the hub at (3787, 4384, 1) ===
+// 4 rows of 6 NPCs each, surrounding the central hub area but leaving the
+// middle (y=4382-4386) clear for the existing statue/tree/decor.
+// Row A (y=4378, south): gathering skills
+1401 - 3779 4378 1
 // ^ DZ Lobby: Lumberjack Leif (Woodcutting)
-666 - 3784 4365 1
+666 - 3782 4378 1
 // ^ DZ Lobby: Master Fisher Harry (Fishing)
-14870 - 3787 4365 1
+14870 - 3785 4378 1
 // ^ DZ Lobby: Tobias Bronzearms (Mining)
-18 - 3790 4365 1
+18 - 3788 4378 1
 // ^ DZ Lobby: Ellis the Tanner
-14858 - 3793 4365 1
+14858 - 3791 4378 1
 // ^ DZ Lobby: Alison Elmshaper (Fletching)
-// Row 2 (y=4367): processing / crafting
-14874 - 3781 4367 1
+14874 - 3794 4378 1
 // ^ DZ Lobby: Martin Steelweaver (Smithing)
-7883 - 3784 4367 1
+// Row B (y=4380): processing skills
+7883 - 3779 4380 1
 // ^ DZ Lobby: Master Cook
-6988 - 3787 4367 1
+6988 - 3782 4380 1
 // ^ DZ Lobby: Pikkupstix (Summoning)
-706 - 3790 4367 1
+706 - 3785 4380 1
 // ^ DZ Lobby: Old wizard (RC)
-14883 - 3793 4367 1
+14883 - 3788 4380 1
 // ^ DZ Lobby: Marcus Everburn (Firemaking)
-// Row 3 (y=4369): combat / agility / divination
-15085 - 3781 4369 1
+15085 - 3791 4380 1
 // ^ DZ Lobby: Nails Newton (Thieving)
-14852 - 3784 4369 1
+14852 - 3794 4380 1
 // ^ DZ Lobby: Drill Sergeant Hartman (Agility)
-1060 - 3787 4369 1
+// Row C (y=4388, north): combat / divine
+1060 - 3779 4388 1
 // ^ DZ Lobby: Commander Denulth (Combat)
-2566 - 3790 4369 1
+2566 - 3782 4388 1
 // ^ DZ Lobby: Venerable sage (Divination)
-682 - 3793 4369 1
+682 - 3785 4388 1
 // ^ DZ Lobby: Armour salesman (Range)
-// Row 4 (y=4371): magic / prayer / pets / defence
-946 - 3781 4371 1
+946 - 3788 4388 1
 // ^ DZ Lobby: Master of Magics
-216 - 3784 4371 1
+216 - 3791 4388 1
 // ^ DZ Lobby: High Priest of Entrana (Prayer)
-6893 - 3787 4371 1
+6893 - 3794 4388 1
 // ^ DZ Lobby: Master Pet Shop
-589 - 3790 4371 1
+// Row D (y=4390): support skills
+589 - 3779 4390 1
 // ^ DZ Lobby: Plate mail seller (Defence)
-14877 - 3793 4371 1
+14877 - 3782 4390 1
 // ^ DZ Lobby: Jack Oval (Crafting)
-// Row 5 (y=4373): construction / slayer / farming / hunter
-14862 - 3781 4373 1
+14862 - 3785 4390 1
 // ^ DZ Lobby: Alfred Stonemason (Construction)
-14868 - 3784 4373 1
+14868 - 3788 4390 1
 // ^ DZ Lobby: Jacquelyn Manslaughter (Slayer)
-14860 - 3787 4373 1
+14860 - 3791 4390 1
 // ^ DZ Lobby: Head Farmer Jones (Farming)
-14864 - 3790 4373 1
+14864 - 3794 4390 1
 // ^ DZ Lobby: Ayleth Beaststalker (Hunter)

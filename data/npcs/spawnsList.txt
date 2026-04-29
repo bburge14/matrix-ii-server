@@ -3389,7 +3389,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - null, 0
 // REMOVED: 14957 - 2886 3455 0 (Blood nihil - dump labeled "Nails Newton" was wrong; cache renders 14957 as nihil)
 //RSBOT DUMPED - Nails Newton, 0
-15085 - 2881 3444 0
+// MOVED: 15085 - 2881 3444 0 -> see customSpawnsList for new (2923, 3460) location
 //RSBOT DUMPED - Farmer, 0
 15001 - 2887 3465 0
 //RSBOT DUMPED - Pompous Merchant, 0

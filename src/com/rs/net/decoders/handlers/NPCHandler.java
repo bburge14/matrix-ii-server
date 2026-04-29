@@ -1219,10 +1219,11 @@ public class NPCHandler {
      * one of our shop NPCs. Used by handleOption2 (right-click Trade) to
      * open the shop directly without going through the dialogue.
      */
-    private static int skillShopForNpc(int npcId) {
+    public static int skillShopForNpc(int npcId) {
 	switch (npcId) {
 	    // Free-zone skill masters (NPC IDs verified by user via ::npchere)
 	    case 1401: return 200;  // Lumberjack Leif (Woodcutting)
+	    case 4906: return 200;  // Wilfred (Woodcutting) - Taverly
 	    case 666:  return 201;  // Master Fisher Harry
 	    case 14879: return 201; // Nicholas Angle (Fishing) - corrected from 14998
 	    case 39:   return 202;  // Foreman (Mining)
