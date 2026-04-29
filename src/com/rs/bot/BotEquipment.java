@@ -97,7 +97,7 @@ public final class BotEquipment {
         }
         try {
             int pouch = bot.getMoneyPouch().getCoinsAmount();
-            int invCoins = bot.getInventory().getNumberOf(995);
+            int invCoins = bot.getInventory().getAmountOf(995);
             int totalGp = pouch + invCoins;
             if (totalGp < price) return false;
             // Pay from pouch first, then inventory.
