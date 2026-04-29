@@ -175,6 +175,32 @@ public final class EnvironmentScanner {
 
     // ===== Internals =====
 
+    /**
+     * Generic name-substring object scanner. Returns the nearest WorldObject
+     * whose definition name contains any of the given substrings (case-
+     * insensitive). Used for cooking ranges, anvils, furnaces, etc.
+     */
+    public static WorldObject findNearestObjectByName(WorldTile from, int radius, String... nameSubstrings) {
+        WorldObject best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (WorldObject o : nearbyObjects(from, radius)) {
+            String name = nameOf(o);
+            if (name == null) continue;
+            String lower = name.toLowerCase();
+            boolean match = false;
+            for (String s : nameSubstrings) {
+                if (s != null && lower.contains(s.toLowerCase())) { match = true; break; }
+            }
+            if (!match) continue;
+            int d = manhattan(from, o);
+            if (d < bestDist) {
+                bestDist = d;
+                best = o;
+            }
+        }
+        return best;
+    }
+
     private static List<WorldObject> nearbyObjects(WorldTile from, int radius) {
         // The bot's region (and the 8 surrounding regions) is the right scan
         // radius for objects. For a 10-tile radius the bot's own region is

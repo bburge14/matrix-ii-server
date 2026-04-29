@@ -1019,7 +1019,59 @@ public class BotBrain {
             case COMBAT:      tryStartCombat(method); break;
             case THIEVING:    tryStartThieving(method); break;
             case FIREMAKING:  tryStartFiremaking(method); break;
+            case COOKING:     tryStartCooking(method); break;
         }
+    }
+
+    private void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "cook: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Find a range/stove/fire near the bot's tile.
+        com.rs.game.WorldObject range =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "range", "stove", "fire", "firepit");
+        if (range == null) {
+            lastDiagnostic = "cook: no range/stove/fire in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no range nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        // Walk adjacent if not already
+        if (!isAdjacent(bot.getX(), bot.getY(), range)) {
+            BotPathing.walkToObject(bot, range);
+            lastDiagnostic = "cook: walking to range";
+            return;
+        }
+        // Find first raw food in inventory the bot can cook
+        com.rs.game.item.Item rawItem = null;
+        com.rs.game.player.actions.Cooking.Cookables cookable = null;
+        for (int i = 0; i < bot.getInventory().getItemsContainerSize(); i++) {
+            com.rs.game.item.Item it = bot.getInventory().getItem(i);
+            if (it == null) continue;
+            try {
+                com.rs.game.player.actions.Cooking.Cookables c =
+                    com.rs.game.player.actions.Cooking.Cookables.forId((short) it.getId());
+                if (c == null) continue;
+                if (bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING) < c.getLvl()) continue;
+                rawItem = it;
+                cookable = c;
+                break;
+            } catch (Throwable ignored) {}
+        }
+        if (rawItem == null) {
+            lastDiagnostic = "cook: no raw food in inventory";
+            if (Utils.random(100) < 30) sayDebug("no raw food to cook");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(
+            new com.rs.game.player.actions.Cooking(range, rawItem, 28, cookable));
+        lastDiagnostic = "cook: cooking " + rawItem.getId();
+        if (Utils.random(100) < 30) say("cooking up dinner");
     }
 
     private void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {

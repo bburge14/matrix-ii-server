@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING }
 
     public static final class Method {
         public final String description;
@@ -308,6 +308,20 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+
+        // ---- Cooking (process-skill: requires raw food + range nearby) ----
+        // Kitchens at well-known towns. Bot scans for "range" / "stove" /
+        // "fire" object near these coords, picks raw food from inventory,
+        // setAction(new Cooking(...)).
+        ALL.add(b("Cook food - Lumbridge kitchen", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(3211, 3215).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
+        ALL.add(b("Cook food - Catherby kitchen", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(2818, 3443).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
+        ALL.add(b("Cook food - Al-Kharid", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(3271, 3180).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
         // NPC IDs verified in 830 cache via examines:
@@ -605,6 +619,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:fishing"))     return Kind.FISHING;
         if (key.startsWith("skill:thieving"))    return Kind.THIEVING;
         if (key.startsWith("skill:firemaking"))  return Kind.FIREMAKING;
+        if (key.startsWith("skill:cooking"))     return Kind.COOKING;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")
