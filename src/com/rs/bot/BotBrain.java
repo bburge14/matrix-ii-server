@@ -1021,7 +1021,39 @@ public class BotBrain {
             case FIREMAKING:  tryStartFiremaking(method); break;
             case COOKING:     tryStartCooking(method); break;
             case SMELTING:    tryStartSmelting(method); break;
+            case CRAFTING:    tryStartCrafting(method); break;
         }
+    }
+
+    private void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "craft: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Need a chisel - try to buy if missing
+        if (!bot.getInventory().containsItemToolBelt(1755)) BotEquipment.tryBuyTool(bot, 1755);
+        // Find highest-tier gem the bot can cut and has in inventory
+        com.rs.game.player.actions.GemCutting.Gem target = null;
+        int botLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
+        for (com.rs.game.player.actions.GemCutting.Gem g : com.rs.game.player.actions.GemCutting.Gem.values()) {
+            if (botLvl < g.getLevelRequired()) continue;
+            if (!bot.getInventory().containsItem(g.getUncut(), 1)) continue;
+            if (target == null || g.getLevelRequired() > target.getLevelRequired()) target = g;
+        }
+        if (target == null) {
+            lastDiagnostic = "craft: no uncut gems in inventory";
+            if (Utils.random(100) < 30) sayDebug("no uncut gems");
+            goalBlacklist.add(method);
+            return;
+        }
+        int qty = bot.getInventory().getAmountOf(target.getUncut());
+        bot.getActionManager().setAction(
+            new com.rs.game.player.actions.GemCutting(target, qty));
+        lastDiagnostic = "craft: cutting " + target;
+        if (Utils.random(100) < 30) say("cutting some gems");
     }
 
     private void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {

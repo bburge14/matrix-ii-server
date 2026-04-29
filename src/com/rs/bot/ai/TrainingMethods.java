@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING, CRAFTING }
 
     public static final class Method {
         public final String description;
@@ -308,6 +308,13 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+
+        // ---- Crafting (process-skill: cut uncut gems with chisel) ----
+        // Requires uncut gems (gem drops from mining or monster loot).
+        // Bot picks highest-tier gem from inventory to cut.
+        ALL.add(b("Cut gems - any bank", Kind.CRAFTING)
+            .skill(Skills.CRAFTING).lvl(1, 99).at(3094, 3491).xp(40000).gp(0)
+            .needs(1625, 1627, 1629, 1623, 1621, 1619, 1617, 1631, 6571).build());
 
         // ---- Smelting (process-skill: requires ores + furnace) ----
         // Bot finds a furnace nearby and smelts the highest-tier bar it
@@ -634,6 +641,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:firemaking"))  return Kind.FIREMAKING;
         if (key.startsWith("skill:cooking"))     return Kind.COOKING;
         if (key.startsWith("skill:smithing"))    return Kind.SMELTING; // smelting bars covers most smithing xp
+        if (key.startsWith("skill:crafting"))    return Kind.CRAFTING;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")
