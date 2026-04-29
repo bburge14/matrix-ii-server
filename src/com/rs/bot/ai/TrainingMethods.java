@@ -294,17 +294,89 @@ public final class TrainingMethods {
             .skill(Skills.THIEVING).lvl(90, 99).at(2920, 3464).xp(556500).gp(400000)
             .npcs(2109, 2110, 2111, 2112, 2113, 2114, 2115, 2116, 2117, 2118).build());
 
-        // ---- Combat training ----
-        // Coords/IDs verified against spawnsList.txt.
+        // ---- Combat training - level-tiered with multiple options per
+        // bracket so bots scatter across the world like real players ----
+        // Tier 1 (cb 1-30): cows, chickens, goblins, rats
         ALL.add(b("Train combat - Lumbridge cows", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 30).at(3027, 3307).xp(10000).cb(1)
             .npcs(81, 11238).build());
+        ALL.add(b("Train combat - Lumbridge chickens", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 15).at(3231, 3296).xp(8000).cb(1)
+            .npcs(41, 1017).build());
+        ALL.add(b("Train combat - Goblin Village", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 25).at(2956, 3506).xp(11000).cb(1)
+            .npcs(100, 101, 102, 297, 298, 299, 4493).build());
+        ALL.add(b("Train combat - Lumbridge rats", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 15).at(3187, 3270).xp(8000).cb(1)
+            .npcs(2854, 2855).build());
+
+        // Tier 2 (cb 30-60): guards, knights, hill giants
         ALL.add(b("Train combat - Falador guards", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(30, 60).at(2964, 3396).xp(25000).cb(30)
-            .npcs(9).build());
-        ALL.add(b("Train combat - Rock crabs", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(60, 99).at(2721, 3726).xp(45000).cb(60)
-            .npcs(1265).build());
+            .npcs(9, 32, 33, 34).build());
+        ALL.add(b("Train combat - Edgeville Dungeon hill giants", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(30, 60).at(3117, 9844).xp(28000).cb(30)
+            .npcs(2098, 117).build());
+        ALL.add(b("Train combat - Varrock guards", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(30, 50).at(3208, 3416).xp(24000).cb(30)
+            .npcs(9, 32).build());
+        ALL.add(b("Train combat - Al-Kharid warriors", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(30, 55).at(3294, 3187).xp(25000).cb(30)
+            .npcs(15, 18).build());
+
+        // Tier 3 (cb 60-90): rock crabs, dagannoth, ankou, nechryael, kalphites
+        ALL.add(b("Train combat - Rock crabs Rellekka", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 90).at(2721, 3726).xp(45000).cb(60)
+            .npcs(1265, 1267).build());
+        ALL.add(b("Train combat - Ankou Stronghold", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 85).at(2024, 5251).xp(48000).cb(60)
+            .npcs(98, 1798).build());
+        ALL.add(b("Train combat - Experiment cave", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(50, 75).at(3539, 9963).xp(40000).cb(50)
+            .npcs(1677, 1678).build());
+        ALL.add(b("Train combat - Kalphite soldiers", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 85).at(3304, 3149).xp(50000).cb(60)
+            .npcs(1308, 1309).build());
+
+        // Tier 4 (cb 90-120): nechryael, dust devils, abyssal demons, gargoyles
+        ALL.add(b("Train combat - Slayer tower abyssal demons", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(85, 120).at(3417, 3563).xp(70000).cb(85)
+            .gp(180000)
+            .npcs(1615, 1616, 13345).build());
+        ALL.add(b("Train combat - Slayer tower gargoyles", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(75, 110).at(3437, 3552).xp(65000).cb(75)
+            .gp(120000)
+            .npcs(1610, 1611).build());
+        ALL.add(b("Train combat - Dust devils Smoke", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(65, 95).at(3309, 9376).xp(55000).cb(65)
+            .gp(80000)
+            .npcs(1624, 1625).build());
+
+        // Tier 5 (cb 100+ bossing - profitable PvM)
+        ALL.add(b("Boss - King Black Dragon", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(85, 99).at(2273, 4680).xp(80000).cb(95)
+            .gp(800000)
+            .npcs(50).build());
+        ALL.add(b("Boss - Kalphite Queen", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(90, 99).at(3485, 9510).xp(90000).cb(110)
+            .gp(1500000)
+            .npcs(1158, 1160).build());
+        ALL.add(b("Boss - GWD Bandos", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(70, 99).at(2864, 5354).xp(75000).cb(110)
+            .gp(2000000)
+            .npcs(6260).build());
+        ALL.add(b("Boss - GWD Armadyl", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(70, 99).at(2839, 5296).xp(75000).cb(110)
+            .gp(2500000)
+            .npcs(6222).build());
+        ALL.add(b("Boss - GWD Saradomin", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(70, 99).at(2913, 5273).xp(75000).cb(110)
+            .gp(1800000)
+            .npcs(6247).build());
+        ALL.add(b("Boss - GWD Zamorak", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(70, 99).at(2926, 5333).xp(75000).cb(110)
+            .gp(1700000)
+            .npcs(6203).build());
     }
 
     private static Builder b(String d, Kind k) { return new Builder(d, k); }
