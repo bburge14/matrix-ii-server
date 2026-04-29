@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING }
 
     public static final class Method {
         public final String description;
@@ -201,6 +201,41 @@ public final class TrainingMethods {
             .skill(Skills.FISHING).lvl(76, 99).at(2611, 3393).xp(55000).gp(80000)
             .fish(FishingSpots.HARPOON).build());
 
+        // ---- Thieving (pickpocket targets clustered around Nails) ----
+        ALL.add(b("Pickpocket man - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(1, 9).at(2920, 3458).xp(8000).gp(2000)
+            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170).build());
+        ALL.add(b("Pickpocket farmer - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(10, 24).at(2922, 3458).xp(14500).gp(5000)
+            .npcs(7, 1757, 1758, 1760).build());
+        ALL.add(b("Pickpocket warrior - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(25, 31).at(2924, 3458).xp(26000).gp(8000)
+            .npcs(15, 18).build());
+        ALL.add(b("Pickpocket rogue - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(32, 37).at(2920, 3460).xp(35500).gp(15000)
+            .npcs(187, 2267, 2268, 2269, 8122).build());
+        ALL.add(b("Pickpocket master farmer - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(38, 39).at(2923, 3459).xp(43000).gp(20000)
+            .npcs(2234, 2235).build());
+        ALL.add(b("Pickpocket guard - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(40, 54).at(2926, 3460).xp(46500).gp(30000)
+            .npcs(9, 32, 206, 296, 297, 298, 299, 344, 345, 346, 368, 678, 812).build());
+        ALL.add(b("Pickpocket Ardougne knight - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(55, 64).at(2920, 3462).xp(84300).gp(50000)
+            .npcs(23, 26).build());
+        ALL.add(b("Pickpocket Menaphite thug - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(65, 69).at(2922, 3462).xp(137500).gp(60000)
+            .npcs(1905).build());
+        ALL.add(b("Pickpocket paladin - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(70, 79).at(2924, 3462).xp(151750).gp(80000)
+            .npcs(20, 2256).build());
+        ALL.add(b("Pickpocket hero - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(80, 89).at(2926, 3462).xp(275000).gp(200000)
+            .npcs(21).build());
+        ALL.add(b("Pickpocket Dwarf trader - Burthorpe", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(90, 99).at(2920, 3464).xp(556500).gp(400000)
+            .npcs(2109, 2110, 2111, 2112, 2113, 2114, 2115, 2116, 2117, 2118).build());
+
         // ---- Combat training ----
         // Coords/IDs verified against spawnsList.txt.
         ALL.add(b("Train combat - Lumbridge cows", Kind.COMBAT)
@@ -223,6 +258,19 @@ public final class TrainingMethods {
      * applies (e.g. unsupported goal type). Caller should fall back to
      * the legacy WorldKnowledge-only behaviour if this returns null.
      */
+    /**
+     * Find the first applicable method for a bot of a given Kind. Used by
+     * ::botforce for manual triggering.
+     */
+    public static Method firstApplicable(AIPlayer bot, Kind kind) {
+        if (bot == null || kind == null) return null;
+        for (Method m : ALL) {
+            if (m.kind != kind) continue;
+            if (m.isApplicable(bot)) return m;
+        }
+        return null;
+    }
+
     public static Method bestMethodFor(Goal goal, AIPlayer bot) {
         if (goal == null || bot == null) return null;
         GoalType type = goal.getData("goalType", GoalType.class);
@@ -260,6 +308,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:woodcutting")) return Kind.WOODCUTTING;
         if (key.startsWith("skill:mining"))      return Kind.MINING;
         if (key.startsWith("skill:fishing"))     return Kind.FISHING;
+        if (key.startsWith("skill:thieving"))    return Kind.THIEVING;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")

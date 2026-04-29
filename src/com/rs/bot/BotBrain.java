@@ -55,6 +55,22 @@ public class BotBrain {
     /** Wallclock at which we last swept the GE for completed offers. */
     private long lastGECollectionTick;
     private String currentActivity;
+    /** Last diagnostic message - used by ::botinfo for debugging. */
+    private String lastDiagnostic = "";
+    /** Last training method picked - used by ::botinfo for debugging. */
+    private com.rs.bot.ai.TrainingMethods.Method lastMethod;
+
+    public String getLastDiagnostic() { return lastDiagnostic; }
+    public com.rs.bot.ai.TrainingMethods.Method getLastMethod() { return lastMethod; }
+    /** ::botforce hook - drive a specific method through one tick. */
+    public void forceTrainingMethod(com.rs.bot.ai.TrainingMethods.Method m) {
+        Goal g = getCurrentGoal();
+        if (g == null) {
+            lastDiagnostic = "force: no current goal to attach method to";
+            return;
+        }
+        executeTrainingMethod(g, m);
+    }
 
     public BotBrain(AIPlayer bot) {
         this.bot = bot;
@@ -932,6 +948,7 @@ public class BotBrain {
      * scan for the right tree/rock/spot type (filtered) and start.
      */
     private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
+        this.lastMethod = method;
         // Walk-out phase - get to the training area first.
         if (method.location != null) {
             int dx = bot.getX() - method.location.getX();
@@ -954,21 +971,53 @@ public class BotBrain {
             case MINING:      tryStartMining(method); break;
             case FISHING:     tryStartFishing(method); break;
             case COMBAT:      tryStartCombat(method); break;
+            case THIEVING:    tryStartThieving(method); break;
         }
+    }
+
+    private void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (method == null || method.npcIds == null || method.npcIds.length == 0) {
+            lastDiagnostic = "thieving: no npc ids in method";
+            return;
+        }
+        com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 6, method.npcIds);
+        if (target == null) {
+            lastDiagnostic = "thieving: no target NPC in 6 tiles";
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), target.getX(), target.getY())) {
+            BotPathing.walkToEntity(bot, target);
+            lastDiagnostic = "thieving: walking to NPC " + target.getId();
+            return;
+        }
+        com.rs.game.player.actions.thieving.PickPocketableNPC data =
+            com.rs.game.player.actions.thieving.PickPocketableNPC.get(target.getId());
+        if (data == null) {
+            lastDiagnostic = "thieving: NPC " + target.getId() + " not pickpocketable";
+            return;
+        }
+        bot.getActionManager().setAction(
+            new com.rs.game.player.actions.thieving.PickPocketAction(target, data));
+        lastDiagnostic = "thieving: pickpocketing NPC " + target.getId();
+        if (Utils.random(100) < 25) say("nicked another one");
     }
 
     private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
+            lastDiagnostic = "wc: no tree found in 12 tiles (def=" + (method == null ? "any" : method.treeDef) + ")";
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
+            lastDiagnostic = "wc: walking to tree at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
         bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+        lastDiagnostic = "wc: chopping " + match.definition;
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
 
@@ -976,14 +1025,17 @@ public class BotBrain {
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
+            lastDiagnostic = "mining: no rock in 12 tiles (def=" + (method == null ? "any" : method.rockDef) + ")";
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
+            lastDiagnostic = "mining: walking to rock at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
         bot.getActionManager().setAction(new Mining(match.object, match.definition));
+        lastDiagnostic = "mining: extracting " + match.definition;
         if (Utils.random(100) < 30) say(miningChatter());
     }
 
@@ -991,14 +1043,17 @@ public class BotBrain {
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {
+            lastDiagnostic = "fishing: no spot in 14 tiles (def=" + (method == null ? "any" : method.fishDef) + ")";
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.npc.getX(), match.npc.getY())) {
+            lastDiagnostic = "fishing: walking to spot at " + match.npc.getX() + "," + match.npc.getY();
             BotPathing.walkToEntity(bot, match.npc);
             return;
         }
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
+        lastDiagnostic = "fishing: " + match.definition;
         if (Utils.random(100) < 30) say(fishingChatter());
     }
 
