@@ -74,6 +74,10 @@ class MatrixAPI:
     def snapshots(self):  return self._get("/admin/snapshots")
     def log_tail(self, n=200): return self._get(f"/admin/log/tail?lines={n}")
     def bot_inspect(self, name):    return self._get(f"/admin/bots/inspect?name={requests.utils.quote(name)}")
+    def bot_diagnose(self, name):   return self._get(f"/admin/bots/diagnose?name={requests.utils.quote(name)}")
+    def bot_scan(self, name):       return self._get(f"/admin/bots/scan?name={requests.utils.quote(name)}")
+    def bot_force(self, name, skill):
+        return self._post("/admin/bots/force", {"name": name, "skill": skill})
     def player_inspect(self, name): return self._get(f"/admin/players/inspect?name={requests.utils.quote(name)}")
 
     def bots_generate(self, count, mode="default", level=3, archetype="random"):

@@ -67,6 +67,9 @@ public final class AdminHttpServer {
             server.createContext("/admin/bots/delete",     auth(postOnly(new BotDeleteHandler())));
             server.createContext("/admin/bots/inspect",    auth(new BotInspectHandler()));
             server.createContext("/admin/bots/status",     auth(new BotStatusHandler()));
+            server.createContext("/admin/bots/diagnose",   auth(new BotDiagnoseHandler()));
+            server.createContext("/admin/bots/scan",       auth(new BotScanHandler()));
+            server.createContext("/admin/bots/force",      auth(postOnly(new BotForceHandler())));
             server.createContext("/admin/items/find",       auth(new ItemFindHandler()));
             server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
@@ -989,6 +992,125 @@ public final class AdminHttpServer {
     private static int parseIntOr(String s, int def) {
         if (s == null) return def;
         try { return Integer.parseInt(s.trim()); } catch (Throwable t) { return def; }
+    }
+
+    /** Bot diagnostic dump: goal, method, last diag, scan result, inventory free slots. */
+    private static class BotDiagnoseHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String name = queryParam(ex, "name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name query required\"}"); return; }
+            com.rs.bot.AIPlayer bot = findBot(name);
+            if (bot == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"bot not online\"}"); return; }
+            com.rs.bot.BotBrain brain = bot.getBrain();
+            if (brain == null) { sendText(ex, 500, "{\"ok\":false,\"error\":\"bot has no brain\"}"); return; }
+            StringBuilder sb = new StringBuilder("{\"ok\":true");
+            sb.append(",\"name\":\"").append(jsonEscape(bot.getDisplayName())).append("\"");
+            sb.append(",\"x\":").append(bot.getX()).append(",\"y\":").append(bot.getY()).append(",\"plane\":").append(bot.getPlane());
+            sb.append(",\"state\":\"").append(jsonEscape(String.valueOf(brain.getCurrentState()))).append("\"");
+            sb.append(",\"activity\":\"").append(jsonEscape(brain.getCurrentActivity())).append("\"");
+            com.rs.bot.ai.Goal g = brain.getCurrentGoal();
+            sb.append(",\"goal\":\"").append(jsonEscape(g == null ? "null" : g.getDescription())).append("\"");
+            com.rs.bot.ai.TrainingMethods.Method m = brain.getLastMethod();
+            sb.append(",\"method\":\"").append(jsonEscape(m == null ? "null" : m.description)).append("\"");
+            sb.append(",\"method_kind\":\"").append(jsonEscape(m == null ? "null" : String.valueOf(m.kind))).append("\"");
+            sb.append(",\"diag\":\"").append(jsonEscape(brain.getLastDiagnostic())).append("\"");
+            try { sb.append(",\"free_inv\":").append(bot.getInventory().getFreeSlots()); } catch (Throwable ignored) {}
+            try { sb.append(",\"hp\":").append(bot.getHitpoints()); } catch (Throwable ignored) {}
+            try { sb.append(",\"locked\":").append(bot.isLocked()); } catch (Throwable ignored) {}
+            try { sb.append(",\"working\":").append(bot.getActionManager() != null && bot.getActionManager().hasSkillWorking()); } catch (Throwable ignored) {}
+            sb.append("}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    /** Bot scanner dump: nearest tree/rock/fish/NPC at the bot's tile. */
+    private static class BotScanHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String name = queryParam(ex, "name");
+            if (name == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"name query required\"}"); return; }
+            com.rs.bot.AIPlayer bot = findBot(name);
+            if (bot == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"bot not online\"}"); return; }
+            com.rs.bot.ai.EnvironmentScanner.TreeMatch tm = com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, 12);
+            com.rs.bot.ai.EnvironmentScanner.RockMatch rm = com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, 12);
+            com.rs.bot.ai.EnvironmentScanner.FishMatch fm = com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, 14);
+            StringBuilder sb = new StringBuilder("{\"ok\":true");
+            sb.append(",\"x\":").append(bot.getX()).append(",\"y\":").append(bot.getY()).append(",\"plane\":").append(bot.getPlane());
+            if (tm != null) sb.append(",\"tree\":{\"def\":\"").append(jsonEscape(String.valueOf(tm.definition))).append("\",\"x\":").append(tm.object.getX()).append(",\"y\":").append(tm.object.getY()).append("}");
+            else sb.append(",\"tree\":null");
+            if (rm != null) sb.append(",\"rock\":{\"def\":\"").append(jsonEscape(String.valueOf(rm.definition))).append("\",\"x\":").append(rm.object.getX()).append(",\"y\":").append(rm.object.getY()).append("}");
+            else sb.append(",\"rock\":null");
+            if (fm != null) sb.append(",\"fish\":{\"def\":\"").append(jsonEscape(String.valueOf(fm.definition))).append("\",\"x\":").append(fm.npc.getX()).append(",\"y\":").append(fm.npc.getY()).append("}");
+            else sb.append(",\"fish\":null");
+            sb.append("}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    /** POST {"name":"X","skill":"wc|mining|fishing|thieving|combat"} - manually drive a TrainingMethod. */
+    private static class BotForceHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            java.util.Map<String, String> body = readJsonBody(ex);
+            String name = body.get("name");
+            String skill = body.get("skill");
+            if (name == null || skill == null) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need name+skill\"}"); return; }
+            com.rs.bot.AIPlayer bot = findBot(name);
+            if (bot == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"bot not online\"}"); return; }
+            com.rs.bot.ai.TrainingMethods.Kind kind;
+            switch (skill.toLowerCase()) {
+                case "wc": case "woodcutting": kind = com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING; break;
+                case "mining":   kind = com.rs.bot.ai.TrainingMethods.Kind.MINING; break;
+                case "fishing":  kind = com.rs.bot.ai.TrainingMethods.Kind.FISHING; break;
+                case "thieving": kind = com.rs.bot.ai.TrainingMethods.Kind.THIEVING; break;
+                case "combat":   kind = com.rs.bot.ai.TrainingMethods.Kind.COMBAT; break;
+                default: sendText(ex, 400, "{\"ok\":false,\"error\":\"unknown skill\"}"); return;
+            }
+            com.rs.bot.ai.TrainingMethods.Method m = com.rs.bot.ai.TrainingMethods.firstApplicable(bot, kind);
+            if (m == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"no applicable method\"}"); return; }
+            bot.getBrain().forceTrainingMethod(m);
+            sendText(ex, 200, "{\"ok\":true,\"method\":\"" + jsonEscape(m.description) + "\"}");
+        }
+    }
+
+    private static com.rs.bot.AIPlayer findBot(String name) {
+        for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+            if (p == null || p.hasFinished()) continue;
+            if (!(p instanceof com.rs.bot.AIPlayer)) continue;
+            if (name.equalsIgnoreCase(p.getDisplayName())) return (com.rs.bot.AIPlayer) p;
+        }
+        return null;
+    }
+
+    private static String queryParam(HttpExchange ex, String key) {
+        String q = ex.getRequestURI().getQuery();
+        if (q == null) return null;
+        for (String pair : q.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(key)) {
+                try { return java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8"); }
+                catch (Exception e) { return null; }
+            }
+        }
+        return null;
+    }
+
+    private static java.util.Map<String, String> readJsonBody(HttpExchange ex) throws IOException {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        java.io.InputStream is = ex.getRequestBody();
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[1024];
+        int r;
+        while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
+        String body = baos.toString("UTF-8").trim();
+        if (body.startsWith("{")) body = body.substring(1);
+        if (body.endsWith("}")) body = body.substring(0, body.length() - 1);
+        for (String pair : body.split(",")) {
+            int colon = pair.indexOf(':');
+            if (colon <= 0) continue;
+            String k = pair.substring(0, colon).trim().replace("\"", "");
+            String v = pair.substring(colon + 1).trim().replace("\"", "");
+            out.put(k, v);
+        }
+        return out;
     }
 
     private static String jsonEscape(String s) {
