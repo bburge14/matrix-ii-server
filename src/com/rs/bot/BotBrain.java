@@ -999,6 +999,10 @@ public class BotBrain {
             }
         }
         goal.setCurrentStep(method.description);
+        // 0.D: align bot's combat XP style with the goal so the right skill
+        // gets trained. Goal 'skill:attack 30' -> Accurate, 'skill:strength
+        // 30' -> Aggressive, 'skill:defence 30' -> Defensive.
+        applyXpStyleForGoal(goal);
         // Announce the activity once per method change so players hear what
         // bots are doing instead of generic goal descriptions.
         announceMethodStart(method);
@@ -1013,6 +1017,33 @@ public class BotBrain {
 
     /** Last training method the bot announced - used to avoid spamming chat. */
     private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+
+    /**
+     * Set bot's melee/ranged/magic XP style based on the current goal's
+     * target skill. Without this, every combat-trained bot dumped XP into
+     * Attack regardless of whether their step was "Train Strength to 30".
+     */
+    private void applyXpStyleForGoal(Goal goal) {
+        if (goal == null) return;
+        com.rs.bot.ai.GoalType type = goal.getData("goalType", com.rs.bot.ai.GoalType.class);
+        if (type == null) return;
+        String key = type.getRequirementKey();
+        if (key == null) return;
+        try {
+            com.rs.game.player.CombatDefinitions cd = bot.getCombatDefinitions();
+            if (cd == null) return;
+            // Melee styles: 0=Accurate(Attack), 1=Aggressive(Strength), 2=Controlled, 3=Defensive
+            if (key.equals("skill:attack"))   cd.setMeleeCombatExperience(0);
+            else if (key.equals("skill:strength")) cd.setMeleeCombatExperience(1);
+            else if (key.equals("skill:defence"))  cd.setMeleeCombatExperience(3);
+            else if (key.equals("skill:hitpoints")) cd.setMeleeCombatExperience(2); // controlled (split)
+            else if (key.equals("combat:max")) cd.setMeleeCombatExperience(2); // balanced
+            // Ranged styles: 0=Accurate(Range), 1=Rapid(Range), 2=Longrange(Range+Defence)
+            else if (key.equals("skill:ranged")) cd.setRangedCombatExperience(0);
+            // Magic styles: 0=Magic dmg, 1=Defensive cast (split with Defence)
+            else if (key.equals("skill:magic")) cd.setMagicCombatExperience(0);
+        } catch (Throwable ignored) {}
+    }
 
     /** Stuck detection: snapshot of current method's relevant XP, when set. */
     private long stuckXpSnapshot = -1;
