@@ -1236,15 +1236,29 @@ public class BotBrain {
     private static final int SHOP_FISHMONGER = 201;
     private static final int SHOP_ORE_TRADER = 202;
     private static final int SHOP_TANNER = 203;
+    private static final int SHOP_FLETCHER = 207;
+    private static final int SHOP_SMITH = 208;
+    private static final int SHOP_COOK = 209;
+    private static final int SHOP_DIVINER = 222;
+    private static final int SHOP_FIREMAKING = 218;
 
-    // Logs (any tier)
-    private static final int[] LOG_IDS = {1511, 1521, 1519, 1517, 1515, 1513, 6332};
+    // Logs (any tier including pyre)
+    private static final int[] LOG_IDS = {1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448};
     // Raw fish (common types)
     private static final int[] RAW_FISH_IDS = {317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270};
+    // Cooked fish (Cook shop buys these back)
+    private static final int[] COOKED_FISH_IDS = {315, 319, 325, 333, 379, 385, 7946, 15272};
     // Ores
     private static final int[] ORE_IDS = {436, 438, 440, 442, 444, 447, 449, 451, 21622};
+    // Bars (smelted from ores - Smith shop buys back)
+    private static final int[] BAR_IDS = {2349, 2351, 2353, 2355, 2357, 2359, 2361, 2363};
     // Hides + bones (Tanner buys both)
-    private static final int[] HIDE_BONE_IDS = {1739, 1745, 1751, 526, 532, 536, 3183, 4812};
+    private static final int[] HIDE_BONE_IDS = {1739, 1745, 1751, 526, 532, 536, 3183, 4812, 1741, 1743};
+    // Divination memories + energies (12 of each tier)
+    private static final int[] DIVINATION_IDS = {
+        29312, 29313, 29314, 29315, 29316, 29317, 29318, 29319, 29320, 29321, 29322, 29323,
+        29383, 29384, 29385, 29386, 29387, 29388, 29389, 29390, 29391, 29392, 29393, 29394
+    };
 
     /**
      * Walk through inventory and dump matching raw drops to the right
@@ -1254,8 +1268,11 @@ public class BotBrain {
         int total = 0;
         total += sellMatchingItems(b, LOG_IDS, SHOP_FORESTER);
         total += sellMatchingItems(b, RAW_FISH_IDS, SHOP_FISHMONGER);
+        total += sellMatchingItems(b, COOKED_FISH_IDS, SHOP_COOK);
         total += sellMatchingItems(b, ORE_IDS, SHOP_ORE_TRADER);
+        total += sellMatchingItems(b, BAR_IDS, SHOP_SMITH);
         total += sellMatchingItems(b, HIDE_BONE_IDS, SHOP_TANNER);
+        total += sellMatchingItems(b, DIVINATION_IDS, SHOP_DIVINER);
         return total;
     }
 
