@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING, CRAFTING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING, CRAFTING, PRAYER }
 
     public static final class Method {
         public final String description;
@@ -308,6 +308,16 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+
+        // ---- Prayer (process-skill: bones on altar) ----
+        // Bot needs bones in inventory and an altar object. 4x XP via altar
+        // vs burying. Common altar locations: Edgeville monastery, POH altars.
+        ALL.add(b("Bones on altar - Edgeville monastery", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(3056, 3484).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
+        ALL.add(b("Bones on altar - Falador church", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(2995, 3372).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
 
         // ---- Crafting (process-skill: cut uncut gems with chisel) ----
         // Requires uncut gems (gem drops from mining or monster loot).
@@ -642,6 +652,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:cooking"))     return Kind.COOKING;
         if (key.startsWith("skill:smithing"))    return Kind.SMELTING; // smelting bars covers most smithing xp
         if (key.startsWith("skill:crafting"))    return Kind.CRAFTING;
+        if (key.startsWith("skill:prayer"))      return Kind.PRAYER;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")

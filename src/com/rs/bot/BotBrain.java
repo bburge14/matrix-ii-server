@@ -1022,7 +1022,60 @@ public class BotBrain {
             case COOKING:     tryStartCooking(method); break;
             case SMELTING:    tryStartSmelting(method); break;
             case CRAFTING:    tryStartCrafting(method); break;
+            case PRAYER:      tryStartPrayer(method); break;
         }
+    }
+
+    private void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "prayer: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.WorldObject altar =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "altar");
+        if (altar == null) {
+            lastDiagnostic = "prayer: no altar in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no altar nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), altar)) {
+            BotPathing.walkToObject(bot, altar);
+            lastDiagnostic = "prayer: walking to altar";
+            return;
+        }
+        // Find highest-tier bones in inventory
+        com.rs.game.player.content.BonesOnAltar.Bones targetBone = null;
+        com.rs.game.item.Item targetItem = null;
+        int highestXp = -1;
+        for (int i = 0; i < bot.getInventory().getItemsContainerSize(); i++) {
+            com.rs.game.item.Item it = bot.getInventory().getItem(i);
+            if (it == null) continue;
+            try {
+                com.rs.game.player.content.BonesOnAltar.Bones b =
+                    com.rs.game.player.content.BonesOnAltar.Bones.forId((short) it.getId());
+                if (b == null) continue;
+                if (b.getXP() > highestXp) {
+                    highestXp = b.getXP();
+                    targetBone = b;
+                    targetItem = it;
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (targetBone == null) {
+            lastDiagnostic = "prayer: no bones in inventory";
+            if (Utils.random(100) < 30) sayDebug("no bones to offer");
+            goalBlacklist.add(method);
+            return;
+        }
+        int qty = bot.getInventory().getAmountOf(targetItem.getId());
+        bot.getActionManager().setAction(
+            new com.rs.game.player.content.BonesOnAltar(altar, targetItem, qty));
+        lastDiagnostic = "prayer: offering " + targetBone;
+        if (Utils.random(100) < 30) say("offering bones");
     }
 
     private void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
