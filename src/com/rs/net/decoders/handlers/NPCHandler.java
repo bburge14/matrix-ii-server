@@ -1244,7 +1244,7 @@ public class NPCHandler {
 	    case 15085: return 219; // Nails Newton (Thieving) - corrected from 14957
 	    case 14852: return 220; // Drill Sergeant Hartman (Agility) - corrected from 15272
 	    case 1060:  return 221; // Commander Denulth (Combat) - corrected from 15024
-	    case 2566:  return 222; // Venerable sage (replaces broken 15407) - Divination Master
+	    case 1798:  return 222; // Eccentric seer - Divination Master (replaces 2566 which was Wise Old Man)
 	    case 682:   return 223; // Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
 	    case 946:   return 224; // Master of Magics (replaces broken 15403)
 	    case 589:   return 227; // Plate mail armour seller -> Defence shop near Denulth

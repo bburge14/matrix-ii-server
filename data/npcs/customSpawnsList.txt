@@ -23,8 +23,10 @@
 8842 - 3802 4399 1
 8842 - 3802 4401 1
 //entrance
-3811 - 3781 4378 1
-1419 - 3785 4385 1
+// MOVED: 3811 - 3781 4378 1 -> 3795 4395 1 (out of trader rows in DZ lobby)
+3811 - 3795 4395 1
+// MOVED: 1419 - 3785 4385 1 -> 3796 4385 1 (gnome foot soldier moved off central trader path)
+1419 - 3796 4385 1
 20366 - 3784 4362 1
 5445 - 3783 4362 1
 5445 - 3784 4361 1
@@ -49,8 +51,8 @@
 3 - 3104 3162 0
 // ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
 // New free-zone skill masters (Burthorpe/Taverly area)
-2566 - 2923 3524 0
-// ^ Venerable sage (replaces broken 15407 which had no cache model) - Divination master at user-specified coords
+1798 - 2923 3524 0
+// ^ Eccentric seer (replaces 2566 which was Wise Old Man with locked dialogue) - Divination master at user-specified coords
 682 - 2918 3474 0
 // ^ Armour salesman (Ranging Guild) - Master Ranger - moved to be next to Allison Elmshaper (Fletching) per user
 946 - 2914 3531 0
@@ -86,8 +88,8 @@
 // ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
-4906 - 2917 3445 0
-// ^ Wilfred - Woodcutting Master in Taverly skill cluster (shop 200)
+4906 - 2906 3486 0
+// ^ Wilfred - Woodcutting Master, wanders the wooded area near Ayleth Beaststalker (Hunter @ 2907, 3485)
 15085 - 2923 3460 0
 // ^ Nails Newton (Thieving) - moved from (2881, 3444); allowed to walk (see WALKING_TRADERS in NPCSpawns)
 // === Pickpocketable NPC cluster around Nails for thieving practice ===
@@ -144,8 +146,8 @@
 // Row C (y=4388, north): combat / divine
 1060 - 3779 4388 1
 // ^ DZ Lobby: Commander Denulth (Combat)
-2566 - 3782 4388 1
-// ^ DZ Lobby: Venerable sage (Divination)
+1798 - 3782 4388 1
+// ^ DZ Lobby: Eccentric seer (Divination)
 682 - 3785 4388 1
 // ^ DZ Lobby: Armour salesman (Range)
 946 - 3788 4388 1
