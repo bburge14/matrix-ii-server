@@ -76,8 +76,13 @@ public final class NPCSpawns {
 		int y = (regionId & 0xff);
 		if(spawns[x][y] == null)
 			return;
-		for(NPCSpawn spawn : spawns[x][y])
-			World.spawnNPC(spawn.npcId, spawn.tile, spawn.mapAreaNameHash, spawn.canBeAttackFromOutOfArea);
+		for(NPCSpawn spawn : spawns[x][y]) {
+			com.rs.game.npc.NPC npc = World.spawnNPC(spawn.npcId, spawn.tile, spawn.mapAreaNameHash, spawn.canBeAttackFromOutOfArea);
+			// Skill-shop trader NPCs stay put - no random walk - so players
+			// can find them at fixed coords
+			if (npc != null && com.rs.net.decoders.handlers.NPCHandler.skillShopForNpc(spawn.npcId) != -1)
+				npc.setRandomWalk(0);
+		}
 		spawns[x][y] = null;
 	}
 
