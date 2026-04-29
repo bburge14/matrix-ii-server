@@ -25,9 +25,18 @@ echo.
 echo [%TIME%] Starting client...
 echo.
 
+REM Resource tuning:
+REM   -Xms512m         : larger initial heap = less GC churn during startup
+REM   -Xss1m           : per-thread stack 1MB (was 2MB) - significant savings
+REM                      since the client spawns dozens of threads
+REM   MaxGCPauseMillis : target 50ms collection so frames stay smooth
+REM   StringDedup      : G1 deduplicates identical strings (cache stores
+REM                      lots of duplicate item/object names)
 jre\bin\java.exe ^
-  -Xms256m -Xmx2048m -Xss2m ^
+  -Xms512m -Xmx2048m -Xss1m ^
   -XX:+UseG1GC ^
+  -XX:MaxGCPauseMillis=50 ^
+  -XX:+UseStringDeduplication ^
   -XX:CompileThreshold=10000 ^
   -Dsun.java2d.noddraw=true ^
   -Dsun.java2d.d3d=false ^

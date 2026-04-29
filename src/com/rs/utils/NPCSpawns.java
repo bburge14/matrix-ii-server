@@ -41,7 +41,7 @@ public final class NPCSpawns {
 	// cache definition has walkMask=0 but should still wander - typically
 	// pickpocket targets and skill-area background NPCs)
 	private static final java.util.Set<Integer> FORCE_WALK_NPCS = new java.util.HashSet<Integer>(
-		java.util.Arrays.asList(1, 7, 18, 187, 296, 23, 1905, 20, 21, 2109, 4906)
+		java.util.Arrays.asList(3205, 7, 15, 187, 9, 23, 1905, 20, 21, 2109, 4906)
 	);
 
 	private static final void loadSpawnsList(String path) {

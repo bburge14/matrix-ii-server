@@ -1229,7 +1229,7 @@ public class NPCHandler {
 	    case 39:   return 202;  // Foreman (Mining)
 	    case 1404: return 202;  // Miner Magnus
 	    case 14870: return 202; // Tobias Bronzearms (Mining) - corrected from 5073
-	    case 18:   return 203;  // Ellis (Tanner)
+	    case 680:  return 203;  // Expert Leatherworker -> Tanner shop (NPC 18 was Al-Kharid warrior, not Ellis)
 	    case 4656: return 207;  // Hickton (Fletching)
 	    case 14858: return 207; // Alison Elmshaper (Fletching) - corrected from 14942
 	    case 47:   return 208;  // Smith
