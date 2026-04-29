@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING }
 
     public static final class Method {
         public final String description;
@@ -308,6 +308,19 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+
+        // ---- Smelting (process-skill: requires ores + furnace) ----
+        // Bot finds a furnace nearby and smelts the highest-tier bar it
+        // qualifies for from inventory ores.
+        ALL.add(b("Smelt bars - Edgeville furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(3110, 3499).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+        ALL.add(b("Smelt bars - Falador furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(2974, 3370).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+        ALL.add(b("Smelt bars - Al-Kharid furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(3275, 3186).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
 
         // ---- Cooking (process-skill: requires raw food + range nearby) ----
         // Kitchens at well-known towns. Bot scans for "range" / "stove" /
@@ -620,6 +633,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:thieving"))    return Kind.THIEVING;
         if (key.startsWith("skill:firemaking"))  return Kind.FIREMAKING;
         if (key.startsWith("skill:cooking"))     return Kind.COOKING;
+        if (key.startsWith("skill:smithing"))    return Kind.SMELTING; // smelting bars covers most smithing xp
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")

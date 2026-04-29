@@ -1020,7 +1020,56 @@ public class BotBrain {
             case THIEVING:    tryStartThieving(method); break;
             case FIREMAKING:  tryStartFiremaking(method); break;
             case COOKING:     tryStartCooking(method); break;
+            case SMELTING:    tryStartSmelting(method); break;
         }
+    }
+
+    private void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "smelt: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.WorldObject furnace =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "furnace");
+        if (furnace == null) {
+            lastDiagnostic = "smelt: no furnace in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no furnace nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), furnace)) {
+            BotPathing.walkToObject(bot, furnace);
+            lastDiagnostic = "smelt: walking to furnace";
+            return;
+        }
+        // Pick highest-tier bar the bot has materials for and qualifies for
+        com.rs.game.player.actions.Smelting.SmeltingBar targetBar = null;
+        int botLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
+        com.rs.game.player.actions.Smelting.SmeltingBar[] bars =
+            com.rs.game.player.actions.Smelting.SmeltingBar.values();
+        for (int i = bars.length - 1; i >= 0; i--) {
+            com.rs.game.player.actions.Smelting.SmeltingBar bar = bars[i];
+            if (botLvl < bar.getLevelRequired()) continue;
+            boolean hasMats = true;
+            for (com.rs.game.item.Item req : bar.getItemsRequired()) {
+                if (!bot.getInventory().containsItem(req.getId(), req.getAmount())) {
+                    hasMats = false; break;
+                }
+            }
+            if (hasMats) { targetBar = bar; break; }
+        }
+        if (targetBar == null) {
+            lastDiagnostic = "smelt: no bar mats in inventory";
+            if (Utils.random(100) < 30) sayDebug("no ores to smelt");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(new com.rs.game.player.actions.Smelting(targetBar, furnace, 28));
+        lastDiagnostic = "smelt: smelting " + targetBar;
+        if (Utils.random(100) < 30) say("smelting bars");
     }
 
     private void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
