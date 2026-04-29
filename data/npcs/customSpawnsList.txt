@@ -86,3 +86,57 @@
 // ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
+// === DZ Lobby Trader Hub - all skill masters consolidated in DZ lobby ===
+// Row 1 (y=4365): gathering / starter skills
+1401 - 3781 4365 1
+// ^ DZ Lobby: Lumberjack Leif (Woodcutting)
+666 - 3784 4365 1
+// ^ DZ Lobby: Master Fisher Harry (Fishing)
+14870 - 3787 4365 1
+// ^ DZ Lobby: Tobias Bronzearms (Mining)
+18 - 3790 4365 1
+// ^ DZ Lobby: Ellis the Tanner
+14858 - 3793 4365 1
+// ^ DZ Lobby: Alison Elmshaper (Fletching)
+// Row 2 (y=4367): processing / crafting
+14874 - 3781 4367 1
+// ^ DZ Lobby: Martin Steelweaver (Smithing)
+7883 - 3784 4367 1
+// ^ DZ Lobby: Master Cook
+6988 - 3787 4367 1
+// ^ DZ Lobby: Pikkupstix (Summoning)
+706 - 3790 4367 1
+// ^ DZ Lobby: Old wizard (RC)
+14883 - 3793 4367 1
+// ^ DZ Lobby: Marcus Everburn (Firemaking)
+// Row 3 (y=4369): combat / agility / divination
+15085 - 3781 4369 1
+// ^ DZ Lobby: Nails Newton (Thieving)
+14852 - 3784 4369 1
+// ^ DZ Lobby: Drill Sergeant Hartman (Agility)
+1060 - 3787 4369 1
+// ^ DZ Lobby: Commander Denulth (Combat)
+15407 - 3790 4369 1
+// ^ DZ Lobby: Diviner (Divination)
+682 - 3793 4369 1
+// ^ DZ Lobby: Armour salesman (Range)
+// Row 4 (y=4371): magic / prayer / pets / defence
+946 - 3781 4371 1
+// ^ DZ Lobby: Master of Magics
+216 - 3784 4371 1
+// ^ DZ Lobby: High Priest of Entrana (Prayer)
+6893 - 3787 4371 1
+// ^ DZ Lobby: Master Pet Shop
+589 - 3790 4371 1
+// ^ DZ Lobby: Plate mail seller (Defence)
+14877 - 3793 4371 1
+// ^ DZ Lobby: Jack Oval (Crafting)
+// Row 5 (y=4373): construction / slayer / farming / hunter
+14862 - 3781 4373 1
+// ^ DZ Lobby: Alfred Stonemason (Construction)
+14868 - 3784 4373 1
+// ^ DZ Lobby: Jacquelyn Manslaughter (Slayer)
+14860 - 3787 4373 1
+// ^ DZ Lobby: Head Farmer Jones (Farming)
+14864 - 3790 4373 1
+// ^ DZ Lobby: Ayleth Beaststalker (Hunter)
