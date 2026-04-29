@@ -18,6 +18,17 @@ public final class AuditLog {
     private static BufferedWriter writer;
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * When true, every bot diag/goal/step event also writes to audit.log
+     * in real time. Toggled via ::auditstart and ::auditstop commands.
+     */
+    private static volatile boolean streaming = false;
+    public static boolean isStreaming() { return streaming; }
+    public static void setStreaming(boolean on) {
+        streaming = on;
+        log("STREAMING " + (on ? "ON - listening for bot events" : "OFF"));
+    }
+
     private AuditLog() {}
 
     private static synchronized void open() {

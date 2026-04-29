@@ -2373,6 +2373,20 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "auditstart": {
+		// Live streaming - every bot diag/goal/step event writes to
+		// data/logs/audit.log as it happens. tail -f to follow live.
+		com.rs.bot.AuditLog.setStreaming(true);
+		player.getPackets().sendGameMessage("Audit streaming ON. tail -f data/logs/audit.log");
+		return true;
+	    }
+
+	    case "auditstop": {
+		com.rs.bot.AuditLog.setStreaming(false);
+		player.getPackets().sendGameMessage("Audit streaming OFF.");
+		return true;
+	    }
+
 	    case "botforce": {
 		if (cmd.length < 3) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::botforce botName skill (skill = wc/mining/fishing/thieving/combat)");

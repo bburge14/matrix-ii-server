@@ -1740,14 +1740,17 @@ public class BotBrain {
     private void sayGoal(String text)  {
         say("[Goal] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[goal] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [goal] " + text);
     }
     private void sayStep(String text)  {
         say("[Step] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[step] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [step] " + text);
     }
     private void sayDebug(String text) {
         say("[Debug] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[debug] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [debug] " + text);
     }
 
     private void broadcastPublicMessage(String text) {
