@@ -51,10 +51,12 @@
 // New free-zone skill masters (Burthorpe/Taverly area)
 15407 - 2923 3524 0
 // ^ Diviner (Wizard Finix variant) at user-specified coords
-682 - 2912 3531 0
-// ^ Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
+682 - 2918 3474 0
+// ^ Armour salesman (Ranging Guild) - Master Ranger - moved to be next to Allison Elmshaper (Fletching) per user
 15403 - 2914 3531 0
 // ^ Master Mage near Commander Denulth
+589 - 2913 3534 0
+// ^ Plate mail armour seller -> Defence Master near Commander Denulth (shop 227)
 // Donator zone entrance NPCs
 2253 - 3787 4358 1
 9085 - 3789 4360 1
