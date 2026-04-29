@@ -88,6 +88,30 @@
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
 4906 - 2917 3445 0
 // ^ Wilfred - Woodcutting Master in Taverly skill cluster (shop 200)
+15085 - 2923 3460 0
+// ^ Nails Newton (Thieving) - moved from (2881, 3444); allowed to walk (see WALKING_TRADERS in NPCSpawns)
+// === Pickpocketable NPC cluster around Nails for thieving practice ===
+// Master Farmer 2234 already exists at (2923, 3459) - kept
+1 - 2920 3458 0
+// ^ Man (Thieving 1)
+7 - 2922 3458 0
+// ^ Farmer (Thieving 10)
+18 - 2924 3458 0
+// ^ Warrior woman (Thieving 25)
+187 - 2920 3460 0
+// ^ Rogue (Thieving 32)
+296 - 2926 3460 0
+// ^ Guard (Thieving 40)
+23 - 2920 3462 0
+// ^ Knight of Ardougne (Thieving 55)
+1905 - 2922 3462 0
+// ^ Menaphite Thug (Thieving 65)
+20 - 2924 3462 0
+// ^ Paladin (Thieving 70)
+21 - 2926 3462 0
+// ^ Hero (Thieving 80)
+2109 - 2920 3464 0
+// ^ Dwarf Trader (Thieving 90)
 // === DZ Lobby Trader Hub - 24 skill masters around the hub at (3787, 4384, 1) ===
 // 4 rows of 6 NPCs each, surrounding the central hub area but leaving the
 // middle (y=4382-4386) clear for the existing statue/tree/decor.

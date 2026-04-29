@@ -32,6 +32,11 @@ public final class NPCSpawns {
 	
 	private static final List<NPCSpawn>[][] spawns = new ArrayList[256][256];
 
+	// Skill-shop NPCs that should still wander (override the static-trader rule)
+	private static final java.util.Set<Integer> WALKING_TRADERS = new java.util.HashSet<Integer>(
+		java.util.Arrays.asList(15085) // Nails Newton - pickpocket target
+	);
+
 	private static final void loadSpawnsList(String path) {
 		try {
 			BufferedReader in = new BufferedReader(new FileReader(path));
@@ -79,8 +84,11 @@ public final class NPCSpawns {
 		for(NPCSpawn spawn : spawns[x][y]) {
 			com.rs.game.npc.NPC npc = World.spawnNPC(spawn.npcId, spawn.tile, spawn.mapAreaNameHash, spawn.canBeAttackFromOutOfArea);
 			// Skill-shop trader NPCs stay put - no random walk - so players
-			// can find them at fixed coords
-			if (npc != null && com.rs.net.decoders.handlers.NPCHandler.skillShopForNpc(spawn.npcId) != -1)
+			// can find them at fixed coords. WALKING_TRADERS is the opt-out
+			// for NPCs that should keep wandering (e.g. Nails - pickpocket
+			// gameplay needs him to move).
+			if (npc != null && com.rs.net.decoders.handlers.NPCHandler.skillShopForNpc(spawn.npcId) != -1
+					&& !WALKING_TRADERS.contains(spawn.npcId))
 				npc.setRandomWalk(0);
 		}
 		spawns[x][y] = null;
