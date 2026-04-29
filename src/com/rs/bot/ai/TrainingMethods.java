@@ -140,65 +140,117 @@ public final class TrainingMethods {
     private static final List<Method> ALL = new ArrayList<>();
 
     static {
-        // ---- Woodcutting (location + level + tree-def filter) ----
-        // Note: WorldKnowledge.LUMBRIDGE_TREES (3096, 3468) is mislabeled -
-        // it's actually near Edgeville/Barbarian Village and full of
-        // willows, not normal trees. Use the Draynor coord instead which
-        // is real normal trees outside Draynor village.
+        // ---- Woodcutting (multiple known F2P+P2P spots per tier so bots
+        // scatter across the world instead of all stacking at one tree)
+        ALL.add(b("Chop normal trees - Lumbridge", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(1, 15).at(3225, 3220).xp(15000).gp(2000)
+            .tree(TreeDefinitions.NORMAL).build());
         ALL.add(b("Chop normal trees - Draynor", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(1, 15).at(3101, 3263).xp(15000).gp(2000)
             .tree(TreeDefinitions.NORMAL).build());
-        ALL.add(b("Chop oak trees - Varrock", Kind.WOODCUTTING)
-            .skill(Skills.WOODCUTTING).lvl(15, 30).at(3280, 3420).xp(22000).gp(8000)
+        ALL.add(b("Chop normal trees - Varrock west park", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(1, 15).at(3175, 3413).xp(15000).gp(2000)
+            .tree(TreeDefinitions.NORMAL).build());
+        ALL.add(b("Chop oak trees - Varrock west", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(15, 30).at(3164, 3414).xp(22000).gp(8000)
+            .tree(TreeDefinitions.OAK).build());
+        ALL.add(b("Chop oak trees - Falador east", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(15, 30).at(3046, 3322).xp(22000).gp(8000)
             .tree(TreeDefinitions.OAK).build());
         ALL.add(b("Chop willow trees - Draynor", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(30, 45).at(3087, 3234).xp(40000).gp(15000)
             .tree(TreeDefinitions.WILLOW).build());
+        ALL.add(b("Chop willow trees - Lumbridge swamp", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(30, 45).at(3160, 3251).xp(40000).gp(15000)
+            .tree(TreeDefinitions.WILLOW).build());
         ALL.add(b("Chop maple trees - Seers'", Kind.WOODCUTTING)
-            .skill(Skills.WOODCUTTING).lvl(45, 60).at(2730, 3502).xp(60000).gp(18000)
+            .skill(Skills.WOODCUTTING).lvl(45, 60).at(2728, 3503).xp(60000).gp(18000)
             .tree(TreeDefinitions.MAPLE).build());
         ALL.add(b("Chop yew trees - Edgeville", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(60, 75).at(3087, 3481).xp(70000).gp(45000)
             .tree(TreeDefinitions.YEW).build());
-        ALL.add(b("Chop magic trees - Tree Gnome", Kind.WOODCUTTING)
-            .skill(Skills.WOODCUTTING).lvl(75, 99).at(2692, 3425).xp(80000).gp(80000)
+        ALL.add(b("Chop yew trees - Falador east", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(60, 75).at(2935, 3349).xp(70000).gp(45000)
+            .tree(TreeDefinitions.YEW).build());
+        ALL.add(b("Chop yew trees - Lumbridge", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(60, 75).at(3252, 3163).xp(70000).gp(45000)
+            .tree(TreeDefinitions.YEW).build());
+        ALL.add(b("Chop magic trees - Tree Gnome Stronghold", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(75, 99).at(2705, 3424).xp(80000).gp(80000)
+            .tree(TreeDefinitions.MAGIC).build());
+        ALL.add(b("Chop magic trees - Sorcerer's Tower", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(75, 99).at(2702, 3398).xp(80000).gp(80000)
             .tree(TreeDefinitions.MAGIC).build());
 
-        // ---- Mining ----
+        // ---- Mining (verified F2P locations - the old Heroes Guild coord
+        // had no mithril/adamant rocks, that's why bots saw 'no ore in 12 tiles')
         ALL.add(b("Mine clay - Draynor", Kind.MINING)
             .skill(Skills.MINING).lvl(1, 15).at(3142, 3305).xp(15000).gp(5000)
             .rock(RockDefinitions.Clay_Ore).build());
         ALL.add(b("Mine tin - Varrock east", Kind.MINING)
             .skill(Skills.MINING).lvl(1, 15).at(3289, 3372).xp(15000).gp(2000)
             .rock(RockDefinitions.Tin_Ore).build());
+        ALL.add(b("Mine tin - Lumbridge swamp", Kind.MINING)
+            .skill(Skills.MINING).lvl(1, 15).at(3228, 3148).xp(15000).gp(2000)
+            .rock(RockDefinitions.Tin_Ore).build());
         ALL.add(b("Mine iron - Varrock east", Kind.MINING)
             .skill(Skills.MINING).lvl(15, 45).at(3289, 3372).xp(35000).gp(20000)
+            .rock(RockDefinitions.Iron_Ore).build());
+        ALL.add(b("Mine iron - Al-Kharid", Kind.MINING)
+            .skill(Skills.MINING).lvl(15, 45).at(3299, 3287).xp(35000).gp(20000)
+            .rock(RockDefinitions.Iron_Ore).build());
+        ALL.add(b("Mine iron - Dwarf Mine", Kind.MINING)
+            .skill(Skills.MINING).lvl(15, 45).at(3030, 9759).xp(35000).gp(20000)
             .rock(RockDefinitions.Iron_Ore).build());
         ALL.add(b("Mine coal - Barbarian Village", Kind.MINING)
             .skill(Skills.MINING).lvl(30, 60).at(3082, 3420).xp(50000).gp(25000)
             .rock(RockDefinitions.Coal_Ore).build());
-        ALL.add(b("Mine mithril - Heroes' Guild area", Kind.MINING)
-            .skill(Skills.MINING).lvl(55, 75).at(2916, 3506).xp(60000).gp(40000)
+        ALL.add(b("Mine coal - Dwarf Mine", Kind.MINING)
+            .skill(Skills.MINING).lvl(30, 60).at(3018, 9740).xp(50000).gp(25000)
+            .rock(RockDefinitions.Coal_Ore).build());
+        ALL.add(b("Mine mithril - Mining Guild basement", Kind.MINING)
+            .skill(Skills.MINING).lvl(55, 75).at(3033, 9743).xp(60000).gp(40000)
             .rock(RockDefinitions.Mithril_Ore).build());
-        ALL.add(b("Mine adamantite - Heroes' Guild", Kind.MINING)
-            .skill(Skills.MINING).lvl(70, 85).at(2916, 3506).xp(65000).gp(60000)
+        ALL.add(b("Mine mithril - Wilderness mine", Kind.MINING)
+            .skill(Skills.MINING).lvl(55, 75).at(3092, 3568).xp(60000).gp(40000)
+            .rock(RockDefinitions.Mithril_Ore).build());
+        ALL.add(b("Mine adamantite - Mining Guild basement", Kind.MINING)
+            .skill(Skills.MINING).lvl(70, 85).at(3033, 9737).xp(65000).gp(60000)
             .rock(RockDefinitions.Adamant_Ore).build());
         ALL.add(b("Mine runite - Wilderness", Kind.MINING)
             .skill(Skills.MINING).lvl(85, 99).at(3058, 3884).xp(45000).gp(120000)
             .rock(RockDefinitions.Runite_Ore).build());
 
-        // ---- Fishing ----
+        // ---- Fishing (verified spots per tier) ----
         ALL.add(b("Net shrimp - Lumbridge swamp", Kind.FISHING)
-            .skill(Skills.FISHING).lvl(1, 20).at(3238, 3241).xp(10000).gp(2000)
+            .skill(Skills.FISHING).lvl(1, 20).at(3242, 3151).xp(10000).gp(2000)
+            .fish(FishingSpots.NET).build());
+        ALL.add(b("Net shrimp - Draynor village", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(1, 20).at(3086, 3232).xp(10000).gp(2000)
+            .fish(FishingSpots.NET).build());
+        ALL.add(b("Net shrimp - Al-Kharid", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(1, 20).at(3266, 3154).xp(10000).gp(2000)
             .fish(FishingSpots.NET).build());
         ALL.add(b("Bait fly fishing - Barbarian Village", Kind.FISHING)
-            .skill(Skills.FISHING).lvl(20, 40).at(3109, 3436).xp(30000).gp(8000)
+            .skill(Skills.FISHING).lvl(20, 40).at(3105, 3434).xp(30000).gp(8000)
+            .fish(FishingSpots.NET).build());
+        ALL.add(b("Bait fly fishing - Shilo Village", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(20, 40).at(2853, 2967).xp(30000).gp(8000)
             .fish(FishingSpots.NET).build());
         ALL.add(b("Cage lobster - Karamja", Kind.FISHING)
-            .skill(Skills.FISHING).lvl(40, 76).at(2924, 3178).xp(45000).gp(40000)
+            .skill(Skills.FISHING).lvl(40, 76).at(2924, 3179).xp(45000).gp(40000)
+            .fish(FishingSpots.CAGE).build());
+        ALL.add(b("Cage lobster - Catherby", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(40, 76).at(2837, 3429).xp(45000).gp(40000)
+            .fish(FishingSpots.CAGE).build());
+        ALL.add(b("Cage lobster - Fishing Guild", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(40, 76).at(2611, 3393).xp(45000).gp(40000)
             .fish(FishingSpots.CAGE).build());
         ALL.add(b("Harpoon shark - Fishing Guild", Kind.FISHING)
             .skill(Skills.FISHING).lvl(76, 99).at(2611, 3393).xp(55000).gp(80000)
+            .fish(FishingSpots.HARPOON).build());
+        ALL.add(b("Harpoon shark - Catherby", Kind.FISHING)
+            .skill(Skills.FISHING).lvl(76, 99).at(2837, 3429).xp(55000).gp(80000)
             .fish(FishingSpots.HARPOON).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
@@ -291,15 +343,32 @@ public final class TrainingMethods {
         boolean rankByGp = type.getCategory() == Goal.GoalCategory.ECONOMIC
             || (key != null && (key.startsWith("equipment:") || key.startsWith("weapon:")));
 
-        Method best = null;
+        // Two-pass: find the top score, then collect every method within
+        // 5% of it. Pick one of those at random per-bot so 10 bots on the
+        // same goal scatter across the alternatives instead of all going
+        // to the single highest-ranked location.
         int bestScore = Integer.MIN_VALUE;
         for (Method m : ALL) {
             if (required != null && m.kind != required) continue;
             if (!m.isApplicable(bot)) continue;
             int score = rankByGp ? m.rankForGp(bot) : m.rankFor(m.kind, bot);
-            if (score > bestScore) { bestScore = score; best = m; }
+            if (score > bestScore) bestScore = score;
         }
-        return best;
+        if (bestScore == Integer.MIN_VALUE) return null;
+        int threshold = bestScore - Math.max(1, Math.abs(bestScore) / 20);
+        java.util.List<Method> contenders = new java.util.ArrayList<Method>();
+        for (Method m : ALL) {
+            if (required != null && m.kind != required) continue;
+            if (!m.isApplicable(bot)) continue;
+            int score = rankByGp ? m.rankForGp(bot) : m.rankFor(m.kind, bot);
+            if (score >= threshold) contenders.add(m);
+        }
+        if (contenders.isEmpty()) return null;
+        // Per-bot deterministic pick - same bot keeps the same method
+        // per goal so it doesn't oscillate, but different bots pick
+        // different ones from the contender pool.
+        int pick = (int) ((bot.getIndex() * 2654435761L) >>> 1) % contenders.size();
+        return contenders.get(pick);
     }
 
     /**
