@@ -1223,6 +1223,7 @@ class GenerateDialog(ctk.CTkToplevel):
     ]
 
     ARCHETYPES = [
+        ("Random ANY archetype",    "random_any"),
         ("Random combat archetype", "random"),
         ("Melee",                   "melee"),
         ("Ranged",                  "ranged"),

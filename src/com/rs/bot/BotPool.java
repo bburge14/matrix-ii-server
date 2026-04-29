@@ -76,11 +76,15 @@ public final class BotPool {
         // archetype twice independently - bots ended up with magic skills but
         // melee gear, ranged skills with mage robes, etc.
         String[] randomPool = {"melee", "ranged", "magic", "hybrid", "tank", "pure", "main"};
+        // 'random_any' includes non-combat archetypes too - skiller, f2p, maxed.
+        String[] randomAnyPool = {"melee", "ranged", "magic", "hybrid", "tank", "pure", "main", "skiller", "f2p", "maxed"};
         for (int i = 0; i < count; i++) {
             String name = uniqueName();
             if (name == null) break;
             String resolvedArchetype = archetype;
-            if ("random".equalsIgnoreCase(archetype) || archetype == null) {
+            if ("random_any".equalsIgnoreCase(archetype)) {
+                resolvedArchetype = randomAnyPool[com.rs.utils.Utils.random(randomAnyPool.length)];
+            } else if ("random".equalsIgnoreCase(archetype) || archetype == null) {
                 resolvedArchetype = randomPool[com.rs.utils.Utils.random(randomPool.length)];
             }
             int[] profile = BotSkillProfile.build(mode, targetCombat, resolvedArchetype);
