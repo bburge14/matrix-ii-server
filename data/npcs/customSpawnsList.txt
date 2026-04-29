@@ -49,8 +49,8 @@
 3 - 3104 3162 0
 // ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
 // New free-zone skill masters (Burthorpe/Taverly area)
-15407 - 2923 3524 0
-// ^ Diviner (Wizard Finix variant) at user-specified coords
+2566 - 2923 3524 0
+// ^ Venerable sage (replaces broken 15407 which had no cache model) - Divination master at user-specified coords
 682 - 2918 3474 0
 // ^ Armour salesman (Ranging Guild) - Master Ranger - moved to be next to Allison Elmshaper (Fletching) per user
 946 - 2914 3531 0
@@ -116,8 +116,8 @@
 // ^ DZ Lobby: Drill Sergeant Hartman (Agility)
 1060 - 3787 4369 1
 // ^ DZ Lobby: Commander Denulth (Combat)
-15407 - 3790 4369 1
-// ^ DZ Lobby: Diviner (Divination)
+2566 - 3790 4369 1
+// ^ DZ Lobby: Venerable sage (Divination)
 682 - 3793 4369 1
 // ^ DZ Lobby: Armour salesman (Range)
 // Row 4 (y=4371): magic / prayer / pets / defence
