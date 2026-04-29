@@ -202,15 +202,21 @@ public final class TrainingMethods {
             .fish(FishingSpots.HARPOON).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
+        // NPC IDs verified in 830 cache via examines:
+        //   1=citizen (man), 4=citizen (woman), 7=farmer, 15=Al-Kharid warrior,
+        //   187=rogue, 9=guard, 23=Ardougne knight, 1905=Menaphite thug,
+        //   20=paladin, 21=hero, 2109=Dwarf trader, 3205=Baker
+        // NPC 18 is NOT used here - it conflicts with the Tanner shop wiring.
+        // NPC 296 is NOT a guard in 830 (it's a goblin) - using 9 instead.
         ALL.add(b("Pickpocket man - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(1, 9).at(2920, 3458).xp(8000).gp(2000)
-            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170).build());
+            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170, 3205).build());
         ALL.add(b("Pickpocket farmer - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(10, 24).at(2922, 3458).xp(14500).gp(5000)
             .npcs(7, 1757, 1758, 1760).build());
         ALL.add(b("Pickpocket warrior - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(25, 31).at(2924, 3458).xp(26000).gp(8000)
-            .npcs(15, 18).build());
+            .npcs(15).build());
         ALL.add(b("Pickpocket rogue - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(32, 37).at(2920, 3460).xp(35500).gp(15000)
             .npcs(187, 2267, 2268, 2269, 8122).build());
@@ -219,7 +225,7 @@ public final class TrainingMethods {
             .npcs(2234, 2235).build());
         ALL.add(b("Pickpocket guard - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(40, 54).at(2926, 3460).xp(46500).gp(30000)
-            .npcs(9, 32, 206, 296, 297, 298, 299, 344, 345, 346, 368, 678, 812).build());
+            .npcs(9, 32, 33, 34).build());
         ALL.add(b("Pickpocket Ardougne knight - Burthorpe", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(55, 64).at(2920, 3462).xp(84300).gp(50000)
             .npcs(23, 26).build());

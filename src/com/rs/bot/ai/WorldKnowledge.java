@@ -187,7 +187,7 @@ public class WorldKnowledge {
         put("WOODCUTTING",   new int[]{2917, 3445, 0, 4906,  200}); // Wilfred (woods) / Lumberjack Leif
         put("FISHING",       new int[]{2885, 3475, 0, 14879, 201}); // Nicholas Angle
         put("MINING",        new int[]{2911, 3429, 0, 14870, 202}); // Tobias Bronzearms
-        put("TANNING",       new int[]{3279, 3192, 0, 18,    203}); // Ellis (Al-Kharid)
+        put("TANNING",       new int[]{3279, 3192, 0, 680,   203}); // Expert Leatherworker (Al-Kharid)
         put("FLETCHING",     new int[]{2917, 3474, 0, 14858, 207}); // Alison Elmshaper
         put("SMITHING",      new int[]{2890, 3455, 0, 14874, 208}); // Martin Steelweaver (approx)
         put("COOKING",       new int[]{2896, 3442, 0, 7883,  209}); // Master Cook
@@ -215,7 +215,7 @@ public class WorldKnowledge {
         put("WOODCUTTING",   new int[]{3779, 4378, 1, 1401,  200});
         put("FISHING",       new int[]{3782, 4378, 1, 666,   201});
         put("MINING",        new int[]{3785, 4378, 1, 14870, 202});
-        put("TANNING",       new int[]{3788, 4378, 1, 18,    203});
+        put("TANNING",       new int[]{3788, 4378, 1, 680,   203});
         put("FLETCHING",     new int[]{3791, 4378, 1, 14858, 207});
         put("SMITHING",      new int[]{3794, 4378, 1, 14874, 208});
         put("COOKING",       new int[]{3779, 4380, 1, 7883,  209});

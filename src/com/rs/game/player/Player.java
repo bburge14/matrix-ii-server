@@ -608,6 +608,9 @@ public class Player extends Entity {
     // now that we inited we can start showing game
     public void start() {
 	Logger.globalLog(username, session.getIP(), new String(" has logged in."));
+	// Bump default render distance to medium (mapSize=1, 120 tiles) for
+	// better visibility. mapSize=3 (huge) used to crash login - 1 is safe.
+	if (getMapSize() == 0) setMapSize(1);
 	loadMapRegions();
 	started = true;
 	run();
