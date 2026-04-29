@@ -108,6 +108,11 @@ public final class BotFactory {
                 resolvedArchetype = archetypes[Utils.random(archetypes.length)];
             }
             try { bot.setArchetype(resolvedArchetype); } catch (Throwable ignored) {}
+            // Pick a lifetime identity (north-star) for this bot. Drives long-
+            // term goal bias - aligned goals get score boost in rankedMethodsFor.
+            try {
+                bot.setLifetimeIdentity(com.rs.bot.ai.LifetimeIdentity.pickFor(resolvedArchetype));
+            } catch (Throwable ignored) {}
 
             // Apply equipment loadout based on archetype + actual combat level.
             // IMPORTANT: must use resolvedArchetype, not the raw 'archetype'

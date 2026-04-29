@@ -151,9 +151,12 @@ public class Goal implements Serializable {
     /**
      * Calculate current urgency based on deadline and priority
      */
+    /** Optional bias added to urgency by LifetimeIdentity alignment. */
+    private double lifetimeBoost = 0.0;
+    public void addLifetimeBoost(double delta) { this.lifetimeBoost += delta; }
     public double getUrgency() {
-        double basePriority = priority.getWeight();
-        
+        double basePriority = priority.getWeight() + lifetimeBoost;
+
         if (deadline == 0) {
             return basePriority; // No deadline, just use priority
         }

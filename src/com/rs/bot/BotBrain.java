@@ -871,6 +871,15 @@ public class BotBrain {
             return;
         }
 
+        // Try a real spellbook teleport first (proper rune cost + animation).
+        com.rs.bot.ai.BotTeleporter.Spell spell =
+            com.rs.bot.ai.BotTeleporter.pickBest(bot, targetX, targetY);
+        if (spell != null && com.rs.bot.ai.BotTeleporter.cast(bot, spell)) {
+            teleportCooldownUntil = System.currentTimeMillis() + 60_000;
+            lastDiagnostic = "teleporting: " + spell.name + " spell";
+            return;
+        }
+
         int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
         if (bestTeleport == null) {
             intelligentWalkTo(targetX, targetY, currentX, currentY);
@@ -971,6 +980,9 @@ public class BotBrain {
      * scan for the right tree/rock/spot type (filtered) and start.
      */
     private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
+        // Humanization: pause briefly between actions / occasionally AFK.
+        // Without this, all bots tick in lockstep and look mechanical.
+        if (!canActNow()) return;
         // Crowding tracker - tells TrainingMethods how many bots are on each
         // method. A bot switching from A to B decrements A and increments B.
         if (method != lastMethod) {
@@ -982,8 +994,11 @@ public class BotBrain {
         // to the exact same tile and step on each other. Hash by player
         // index so each bot gets a stable per-method offset within +/-4.
         if (method.location != null) {
+            // Wider jitter (was 4 -> 8 tiles) so bots don't form conga lines
+            // when many converge on the same training spot. Combined with
+            // reaction-delay timing variance, paths and arrivals scatter.
             int[] jittered = com.rs.bot.ai.WorldKnowledge.jitteredSpot(
-                bot.getIndex(), method.location.getX(), method.location.getY(), 4);
+                bot.getIndex(), method.location.getX(), method.location.getY(), 8);
             int targetX = jittered[0];
             int targetY = jittered[1];
             int dx = bot.getX() - targetX;
@@ -999,6 +1014,10 @@ public class BotBrain {
             }
         }
         goal.setCurrentStep(method.description);
+        // 0.D: align bot's combat XP style with the goal so the right skill
+        // gets trained. Goal 'skill:attack 30' -> Accurate, 'skill:strength
+        // 30' -> Aggressive, 'skill:defence 30' -> Defensive.
+        applyXpStyleForGoal(goal);
         // Announce the activity once per method change so players hear what
         // bots are doing instead of generic goal descriptions.
         announceMethodStart(method);
@@ -1008,11 +1027,302 @@ public class BotBrain {
             case FISHING:     tryStartFishing(method); break;
             case COMBAT:      tryStartCombat(method); break;
             case THIEVING:    tryStartThieving(method); break;
+            case FIREMAKING:  tryStartFiremaking(method); break;
+            case COOKING:     tryStartCooking(method); break;
+            case SMELTING:    tryStartSmelting(method); break;
+            case CRAFTING:    tryStartCrafting(method); break;
+            case PRAYER:      tryStartPrayer(method); break;
         }
+    }
+
+    private void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "prayer: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.WorldObject altar =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "altar");
+        if (altar == null) {
+            lastDiagnostic = "prayer: no altar in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no altar nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), altar)) {
+            BotPathing.walkToObject(bot, altar);
+            lastDiagnostic = "prayer: walking to altar";
+            return;
+        }
+        // Find highest-tier bones in inventory
+        com.rs.game.player.content.BonesOnAltar.Bones targetBone = null;
+        com.rs.game.item.Item targetItem = null;
+        int highestXp = -1;
+        for (int i = 0; i < bot.getInventory().getItemsContainerSize(); i++) {
+            com.rs.game.item.Item it = bot.getInventory().getItem(i);
+            if (it == null) continue;
+            try {
+                com.rs.game.player.content.BonesOnAltar.Bones b =
+                    com.rs.game.player.content.BonesOnAltar.Bones.forId((short) it.getId());
+                if (b == null) continue;
+                if (b.getXP() > highestXp) {
+                    highestXp = b.getXP();
+                    targetBone = b;
+                    targetItem = it;
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (targetBone == null) {
+            lastDiagnostic = "prayer: no bones in inventory";
+            if (Utils.random(100) < 30) sayDebug("no bones to offer");
+            goalBlacklist.add(method);
+            return;
+        }
+        int qty = bot.getInventory().getAmountOf(targetItem.getId());
+        bot.getActionManager().setAction(
+            new com.rs.game.player.content.BonesOnAltar(altar, targetItem, qty));
+        lastDiagnostic = "prayer: offering " + targetBone;
+        if (Utils.random(100) < 30) say("offering bones");
+    }
+
+    private void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "craft: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Need a chisel - try to buy if missing
+        if (!bot.getInventory().containsItemToolBelt(1755)) BotEquipment.tryBuyTool(bot, 1755);
+        // Find highest-tier gem the bot can cut and has in inventory
+        com.rs.game.player.actions.GemCutting.Gem target = null;
+        int botLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
+        for (com.rs.game.player.actions.GemCutting.Gem g : com.rs.game.player.actions.GemCutting.Gem.values()) {
+            if (botLvl < g.getLevelRequired()) continue;
+            if (!bot.getInventory().containsItem(g.getUncut(), 1)) continue;
+            if (target == null || g.getLevelRequired() > target.getLevelRequired()) target = g;
+        }
+        if (target == null) {
+            lastDiagnostic = "craft: no uncut gems in inventory";
+            if (Utils.random(100) < 30) sayDebug("no uncut gems");
+            goalBlacklist.add(method);
+            return;
+        }
+        int qty = bot.getInventory().getAmountOf(target.getUncut());
+        bot.getActionManager().setAction(
+            new com.rs.game.player.actions.GemCutting(target, qty));
+        lastDiagnostic = "craft: cutting " + target;
+        if (Utils.random(100) < 30) say("cutting some gems");
+    }
+
+    private void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "smelt: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.WorldObject furnace =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "furnace");
+        if (furnace == null) {
+            lastDiagnostic = "smelt: no furnace in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no furnace nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        if (!isAdjacent(bot.getX(), bot.getY(), furnace)) {
+            BotPathing.walkToObject(bot, furnace);
+            lastDiagnostic = "smelt: walking to furnace";
+            return;
+        }
+        // Pick highest-tier bar the bot has materials for and qualifies for
+        com.rs.game.player.actions.Smelting.SmeltingBar targetBar = null;
+        int botLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
+        com.rs.game.player.actions.Smelting.SmeltingBar[] bars =
+            com.rs.game.player.actions.Smelting.SmeltingBar.values();
+        for (int i = bars.length - 1; i >= 0; i--) {
+            com.rs.game.player.actions.Smelting.SmeltingBar bar = bars[i];
+            if (botLvl < bar.getLevelRequired()) continue;
+            boolean hasMats = true;
+            for (com.rs.game.item.Item req : bar.getItemsRequired()) {
+                if (!bot.getInventory().containsItem(req.getId(), req.getAmount())) {
+                    hasMats = false; break;
+                }
+            }
+            if (hasMats) { targetBar = bar; break; }
+        }
+        if (targetBar == null) {
+            lastDiagnostic = "smelt: no bar mats in inventory";
+            if (Utils.random(100) < 30) sayDebug("no ores to smelt");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(new com.rs.game.player.actions.Smelting(targetBar, furnace, 28));
+        lastDiagnostic = "smelt: smelting " + targetBar;
+        if (Utils.random(100) < 30) say("smelting bars");
+    }
+
+    private void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "cook: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Find a range/stove/fire near the bot's tile.
+        com.rs.game.WorldObject range =
+            EnvironmentScanner.findNearestObjectByName(bot, 12, "range", "stove", "fire", "firepit");
+        if (range == null) {
+            lastDiagnostic = "cook: no range/stove/fire in 12 tiles";
+            if (Utils.random(100) < 30) sayDebug("no range nearby");
+            BotPathing.wiggle(bot, 4);
+            return;
+        }
+        // Walk adjacent if not already
+        if (!isAdjacent(bot.getX(), bot.getY(), range)) {
+            BotPathing.walkToObject(bot, range);
+            lastDiagnostic = "cook: walking to range";
+            return;
+        }
+        // Find first raw food in inventory the bot can cook
+        com.rs.game.item.Item rawItem = null;
+        com.rs.game.player.actions.Cooking.Cookables cookable = null;
+        for (int i = 0; i < bot.getInventory().getItemsContainerSize(); i++) {
+            com.rs.game.item.Item it = bot.getInventory().getItem(i);
+            if (it == null) continue;
+            try {
+                com.rs.game.player.actions.Cooking.Cookables c =
+                    com.rs.game.player.actions.Cooking.Cookables.forId((short) it.getId());
+                if (c == null) continue;
+                if (bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING) < c.getLvl()) continue;
+                rawItem = it;
+                cookable = c;
+                break;
+            } catch (Throwable ignored) {}
+        }
+        if (rawItem == null) {
+            lastDiagnostic = "cook: no raw food in inventory";
+            if (Utils.random(100) < 30) sayDebug("no raw food to cook");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(
+            new com.rs.game.player.actions.Cooking(range, rawItem, 28, cookable));
+        lastDiagnostic = "cook: cooking " + rawItem.getId();
+        if (Utils.random(100) < 30) say("cooking up dinner");
+    }
+
+    private void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "fm: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Need a tinderbox (toolkit-level) and logs in inventory
+        if (!bot.getInventory().containsItemToolBelt(590)) {
+            BotEquipment.tryBuyTool(bot, 590);
+        }
+        // Find the highest-tier log the bot can use
+        com.rs.game.player.actions.Firemaking.Fire targetFire = null;
+        int botFmLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
+        for (com.rs.game.player.actions.Firemaking.Fire f : com.rs.game.player.actions.Firemaking.Fire.values()) {
+            try {
+                java.lang.reflect.Method getLogId = f.getClass().getMethod("getLogId");
+                int logId = (Integer) getLogId.invoke(f);
+                java.lang.reflect.Method getLevel = f.getClass().getMethod("getLevel");
+                int lvlReq = (Integer) getLevel.invoke(f);
+                if (botFmLvl >= lvlReq && bot.getInventory().containsItem(logId, 1)) {
+                    if (targetFire == null) targetFire = f;
+                    else {
+                        java.lang.reflect.Method otherLevel = targetFire.getClass().getMethod("getLevel");
+                        int curLvl = (Integer) otherLevel.invoke(targetFire);
+                        if (lvlReq > curLvl) targetFire = f;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (targetFire == null) {
+            // No logs - blacklist FM, switch to WC to chop some
+            lastDiagnostic = "fm: no logs in inventory, need to chop first";
+            if (Utils.random(100) < 30) sayDebug("no logs to burn");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(new com.rs.game.player.actions.Firemaking(targetFire));
+        lastDiagnostic = "fm: lighting " + targetFire;
+        if (Utils.random(100) < 30) say("nice cozy fire");
     }
 
     /** Last training method the bot announced - used to avoid spamming chat. */
     private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+
+    /**
+     * Humanization: per-bot reaction delay. After picking a new method or
+     * action, bot pauses briefly before doing the next thing. Real players
+     * take a fraction of a second to a few seconds to react / move mouse /
+     * read tooltips. Without this, 50 bots all click 'fight' on the same
+     * tick and look obviously synchronized.
+     *
+     * Stored as an absolute timestamp the bot must wait until before acting.
+     */
+    private long actNotBefore = 0L;
+    /** Occasional longer AFK pause - bots pretending to alt-tab, snack, scroll. */
+    private long afkUntil = 0L;
+
+    /**
+     * Returns true if the bot is allowed to act this tick. Sets the next
+     * reaction delay so subsequent ticks pause appropriately.
+     */
+    private boolean canActNow() {
+        long now = System.currentTimeMillis();
+        if (now < afkUntil) return false;
+        if (now < actNotBefore) return false;
+        // Roll a tiny chance of a longer AFK pause - 0.3% per check, ~once
+        // every 5-10 minutes of activity. Mimics tab-out / snack / scroll.
+        if (Utils.random(1000) < 3) {
+            afkUntil = now + (5_000 + Utils.random(25_000)); // 5-30s
+            return false;
+        }
+        // Normal reaction delay: 350-1500ms with occasional longer thinks.
+        int delay = 350 + Utils.random(1150);
+        if (Utils.random(100) < 8) delay += Utils.random(2500); // 8% chance of 'thinking'
+        actNotBefore = now + delay;
+        return true;
+    }
+
+    /**
+     * Set bot's melee/ranged/magic XP style based on the current goal's
+     * target skill. Without this, every combat-trained bot dumped XP into
+     * Attack regardless of whether their step was "Train Strength to 30".
+     */
+    private void applyXpStyleForGoal(Goal goal) {
+        if (goal == null) return;
+        com.rs.bot.ai.GoalType type = goal.getData("goalType", com.rs.bot.ai.GoalType.class);
+        if (type == null) return;
+        String key = type.getRequirementKey();
+        if (key == null) return;
+        try {
+            com.rs.game.player.CombatDefinitions cd = bot.getCombatDefinitions();
+            if (cd == null) return;
+            // Melee styles: 0=Accurate(Attack), 1=Aggressive(Strength), 2=Controlled, 3=Defensive
+            if (key.equals("skill:attack"))   cd.setMeleeCombatExperience(0);
+            else if (key.equals("skill:strength")) cd.setMeleeCombatExperience(1);
+            else if (key.equals("skill:defence"))  cd.setMeleeCombatExperience(3);
+            else if (key.equals("skill:hitpoints")) cd.setMeleeCombatExperience(2); // controlled (split)
+            else if (key.equals("combat:max")) cd.setMeleeCombatExperience(2); // balanced
+            // Ranged styles: 0=Accurate(Range), 1=Rapid(Range), 2=Longrange(Range+Defence)
+            else if (key.equals("skill:ranged")) cd.setRangedCombatExperience(0);
+            // Magic styles: 0=Magic dmg, 1=Defensive cast (split with Defence)
+            else if (key.equals("skill:magic")) cd.setMagicCombatExperience(0);
+        } catch (Throwable ignored) {}
+    }
 
     /** Stuck detection: snapshot of current method's relevant XP, when set. */
     private long stuckXpSnapshot = -1;

@@ -626,6 +626,12 @@ public final class AdminHttpServer {
                       .append(",\"method_kind\":\"").append(jsonEscape(methodKind)).append("\"")
                       .append(",\"diag\":\"").append(jsonEscape(diag)).append("\"")
                       .append(",\"archetype\":\"").append(jsonEscape(archetype)).append("\"")
+                      .append(",\"lifetime\":\"");
+                    if (p instanceof com.rs.bot.AIPlayer) {
+                        com.rs.bot.ai.LifetimeIdentity id = ((com.rs.bot.AIPlayer) p).getLifetimeIdentity();
+                        if (id != null) sb.append(jsonEscape(id.label));
+                    }
+                    sb.append("\"")
                       .append(",\"hp\":").append(hp).append(",\"max_hp\":").append(maxHp)
                       .append(",\"cb\":").append(cb).append(",\"total_lvl\":").append(totalLvl)
                       .append(",\"free_inv\":").append(freeInv)

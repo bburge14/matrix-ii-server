@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING, CRAFTING, PRAYER }
 
     public static final class Method {
         public final String description;
@@ -149,6 +149,9 @@ public final class TrainingMethods {
     // ===== Method registry =====
 
     private static final List<Method> ALL = new ArrayList<>();
+
+    /** Read-only access for diagnostics (::auditmethods). */
+    public static java.util.List<Method> getAll() { return java.util.Collections.unmodifiableList(ALL); }
 
     // Crowding tracker - how many bots are CURRENTLY pursuing each method.
     // bestMethodFor / rankedMethodsFor apply a penalty per active bot so 400
@@ -293,6 +296,65 @@ public final class TrainingMethods {
         ALL.add(b("Harpoon shark - Catherby", Kind.FISHING)
             .skill(Skills.FISHING).lvl(76, 99).at(2837, 3429).xp(55000).gp(80000)
             .fish(FishingSpots.HARPOON).build());
+
+        // ---- Firemaking (process-skill: requires logs in inventory) ----
+        // Single method with all log tiers in requiredItems - the action
+        // picker (BotBrain.tryStartFiremaking) chooses the highest-tier
+        // log the bot can light. Location is GE-area open ground; could
+        // be done anywhere with a clear tile.
+        ALL.add(b("Firemake logs - GE area", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3164, 3487).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Edgeville bank", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3094, 3491).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+
+        // ---- Prayer (process-skill: bones on altar) ----
+        // Bot needs bones in inventory and an altar object. 4x XP via altar
+        // vs burying. Common altar locations: Edgeville monastery, POH altars.
+        ALL.add(b("Bones on altar - Edgeville monastery", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(3056, 3484).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
+        ALL.add(b("Bones on altar - Falador church", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(2995, 3372).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
+
+        // ---- Crafting (process-skill: cut uncut gems with chisel) ----
+        // Requires uncut gems (gem drops from mining or monster loot).
+        // Bot picks highest-tier gem from inventory to cut.
+        ALL.add(b("Cut gems - any bank", Kind.CRAFTING)
+            .skill(Skills.CRAFTING).lvl(1, 99).at(3094, 3491).xp(40000).gp(0)
+            .needs(1625, 1627, 1629, 1623, 1621, 1619, 1617, 1631, 6571).build());
+
+        // ---- Smelting (process-skill: requires ores + furnace) ----
+        // Bot finds a furnace nearby and smelts the highest-tier bar it
+        // qualifies for from inventory ores.
+        ALL.add(b("Smelt bars - Edgeville furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(3110, 3499).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+        ALL.add(b("Smelt bars - Falador furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(2974, 3370).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+        ALL.add(b("Smelt bars - Al-Kharid furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(3275, 3186).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+
+        // ---- Cooking (process-skill: requires raw food + range nearby) ----
+        // Kitchens at well-known towns. Bot scans for "range" / "stove" /
+        // "fire" object near these coords, picks raw food from inventory,
+        // setAction(new Cooking(...)).
+        ALL.add(b("Cook food - Lumbridge kitchen", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(3211, 3215).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
+        ALL.add(b("Cook food - Catherby kitchen", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(2818, 3443).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
+        ALL.add(b("Cook food - Al-Kharid", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(3271, 3180).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
         // NPC IDs verified in 830 cache via examines:
@@ -589,6 +651,16 @@ public final class TrainingMethods {
         if (key.startsWith("skill:mining"))      return Kind.MINING;
         if (key.startsWith("skill:fishing"))     return Kind.FISHING;
         if (key.startsWith("skill:thieving"))    return Kind.THIEVING;
+        if (key.startsWith("skill:firemaking"))  return Kind.FIREMAKING;
+        if (key.startsWith("skill:cooking"))     return Kind.COOKING;
+        if (key.startsWith("skill:smithing"))    return Kind.SMELTING; // smelting bars covers most smithing xp
+        if (key.startsWith("skill:crafting"))    return Kind.CRAFTING;
+        if (key.startsWith("skill:prayer"))      return Kind.PRAYER;
+        // Slayer = combat with monsters; existing combat library covers slayer monsters
+        // (abyssal demons, gargoyles, dust devils, nechryael).
+        if (key.startsWith("skill:slayer"))      return Kind.COMBAT;
+        // Hitpoints and other combat-stat goals share combat methods (style differs).
+        if (key.startsWith("skill:hitpoints"))   return Kind.COMBAT;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")

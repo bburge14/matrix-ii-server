@@ -70,9 +70,25 @@ public class ArchetypeGoalGenerator {
         goals.removeIf(g -> g == null || !g.isAchievable(bot));
 
         // Prioritize the survivors.
+        // Lifetime identity bias - boost urgency of goals aligned with the
+        // bot's long-term north-star. A COMBAT_MAXER's "Train Attack to 30"
+        // goal scores higher than its "99 Mining" goal even if both are
+        // applicable. PURE_SKILLER bots get NEGATIVE alignment on combat
+        // goals so they avoid them entirely.
+        com.rs.bot.ai.LifetimeIdentity identity = bot.getLifetimeIdentity();
+        if (identity != null) {
+            for (Goal g : goals) {
+                GoalType t = g.getData("goalType", GoalType.class);
+                int boost = identity.alignmentBoost(t);
+                if (boost != 0) {
+                    g.addLifetimeBoost(boost / 100.0);
+                }
+            }
+        }
+
         return prioritizeGoals(goals, analysis);
     }
-    
+
     /**
      * Generate goals for Skiller archetype bots
      */

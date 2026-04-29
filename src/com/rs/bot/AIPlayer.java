@@ -14,6 +14,11 @@ public class AIPlayer extends Player {
     /** Bot identity: "melee", "ranged", "magic", "tank", "pure", "main", "hybrid", "skiller", "f2p", "maxed". */
     private String archetype = "random";
 
+    /** Long-term north star identity that biases goal selection. Set once at bot creation. */
+    private com.rs.bot.ai.LifetimeIdentity lifetimeIdentity;
+    public com.rs.bot.ai.LifetimeIdentity getLifetimeIdentity() { return lifetimeIdentity; }
+    public void setLifetimeIdentity(com.rs.bot.ai.LifetimeIdentity id) { this.lifetimeIdentity = id; }
+
     /** Combat mode: 0=Manual, 1=Revolution, 2=Momentum, 3=Legacy */
     private int botCombatMode = -1;  // -1 means random assignment
     
