@@ -402,6 +402,9 @@ public class NPCHandler {
 		else if (npc.getId() == 15149)
 		    player.getDialogueManager().startDialogue("MasterOfFear", 0);
 		// Skill-economy shop NPCs (added by claude)
+		// Talk-to opens the shop directly (same as right-click Trade) - no dialogue.
+		else if (skillShopForNpc(npc.getId()) != -1)
+		    com.rs.utils.ShopsHandler.openShop(player, skillShopForNpc(npc.getId()));
 		else if (npc.getId() == 1401) // Lumberjack Leif (Woodcutting)
 		    player.getDialogueManager().startDialogue("Forester", npc);
 		else if (npc.getId() == 666) // Master Fisher Harry
