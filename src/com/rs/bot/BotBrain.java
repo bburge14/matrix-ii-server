@@ -871,6 +871,15 @@ public class BotBrain {
             return;
         }
 
+        // Try a real spellbook teleport first (proper rune cost + animation).
+        com.rs.bot.ai.BotTeleporter.Spell spell =
+            com.rs.bot.ai.BotTeleporter.pickBest(bot, targetX, targetY);
+        if (spell != null && com.rs.bot.ai.BotTeleporter.cast(bot, spell)) {
+            teleportCooldownUntil = System.currentTimeMillis() + 60_000;
+            lastDiagnostic = "teleporting: " + spell.name + " spell";
+            return;
+        }
+
         int[] bestTeleport = WorldKnowledge.findNearestLocation(WorldKnowledge.TELEPORT_SPOTS, targetX, targetY);
         if (bestTeleport == null) {
             intelligentWalkTo(targetX, targetY, currentX, currentY);

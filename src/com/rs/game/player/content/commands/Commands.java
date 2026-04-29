@@ -2435,12 +2435,12 @@ public final class Commands {
 		    if (!ok) {
 			broken++;
 			String line = "AUDIT FAIL: " + m.description + " @ " + from.getX() + "," + from.getY() + " -> " + reason;
-			com.rs.bot.BotLog.log("audit", line);
+			com.rs.bot.AuditLog.log(line);
 			player.getPackets().sendGameMessage(line);
 		    }
 		}
 		String summary = "Audit done: " + total + " total methods, " + broken + " broken (see bots.log)";
-		com.rs.bot.BotLog.log("audit", summary);
+		com.rs.bot.AuditLog.log(summary);
 		player.getPackets().sendGameMessage(summary);
 		return true;
 	    }
