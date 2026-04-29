@@ -29,6 +29,36 @@ public class Shop {
 	private CopyOnWriteArrayList<Player> viewingPlayers;
 	private int key;
 
+	// Master Pet Shop (key=226) - tiered pricing by rarity since the
+	// default item-value pricing makes every pet cost ~1 coin.
+	private static final java.util.Map<Integer, Integer> MASTER_PET_SHOP_PRICES;
+	static {
+		java.util.Map<Integer, Integer> m = new java.util.HashMap<Integer, Integer>();
+		m.put(1555,    5_000); m.put(12492,  25_000); m.put(12551,  25_000);
+		m.put(12469,  50_000); m.put(12500,  50_000);
+		m.put(12484, 100_000); m.put(12486, 100_000); m.put(12488, 100_000);
+		m.put(12490, 250_000); m.put(12496, 250_000); m.put(12498, 250_000);
+		m.put(12503, 250_000); m.put(12506, 250_000); m.put(12509, 250_000);
+		m.put(12512, 250_000); m.put(12514, 250_000); m.put(12516, 250_000);
+		m.put(12518, 250_000); m.put(12520, 250_000); m.put(12522, 250_000);
+		m.put(7771,  500_000); m.put(7583,  500_000);
+		m.put(13335,   1_000_000); m.put(14533,   1_000_000);
+		m.put(18671,   2_000_000);
+		m.put(14626,   5_000_000); m.put(14627,   5_000_000);
+		m.put(15626,  10_000_000); m.put(14651,  10_000_000); m.put(19894,  10_000_000);
+		m.put(21512,  25_000_000);
+		m.put(14652,  50_000_000); m.put(14653,  50_000_000);
+		m.put(14654,  50_000_000); m.put(14655,  50_000_000);
+		m.put(23030, 100_000_000);
+		m.put(22992, 250_000_000); m.put(22993, 250_000_000);
+		m.put(22994, 250_000_000); m.put(22995, 250_000_000);
+		m.put(24511, 500_000_000); m.put(24512, 500_000_000);
+		m.put(27490, 1_000_000_000); m.put(28017, 1_000_000_000); m.put(28630, 1_000_000_000);
+		m.put(30746, 2_000_000_000); m.put(30747, 2_000_000_000);
+		m.put(30748, 2_000_000_000); m.put(30749, 2_000_000_000);
+		MASTER_PET_SHOP_PRICES = m;
+	}
+
 	public Shop(int key, String name, int money, Item[] mainStock, boolean isGeneralStore) {
 		viewingPlayers = new CopyOnWriteArrayList<Player>();
 		this.key = key;
@@ -371,6 +401,11 @@ public class Shop {
 				return 1500;
 			break;
 		default:
+			if (key == 226) {
+				Integer petPrice = MASTER_PET_SHOP_PRICES.get(item.getId());
+				if (petPrice != null)
+					return petPrice;
+			}
 			if (money == COINS && key >= 1200 && ItemConstants.isTradeable(item)) {
 				int price = (int) (GrandExchange.getPrice(item.getId()) * 1.4);
 				return price == 0 ? 1 : price;
