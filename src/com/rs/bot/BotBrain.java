@@ -1134,9 +1134,26 @@ public class BotBrain {
             }
         } catch (Throwable ignored) {}
         if (com.rs.game.player.actions.Woodcutting.getHatchet(bot, false) == null) {
-            lastDiagnostic = "wc: no hatchet - buying replacement";
-            if (Utils.random(100) < 30) sayDebug("no hatchet, buying one");
-            BotEquipment.ensureGatheringToolkit(bot);
+            int cb = bot.getSkills().getCombatLevel();
+            int targetAxe;
+            if      (cb >= 60) targetAxe = 1359;
+            else if (cb >= 30) targetAxe = 1357;
+            else if (cb >= 20) targetAxe = 1355;
+            else if (cb >= 10) targetAxe = 1353;
+            else               targetAxe = 1351;
+            if (BotEquipment.tryBuyTool(bot, targetAxe)) {
+                lastDiagnostic = "wc: bought a hatchet";
+                if (Utils.random(100) < 50) sayDebug("bought a hatchet");
+                return;
+            }
+            if (targetAxe != 1351 && BotEquipment.tryBuyTool(bot, 1351)) {
+                lastDiagnostic = "wc: bought a bronze axe (couldn't afford " + targetAxe + ")";
+                if (Utils.random(100) < 50) sayDebug("can only afford a bronze axe");
+                return;
+            }
+            goalBlacklist.add(method);
+            lastDiagnostic = "wc: broke and no hatchet - need to earn money first";
+            if (Utils.random(100) < 50) sayDebug("no axe + no gp, need to earn first");
             return;
         }
         EnvironmentScanner.TreeMatch match =
@@ -1166,13 +1183,32 @@ public class BotBrain {
                 return;
             }
         } catch (Throwable ignored) {}
-        // Tool check - if no pickaxe, refill toolkit (simulating a buy
-        // from the mining master) so the bot can actually mine instead
-        // of animating then quitting.
+        // Tool check - if no pickaxe: try to BUY one with coins. If broke,
+        // blacklist mining and fall back to no-tool activity.
         if (com.rs.game.player.actions.mining.MiningBase.getPickAxeDefinitions(bot, false) == null) {
-            lastDiagnostic = "mining: no pickaxe - buying replacement";
-            if (Utils.random(100) < 30) sayDebug("no pickaxe, buying one");
-            BotEquipment.ensureGatheringToolkit(bot);
+            int cb = bot.getSkills().getCombatLevel();
+            int targetPickaxe;
+            if      (cb >= 60) targetPickaxe = 1275;
+            else if (cb >= 30) targetPickaxe = 1271;
+            else if (cb >= 20) targetPickaxe = 1269;
+            else if (cb >= 10) targetPickaxe = 1267;
+            else               targetPickaxe = 1265;
+            if (BotEquipment.tryBuyTool(bot, targetPickaxe)) {
+                lastDiagnostic = "mining: bought a pickaxe";
+                if (Utils.random(100) < 50) sayDebug("bought a pickaxe");
+                return;
+            }
+            // Can't afford even bronze - fall back to bronze if higher tier failed
+            if (targetPickaxe != 1265 && BotEquipment.tryBuyTool(bot, 1265)) {
+                lastDiagnostic = "mining: bought a bronze pickaxe (couldn't afford " + targetPickaxe + ")";
+                if (Utils.random(100) < 50) sayDebug("can only afford a bronze pickaxe");
+                return;
+            }
+            // Truly broke - blacklist mining for this goal and fall back
+            // to a no-tool earner (the goal-driver will pick pickpocket Man next tick).
+            goalBlacklist.add(method);
+            lastDiagnostic = "mining: broke and no pickaxe - need to earn money first";
+            if (Utils.random(100) < 50) sayDebug("no pickaxe + no gp, need to earn first");
             return;
         }
         EnvironmentScanner.RockMatch match =
@@ -1202,6 +1238,26 @@ public class BotBrain {
                 return;
             }
         } catch (Throwable ignored) {}
+        // Tool check by fishing-spot type
+        int neededTool = -1;
+        if (method.fishDef != null) {
+            String spot = method.fishDef.toString();
+            if (spot.contains("NET"))     neededTool = 303;       // Small net
+            else if (spot.contains("CAGE")) neededTool = 301;     // Lobster pot
+            else if (spot.contains("HARPOON")) neededTool = 311;  // Harpoon
+            else if (spot.contains("LURE") || spot.contains("BAIT")) neededTool = 307; // Fishing rod
+        }
+        if (neededTool > 0 && !bot.getInventory().containsItem(neededTool, 1)) {
+            if (BotEquipment.tryBuyTool(bot, neededTool)) {
+                lastDiagnostic = "fishing: bought tool " + neededTool;
+                if (Utils.random(100) < 50) sayDebug("bought a fishing tool");
+                return;
+            }
+            goalBlacklist.add(method);
+            lastDiagnostic = "fishing: broke + missing tool " + neededTool;
+            if (Utils.random(100) < 50) sayDebug("can't afford a fishing tool");
+            return;
+        }
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {

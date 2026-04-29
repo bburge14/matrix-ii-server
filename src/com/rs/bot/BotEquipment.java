@@ -63,6 +63,55 @@ public final class BotEquipment {
         applyGatheringToolkit(bot, bot.getSkills().getCombatLevel());
     }
 
+    /**
+     * Try to "buy" a single tool by deducting gp from the bot's money.
+     * Returns true if purchase succeeded (item added, coins deducted).
+     * If the bot can't afford it, returns false so the caller can fall
+     * back to a no-tool activity.
+     *
+     * Tool prices match the in-game shop value at the relevant master.
+     */
+    public static boolean tryBuyTool(Player bot, int itemId) {
+        int price;
+        switch (itemId) {
+            case 1265: price = 1;     break; // Bronze pickaxe
+            case 1267: price = 200;   break; // Iron pickaxe
+            case 1269: price = 500;   break; // Steel pickaxe
+            case 1273: price = 1300;  break; // Mithril pickaxe (skip black tier 1271)
+            case 1271: price = 3200;  break; // Adamant pickaxe
+            case 1275: price = 32000; break; // Rune pickaxe
+            case 1351: price = 1;     break; // Bronze axe
+            case 1353: price = 200;   break; // Iron axe
+            case 1355: price = 500;   break; // Steel axe
+            case 1357: price = 1300;  break; // Mithril axe
+            case 1359: price = 32000; break; // Rune axe
+            case 303:  price = 5;     break; // Small fishing net
+            case 307:  price = 5;     break; // Fishing rod
+            case 313:  price = 4;     break; // Fishing bait (per)
+            case 301:  price = 20;    break; // Lobster pot
+            case 311:  price = 45;    break; // Harpoon
+            case 590:  price = 1;     break; // Tinderbox
+            case 2347: price = 1;     break; // Hammer
+            case 1755: price = 1;     break; // Chisel
+            default:   price = 100;
+        }
+        try {
+            int pouch = bot.getMoneyPouch().getCoinsAmount();
+            int invCoins = bot.getInventory().getNumberOf(995);
+            int totalGp = pouch + invCoins;
+            if (totalGp < price) return false;
+            // Pay from pouch first, then inventory.
+            int fromPouch = Math.min(pouch, price);
+            if (fromPouch > 0) bot.getMoneyPouch().setCoinsAmount(pouch - fromPouch);
+            int rem = price - fromPouch;
+            if (rem > 0) bot.getInventory().deleteItem(995, rem);
+            bot.getInventory().addItem(itemId, 1);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private static void applyGatheringToolkit(Player bot, int cb) {
         int pickaxe, hatchet;
         if      (cb >= 60) { pickaxe = 1275; hatchet = 1359; } // rune
