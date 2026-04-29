@@ -2403,8 +2403,8 @@ public final class Commands {
 			case COMBAT:
 			case THIEVING: {
 			    if (m.npcIds == null || m.npcIds.length == 0) { ok = false; reason = "no npcIds set"; break; }
-			    com.rs.game.npc.NPC n = com.rs.bot.ai.EnvironmentScanner.findNearestNPC(from, radius, m.npcIds);
-			    ok = n != null;
+			    com.rs.game.npc.NPC nFound = com.rs.bot.ai.EnvironmentScanner.findNearestNPC(from, radius, m.npcIds);
+			    ok = nFound != null;
 			    if (!ok) reason = "no NPC " + java.util.Arrays.toString(m.npcIds) + " in " + radius;
 			    break;
 			}
