@@ -150,6 +150,9 @@ public final class TrainingMethods {
 
     private static final List<Method> ALL = new ArrayList<>();
 
+    /** Read-only access for diagnostics (::auditmethods). */
+    public static java.util.List<Method> getAll() { return java.util.Collections.unmodifiableList(ALL); }
+
     // Crowding tracker - how many bots are CURRENTLY pursuing each method.
     // bestMethodFor / rankedMethodsFor apply a penalty per active bot so 400
     // bots don't all converge on the single highest-GP method. Each tick a

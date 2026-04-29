@@ -2365,6 +2365,86 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "auditmethods": {
+		// Scan every TrainingMethod's coord vs the live world and report
+		// which ones don't have their expected resource within range.
+		// Writes to data/logs/bots.log + chat.
+		java.util.List<com.rs.bot.ai.TrainingMethods.Method> all = com.rs.bot.ai.TrainingMethods.getAll();
+		int total = 0, broken = 0;
+		for (com.rs.bot.ai.TrainingMethods.Method m : all) {
+		    if (m.location == null) continue;
+		    total++;
+		    boolean ok = false;
+		    String reason = "";
+		    com.rs.game.WorldTile from = m.location;
+		    int radius = 24;
+		    switch (m.kind) {
+			case WOODCUTTING: {
+			    com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
+				com.rs.bot.ai.EnvironmentScanner.findNearestTree(from, radius, m.treeDef);
+			    ok = tm != null;
+			    if (!ok) reason = "no " + m.treeDef + " in " + radius;
+			    break;
+			}
+			case MINING: {
+			    com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
+				com.rs.bot.ai.EnvironmentScanner.findNearestRock(from, radius, m.rockDef);
+			    ok = rm != null;
+			    if (!ok) reason = "no " + m.rockDef + " in " + radius;
+			    break;
+			}
+			case FISHING: {
+			    com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
+				com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(from, radius, m.fishDef);
+			    ok = fm != null;
+			    if (!ok) reason = "no " + m.fishDef + " in " + radius;
+			    break;
+			}
+			case COMBAT:
+			case THIEVING: {
+			    if (m.npcIds == null || m.npcIds.length == 0) { ok = false; reason = "no npcIds set"; break; }
+			    com.rs.game.npc.NPC n = com.rs.bot.ai.EnvironmentScanner.findNearestNPC(from, radius, m.npcIds);
+			    ok = n != null;
+			    if (!ok) reason = "no NPC " + java.util.Arrays.toString(m.npcIds) + " in " + radius;
+			    break;
+			}
+			case COOKING: {
+			    com.rs.game.WorldObject o = com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+				from, radius, "range", "stove", "fire", "firepit");
+			    ok = o != null;
+			    if (!ok) reason = "no range/stove/fire in " + radius;
+			    break;
+			}
+			case SMELTING: {
+			    com.rs.game.WorldObject o = com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+				from, radius, "furnace");
+			    ok = o != null;
+			    if (!ok) reason = "no furnace in " + radius;
+			    break;
+			}
+			case PRAYER: {
+			    com.rs.game.WorldObject o = com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+				from, radius, "altar");
+			    ok = o != null;
+			    if (!ok) reason = "no altar in " + radius;
+			    break;
+			}
+			default:
+			    ok = true; // FIREMAKING/CRAFTING don't need world objects
+		    }
+		    if (!ok) {
+			broken++;
+			String line = "AUDIT FAIL: " + m.description + " @ " + from.getX() + "," + from.getY() + " -> " + reason;
+			com.rs.bot.BotLog.log("audit", line);
+			player.getPackets().sendGameMessage(line);
+		    }
+		}
+		String summary = "Audit done: " + total + " total methods, " + broken + " broken (see bots.log)";
+		com.rs.bot.BotLog.log("audit", summary);
+		player.getPackets().sendGameMessage(summary);
+		return true;
+	    }
+
 	    case "botforce": {
 		if (cmd.length < 3) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::botforce botName skill (skill = wc/mining/fishing/thieving/combat)");
