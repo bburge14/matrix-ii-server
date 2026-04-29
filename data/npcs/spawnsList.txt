@@ -3515,7 +3515,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Master Farmer, 0
 2234 - 2923 3459 0
 //RSBOT DUMPED - Fred Binder, 0
-14912 - 2919 3460 0
+// REMOVED: 14912 - 2919 3460 0 (Nightmare muspah was sitting in the pickpocket cluster)
 //RSBOT DUMPED - null, 0
 //14977 - 2915 3461 0  -- Kal'gerion demon removed per user (HP 33750 confirmed)
 //RSBOT DUMPED - Fishing spot, 0

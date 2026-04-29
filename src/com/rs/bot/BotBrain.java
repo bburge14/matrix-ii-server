@@ -988,12 +988,14 @@ public class BotBrain {
     private void announceMethodStart(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method == lastAnnouncedMethod) return;
         lastAnnouncedMethod = method;
+        Goal g = goalStack.getCurrentGoal();
+        if (g != null) sayGoal(g.getDescription());
         switch (method.kind) {
-            case WOODCUTTING: say("off to chop " + treeKindLabel(method)); break;
-            case MINING:      say("off to mine " + rockKindLabel(method)); break;
-            case FISHING:     say("heading to fish " + fishKindLabel(method)); break;
-            case THIEVING:    say("time to pickpocket - " + method.description.replace("Pickpocket ", "")); break;
-            case COMBAT:      say("training combat at " + (method.location == null ? "?" : method.location.getX() + "," + method.location.getY())); break;
+            case WOODCUTTING: sayStep("chopping " + treeKindLabel(method)); break;
+            case MINING:      sayStep("mining " + rockKindLabel(method)); break;
+            case FISHING:     sayStep("fishing " + fishKindLabel(method)); break;
+            case THIEVING:    sayStep("pickpocketing " + method.description.replace("Pickpocket ", "").replace(" - Burthorpe", "")); break;
+            case COMBAT:      sayStep("combat training"); break;
         }
     }
 
@@ -1019,7 +1021,7 @@ public class BotBrain {
         try {
             if (bot.getInventory().getFreeSlots() < 1) {
                 lastDiagnostic = "thieving: inventory full, going to bank next";
-                if (Utils.random(100) < 30) say("inv full, can't steal more");
+                if (Utils.random(100) < 50) sayDebug("inventory full");
                 return;
             }
         } catch (Throwable ignored) {}
@@ -1028,14 +1030,14 @@ public class BotBrain {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.THIEVING);
             if (lvl < method.minLevel) {
                 lastDiagnostic = "thieving: my level " + lvl + " < required " + method.minLevel + " for " + method.description;
-                if (Utils.random(100) < 25) say("my thieving's only " + lvl + ", can't do this one");
+                if (Utils.random(100) < 50) sayDebug("thieving lvl " + lvl + " < required " + method.minLevel);
                 return;
             }
         } catch (Throwable ignored) {}
         com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 8, method.npcIds);
         if (target == null) {
             lastDiagnostic = "thieving: no target in 8 tiles for " + method.description;
-            if (Utils.random(100) < 15) say("can't find one to pickpocket");
+            if (Utils.random(100) < 50) sayDebug("no pickpocket target in 8 tiles");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1061,7 +1063,7 @@ public class BotBrain {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
                 lastDiagnostic = "wc: my level " + lvl + " < required " + method.minLevel;
-                if (Utils.random(100) < 25) say("my woodcutting's only " + lvl + ", these trees are too tough");
+                if (Utils.random(100) < 50) sayDebug("woodcutting lvl " + lvl + " < required " + method.minLevel);
                 return;
             }
         } catch (Throwable ignored) {}
@@ -1069,7 +1071,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
             lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
-            if (Utils.random(100) < 15) say("can't find any " + treeKindLabel(method) + " here");
+            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 12 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1088,7 +1090,7 @@ public class BotBrain {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
                 lastDiagnostic = "mining: my level " + lvl + " < required " + method.minLevel;
-                if (Utils.random(100) < 25) say("my mining's only " + lvl + ", this rock is too hard");
+                if (Utils.random(100) < 50) sayDebug("mining lvl " + lvl + " < required " + method.minLevel);
                 return;
             }
         } catch (Throwable ignored) {}
@@ -1096,7 +1098,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
             lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
-            if (Utils.random(100) < 15) say("can't find any " + rockKindLabel(method) + " here");
+            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 12 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1115,7 +1117,7 @@ public class BotBrain {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
                 lastDiagnostic = "fishing: my level " + lvl + " < required " + method.minLevel;
-                if (Utils.random(100) < 25) say("my fishing's only " + lvl + ", can't catch these");
+                if (Utils.random(100) < 50) sayDebug("fishing lvl " + lvl + " < required " + method.minLevel);
                 return;
             }
         } catch (Throwable ignored) {}
@@ -1123,7 +1125,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {
             lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
-            if (Utils.random(100) < 15) say("no fish around here");
+            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 14 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1281,6 +1283,11 @@ public class BotBrain {
             System.err.println("[BotChat] failed for " + bot.getDisplayName() + ": " + t);
         }
     }
+
+    /** Tagged chat - prefixes the message so observers can tell what kind of update it is. */
+    private void sayGoal(String text)  { say("[Goal] " + text); }
+    private void sayStep(String text)  { say("[Step] " + text); }
+    private void sayDebug(String text) { say("[Debug] " + text); }
 
     private void broadcastPublicMessage(String text) {
         PublicChatMessage msg = new PublicChatMessage(text, 0);
