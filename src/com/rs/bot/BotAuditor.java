@@ -141,8 +141,8 @@ public final class BotAuditor {
 
     /**
      * Schedule periodic audits. Method-coord verification + per-bot state
-     * dump together. First pass at +60s, then every ~3 minutes so users
-     * tailing the log see fresh data continuously.
+     * dump together. First pass at +30s, then every ~60s so users tailing
+     * the log see fresh data continuously while debugging.
      */
     public static void scheduleAutoAudit() {
         WorldTasksManager.schedule(new WorldTask() {
@@ -150,16 +150,16 @@ public final class BotAuditor {
             @Override
             public void run() {
                 try {
-                    // Method-coord audit only every 5th pass (heavy-ish);
-                    // bot state every pass (light, more useful when bots spawn).
-                    if (passCount % 5 == 0) runAudit();
+                    // Method-coord audit only every 10th pass (heavy-ish, 10min);
+                    // bot state every pass (light, useful for live debugging).
+                    if (passCount % 10 == 0) runAudit();
                     dumpOnlineBots();
                     passCount++;
                 } catch (Throwable t) {
                     AuditLog.log("auto-audit threw: " + t);
                 }
             }
-        }, 100, 300); // 100 ticks (~60s) initial, then every 300 ticks (~3 min)
-        AuditLog.log("auto-audit scheduled (initial 60s, then every 3min)");
+        }, 50, 100); // 50 ticks (~30s) initial, then every 100 ticks (~60s)
+        AuditLog.log("auto-audit scheduled (initial 30s, then every 60s)");
     }
 }
