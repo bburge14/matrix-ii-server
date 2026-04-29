@@ -3379,11 +3379,11 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - null, 0
 // REMOVED: 14958 - 2884 3456 0 (Shadow nihil in Burthorpe)
 //RSBOT DUMPED - null, 0
-14960 - 2884 3457 0
+// REMOVED: 14960 - 2884 3457 0 (suspected nihil/demon at removed Shadow nihil coords)
 //RSBOT DUMPED - Farmer, 0
 15002 - 2884 3462 0
 //RSBOT DUMPED - null, 0
-14959 - 2885 3455 0
+// REMOVED: 14959 - 2885 3455 0 (suspected nihil/demon at removed Blood nihil coords)
 //RSBOT DUMPED - Head Farmer Jones, 0
 14860 - 2885 3475 0
 //RSBOT DUMPED - null, 0
