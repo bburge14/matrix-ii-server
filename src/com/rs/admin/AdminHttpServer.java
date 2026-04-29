@@ -1120,11 +1120,6 @@ public final class AdminHttpServer {
         }
     }
 
-    private static int parseIntOr(String s, int def) {
-        if (s == null) return def;
-        try { return Integer.parseInt(s); } catch (Throwable t) { return def; }
-    }
-
     private static com.rs.bot.AIPlayer findBot(String name) {
         for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
             if (p == null || p.hasFinished()) continue;
