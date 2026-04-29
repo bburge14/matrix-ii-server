@@ -37,8 +37,48 @@ public final class BotEquipment {
             }
             // Common accessories regardless of archetype
             applyAccessories(bot, archetype, combatLevel);
+            // Universal gathering toolkit so bots can actually skill -
+            // Mining/WC/Fishing all checkAll() against tool presence.
+            applyGatheringToolkit(bot, combatLevel);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
+        }
+    }
+
+    /**
+     * Give every bot a basic gathering toolkit. Without these, the skill
+     * Action.checkAll() returns false and the bot animates (briefly) but
+     * never actually gathers - exactly what was happening before.
+     *
+     * Tier scales with combat level so low-level bots get bronze, high
+     * get rune. The tools go into the inventory; the action code accepts
+     * them from inventory or toolbelt or weapon slot.
+     */
+    private static void applyGatheringToolkit(Player bot, int cb) {
+        int pickaxe, hatchet;
+        if      (cb >= 60) { pickaxe = 1275; hatchet = 1359; } // rune
+        else if (cb >= 30) { pickaxe = 1271; hatchet = 1357; } // adamant
+        else if (cb >= 20) { pickaxe = 1269; hatchet = 1355; } // mithril
+        else if (cb >= 10) { pickaxe = 1267; hatchet = 1353; } // steel
+        else               { pickaxe = 1265; hatchet = 1351; } // bronze
+        try {
+            if (!bot.getInventory().containsItem(pickaxe, 1)) bot.getInventory().addItem(pickaxe, 1);
+            if (!bot.getInventory().containsItem(hatchet, 1)) bot.getInventory().addItem(hatchet, 1);
+            // Fishing - small net (works for shrimp)
+            if (!bot.getInventory().containsItem(303, 1)) bot.getInventory().addItem(303, 1);
+            // Fishing rod + bait (trout/pike)
+            if (!bot.getInventory().containsItem(307, 1)) bot.getInventory().addItem(307, 1);
+            if (!bot.getInventory().containsItem(313, 50)) bot.getInventory().addItem(313, 50);
+            // Lobster pot (cage method)
+            if (!bot.getInventory().containsItem(301, 1)) bot.getInventory().addItem(301, 1);
+            // Harpoon (sharks)
+            if (!bot.getInventory().containsItem(311, 1)) bot.getInventory().addItem(311, 1);
+            // Tinderbox (firemaking) + hammer (smithing/construction) + chisel (crafting)
+            if (!bot.getInventory().containsItem(590, 1)) bot.getInventory().addItem(590, 1);
+            if (!bot.getInventory().containsItem(2347, 1)) bot.getInventory().addItem(2347, 1);
+            if (!bot.getInventory().containsItem(1755, 1)) bot.getInventory().addItem(1755, 1);
+        } catch (Throwable t) {
+            System.err.println("[BotEquipment] toolkit failed: " + t);
         }
     }
 
