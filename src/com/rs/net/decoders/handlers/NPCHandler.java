@@ -416,9 +416,13 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("Smithy", npc);
 		else if (npc.getId() == 7883) // Master Cook
 		    player.getDialogueManager().startDialogue("MasterCook", npc);
-		else if (npc.getId() == 15056) // Pikkupstix (Summoning)
+		else if (npc.getId() == 6988) // Pikkupstix (Summoning) - corrected from 15056
+		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
+		else if (npc.getId() == 14866) // Magestix - paired with Pikkupstix in summoning area
 		    player.getDialogueManager().startDialogue("SummoningMaster", npc);
 		else if (npc.getId() == 3) // Wizard Distentor (RC/Magic)
+		    player.getDialogueManager().startDialogue("RcMaster", npc);
+		else if (npc.getId() == 14414) // Tam McGrubor (Wicked Hood / RC)
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
 		// Burthorpe/Taverly skill master NPCs - corrected NPC IDs from ::npchere
 		else if (npc.getId() == 14874) // Martin Steelweaver - Smithing
@@ -427,31 +431,33 @@ public class NPCHandler {
 		    player.getDialogueManager().startDialogue("OreTrader", npc);
 		else if (npc.getId() == 14877) // Jack Oval - Crafting
 		    player.getDialogueManager().startDialogue("CraftingMaster", npc);
-		else if (npc.getId() == 15272) // Drill Sergeant Hartman - Agility
+		else if (npc.getId() == 14852) // Drill Sergeant Hartman - Agility - corrected from 15272
 		    player.getDialogueManager().startDialogue("AgilityMaster", npc);
-		else if (npc.getId() == 15018) // Carwen Essencebinder - RC
+		else if (npc.getId() == 15018) // Carwen Essencebinder - RC (unverified - awaiting ::npchere confirmation)
 		    player.getDialogueManager().startDialogue("RcMaster", npc);
 		    // Note: NPC 14872 (Apprentice Clara) is intercepted earlier by MiladeDeathD - skipping wire
-		else if (npc.getId() == 14937) // Marcus Everburn - Firemaking
+		else if (npc.getId() == 14883) // Marcus Everburn - Firemaking - corrected from 14937
 		    player.getDialogueManager().startDialogue("FiremakingMaster", npc);
 		else if (npc.getId() == 14879) // Nicholas Angle - Fishing
 		    player.getDialogueManager().startDialogue("Fishmonger", npc);
-		else if (npc.getId() == 14942) // Alison Elmshaper - Fletching
+		else if (npc.getId() == 14858) // Alison Elmshaper - Fletching - corrected from 14942
 		    player.getDialogueManager().startDialogue("Fletcher", npc);
-		else if (npc.getId() == 15043) // Alfred Stonemason - Construction
+		else if (npc.getId() == 14864) // Ayleth Beaststalker - Hunter
+		    player.getDialogueManager().startDialogue("HunterMaster", npc);
+		else if (npc.getId() == 14862) // Alfred Stonemason - Construction - corrected from 15043
 		    player.getDialogueManager().startDialogue("ConstructionMaster", npc);
-		else if (npc.getId() == 15108) // Jacquelyn Manslaughter - Slayer
+		else if (npc.getId() == 14868) // Jacquelyn Manslaughter - Slayer - corrected from 15108
 		    player.getDialogueManager().startDialogue("SlayerSupplies", npc);
-		else if (npc.getId() == 14957) // Nails Newton - Thieving
+		else if (npc.getId() == 15085) // Nails Newton - Thieving - corrected from 14957
 		    player.getDialogueManager().startDialogue("ThievingMaster", npc);
 		else if (npc.getId() == 14860) // Head Farmer Jones - Farming
 		    player.getDialogueManager().startDialogue("FarmingMaster", npc);
-		else if (npc.getId() == 15024) // Commander Denulth - Combat
+		else if (npc.getId() == 1060) // Commander Denulth - Combat - corrected from 15024
 		    player.getDialogueManager().startDialogue("CombatMaster", npc);
 		// New free-zone NPCs (placed at user-specified coords)
 		else if (npc.getId() == 15407) // Diviner @ (2923, 3524)
 		    player.getDialogueManager().startDialogue("DivinationMaster", npc);
-		else if (npc.getId() == 1585) // Master Ranger near Commander Denulth
+		else if (npc.getId() == 682) // Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
 		    player.getDialogueManager().startDialogue("RangeMaster", npc);
 		else if (npc.getId() == 15403) // Master Mage near Commander Denulth
 		    player.getDialogueManager().startDialogue("MageMaster", npc);
@@ -1221,23 +1227,26 @@ public class NPCHandler {
 	    case 14870: return 202; // Tobias Bronzearms (Mining) - corrected from 5073
 	    case 18:   return 203;  // Ellis (Tanner)
 	    case 4656: return 207;  // Hickton (Fletching)
-	    case 14942: return 207; // Alison Elmshaper (Fletching)
+	    case 14858: return 207; // Alison Elmshaper (Fletching) - corrected from 14942
 	    case 47:   return 208;  // Smith
 	    case 14874: return 208; // Martin Steelweaver (Smithing) - corrected from 14921
 	    case 7883: return 209;  // Master Cook
-	    case 15056: return 216; // Pikkupstix (Summoning)
+	    case 6988: return 216;  // Pikkupstix (Summoning) - corrected from 15056
+	    case 14866: return 216; // Magestix - paired with Pikkupstix in summoning area
 	    case 3:    return 217;  // Wizard Distentor (RC)
-	    case 15018: return 217; // Carwen Essencebinder (RC)
-	    case 14937: return 218; // Marcus Everburn (Firemaking)
-	    case 14957: return 219; // Nails Newton (Thieving)
-	    case 15272: return 220; // Drill Sergeant Hartman (Agility)
-	    case 15024: return 221; // Commander Denulth (Combat)
+	    case 15018: return 217; // Carwen Essencebinder (RC) - unverified, awaiting ::npchere
+	    case 14414: return 217; // Tam McGrubor (Wicked Hood / RC)
+	    case 14883: return 218; // Marcus Everburn (Firemaking) - corrected from 14937
+	    case 15085: return 219; // Nails Newton (Thieving) - corrected from 14957
+	    case 14852: return 220; // Drill Sergeant Hartman (Agility) - corrected from 15272
+	    case 1060:  return 221; // Commander Denulth (Combat) - corrected from 15024
 	    case 15407: return 222; // Diviner
-	    case 1585: return 223;  // Master Ranger
+	    case 682:   return 223; // Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
 	    case 15403: return 224; // Master Mage
+	    case 14864: return 56;  // Ayleth Beaststalker -> Aleck's Hunter Emporium
 	    case 14877: return 19;  // Jack Oval -> Crafting (existing shop) - corrected from 14926
-	    case 15043: return 128; // Alfred Stonemason -> Construction (existing)
-	    case 15108: return 29;  // Jacquelyn Manslaughter -> Slayer (existing)
+	    case 14862: return 128; // Alfred Stonemason -> Construction - corrected from 15043
+	    case 14868: return 29;  // Jacquelyn Manslaughter -> Slayer - corrected from 15108
 	    case 14860: return 111; // Head Farmer Jones -> Farming - corrected from 14959
 	    case 6893: return 226;  // Master Pet Shop
 	    // DZ entrance NPCs (donator-gated by zone access)
