@@ -51,8 +51,8 @@
 // New free-zone skill masters (Burthorpe/Taverly area)
 15407 - 2923 3524 0
 // ^ Diviner (Wizard Finix variant) at user-specified coords
-1585 - 2912 3531 0
-// ^ Master Ranger near Commander Denulth
+682 - 2912 3531 0
+// ^ Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
 15403 - 2914 3531 0
 // ^ Master Mage near Commander Denulth
 // Donator zone entrance NPCs

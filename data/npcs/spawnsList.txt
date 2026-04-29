@@ -3377,7 +3377,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Austri, 0
 232 - 2879 3465 0
 //RSBOT DUMPED - null, 0
-14958 - 2884 3456 0
+// REMOVED: 14958 - 2884 3456 0 (Shadow nihil in Burthorpe)
 //RSBOT DUMPED - null, 0
 14960 - 2884 3457 0
 //RSBOT DUMPED - Farmer, 0
@@ -3485,7 +3485,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Farmer, 7
 7 - 2920 3434 0
 //RSBOT DUMPED - Troll mage commando, 2
-14928 - 2911 3435 0
+// REMOVED: 14928 - 2911 3435 0 (Troll mage commando in Burthorpe)
 //RSBOT DUMPED - Druid, 0
 15115 - 2864 3368 0
 //RSBOT DUMPED - Sanfew, 0
@@ -3523,7 +3523,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Troll commando, 2
 14926 - 2937 3433 0
 //RSBOT DUMPED - Troll mage commando, 2
-14928 - 2937 3449 0
+// REMOVED: 14928 - 2937 3449 0 (Troll mage commando in Burthorpe)
 //RSBOT DUMPED - Fishing spot, 0
 14907 - 2912 3462 0
 //RSBOT DUMPED - Merchant, 0
@@ -3715,7 +3715,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - null, 0
 14970 - 2889 3523 0
 //RSBOT DUMPED - Troll mage commando, 2
-14928 - 2887 3512 0
+// REMOVED: 14928 - 2887 3512 0 (Troll mage commando in Burthorpe)
 //RSBOT DUMPED - Troll ranger commando, 2
 14927 - 2887 3517 0
 //RSBOT DUMPED - Major Nigel Corothers, 0
@@ -3747,7 +3747,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Fishing spot, 0
 14907 - 2901 3469 0
 //RSBOT DUMPED - null, 0
-14954 - 2890 3458 0
+// REMOVED: 14954 - 2890 3458 0 (Blood nihil in Burthorpe)
 //RSBOT DUMPED - Builder, 0
 15043 - 2900 3455 0
 //RSBOT DUMPED - Alfred Stonemason, 0
