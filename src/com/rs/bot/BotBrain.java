@@ -871,12 +871,12 @@ public class BotBrain {
             return;
         }
 
-        // Try a real spellbook teleport first (proper rune cost + animation).
-        com.rs.bot.ai.BotTeleporter.Spell spell =
+        // Try jewelry teleport or spellbook teleport (jewelry preferred).
+        com.rs.bot.ai.BotTeleporter.Choice tele =
             com.rs.bot.ai.BotTeleporter.pickBest(bot, targetX, targetY);
-        if (spell != null && com.rs.bot.ai.BotTeleporter.cast(bot, spell)) {
+        if (tele != null && com.rs.bot.ai.BotTeleporter.cast(bot, tele)) {
             teleportCooldownUntil = System.currentTimeMillis() + 60_000;
-            lastDiagnostic = "teleporting: " + spell.name + " spell";
+            lastDiagnostic = "teleporting: " + tele.name + (tele.jewel != null ? " (jewelry)" : " (spell)");
             return;
         }
 

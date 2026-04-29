@@ -49,38 +49,104 @@ public final class BotTeleporter {
         new Spell("Ape Atoll",  new WorldTile(2796, 2791, 0), 64, 76, 555, 2, 554, 2, 565, 2, 563, 2),
     };
 
+    /** Jewelry teleport entry - charged item + landing tile + animation. */
+    public static final class JewelryTele {
+        public final String name;
+        public final int[] itemIds; // any of these (charge variants)
+        public final WorldTile landingTile;
+        public JewelryTele(String name, WorldTile landing, int... itemIds) {
+            this.name = name;
+            this.itemIds = itemIds;
+            this.landingTile = landing;
+        }
+    }
+
     /**
-     * Find the best teleport spell to get the bot near targetX,targetY.
-     * Returns null if no teleport gets meaningfully closer than walking.
+     * Common jewelry teleports. Bot uses the matching charged item from
+     * inventory (consumes a charge), plays the standard jewelry teleport
+     * GFX (1681) and animation (1979). Faster than spell casts (no rune
+     * cost, no level requirement) so bots prefer these when available.
      */
-    public static Spell pickBest(AIPlayer bot, int targetX, int targetY) {
-        Spell best = null;
+    private static final JewelryTele[] JEWELRY = new JewelryTele[] {
+        // Amulet of glory: edge / karamja / draynor / al-kharid
+        new JewelryTele("Glory Edgeville",   new WorldTile(3087, 3496, 0), 1706, 1708, 1710, 1712, 11978, 1704),
+        new JewelryTele("Glory Karamja",     new WorldTile(2918, 3176, 0), 1706, 1708, 1710, 1712, 11978, 1704),
+        new JewelryTele("Glory Draynor",     new WorldTile(3105, 3251, 0), 1706, 1708, 1710, 1712, 11978, 1704),
+        new JewelryTele("Glory Al-Kharid",   new WorldTile(3304, 3124, 0), 1706, 1708, 1710, 1712, 11978, 1704),
+        // Games necklace: burthorpe / barbarian / corp / wintertodt
+        new JewelryTele("Games Burthorpe",   new WorldTile(2898, 3554, 0), 3853, 3855, 3857, 3859, 3861, 3863, 3865, 3867),
+        new JewelryTele("Games Barbarian",   new WorldTile(2519, 3570, 0), 3853, 3855, 3857, 3859, 3861, 3863, 3865, 3867),
+        // Ring of dueling: castle wars / duel arena / fog
+        new JewelryTele("Dueling CW",        new WorldTile(2440, 3090, 0), 2552, 2554, 2556, 2558, 2560, 2562, 2564, 2566),
+        new JewelryTele("Dueling Arena",     new WorldTile(3315, 3235, 0), 2552, 2554, 2556, 2558, 2560, 2562, 2564, 2566),
+        // Combat bracelet: warriors / champions / monastery / edgeville
+        new JewelryTele("Combat Warriors",   new WorldTile(2882, 3548, 0), 11118, 11120, 11122, 11124, 11126),
+        new JewelryTele("Combat Monastery",  new WorldTile(3052, 3490, 0), 11118, 11120, 11122, 11124, 11126),
+        // Skills necklace: fishing guild / mining guild / crafting guild
+        new JewelryTele("Skills Fishing",    new WorldTile(2611, 3393, 0), 11105, 11107, 11109, 11111, 11113),
+        new JewelryTele("Skills Mining",     new WorldTile(3046, 9756, 0), 11105, 11107, 11109, 11111, 11113),
+        new JewelryTele("Skills Crafting",   new WorldTile(2933, 3287, 0), 11105, 11107, 11109, 11111, 11113),
+    };
+
+    /**
+     * Container for whichever teleport got picked.
+     */
+    public static final class Choice {
+        public final Spell spell;       // non-null = standard spellbook
+        public final JewelryTele jewel; // non-null = jewelry teleport
+        public final WorldTile landingTile;
+        public final String name;
+        Choice(Spell s) { this.spell = s; this.jewel = null; this.landingTile = s.landingTile; this.name = s.name; }
+        Choice(JewelryTele j) { this.spell = null; this.jewel = j; this.landingTile = j.landingTile; this.name = j.name; }
+    }
+
+    /**
+     * Find the best teleport (spell OR jewelry) to get the bot near
+     * targetX,targetY. Jewelry preferred over spells when both apply
+     * since jewelry has no rune cost. Returns null if no teleport gets
+     * meaningfully closer than walking.
+     */
+    public static Choice pickBest(AIPlayer bot, int targetX, int targetY) {
+        Choice best = null;
         long bestDist = Long.MAX_VALUE;
         long currentDist = (long) Math.hypot(bot.getX() - targetX, bot.getY() - targetY);
+        // Jewelry first - free, no level req
+        for (JewelryTele j : JEWELRY) {
+            if (!hasJewelry(bot, j)) continue;
+            long d = (long) Math.hypot(j.landingTile.getX() - targetX, j.landingTile.getY() - targetY);
+            if (d < bestDist) { bestDist = d; best = new Choice(j); }
+        }
+        // Then standard spells
         for (Spell s : STANDARD) {
             if (bot.getSkills().getLevel(Skills.MAGIC) < s.magicLevel) continue;
             if (!hasRunes(bot, s)) continue;
             long d = (long) Math.hypot(s.landingTile.getX() - targetX, s.landingTile.getY() - targetY);
-            if (d < bestDist) { bestDist = d; best = s; }
+            // Prefer jewelry on ties (cheaper); spell wins only if strictly closer
+            if (d < bestDist) { bestDist = d; best = new Choice(s); }
         }
-        // Only return if it's at least 30% closer - otherwise just walk.
         if (best == null) return null;
-        if (bestDist >= currentDist * 0.7) return null;
+        if (bestDist >= currentDist * 0.7) return null; // not closer enough - walk instead
         return best;
     }
 
     /**
-     * Cast the spell (deducts runes, plays animation+gfx, lands the bot at
-     * landingTile after the standard cast delay). Returns true on success.
-     * False if checkRunes fails midway, level dropped, or the bot is locked.
+     * Execute the chosen teleport (jewelry or spell). Returns true on
+     * success. Routes through Magic.sendNormalTeleportSpell or
+     * sendItemTeleportSpell as appropriate.
      */
-    public static boolean cast(AIPlayer bot, Spell spell) {
-        if (bot == null || spell == null) return false;
+    public static boolean cast(AIPlayer bot, Choice choice) {
+        if (bot == null || choice == null) return false;
         try {
-            return Magic.sendNormalTeleportSpell(bot, spell.magicLevel, spell.xp, spell.landingTile, spell.runes);
-        } catch (Throwable t) {
-            return false;
-        }
+            if (choice.spell != null) {
+                Spell s = choice.spell;
+                return Magic.sendNormalTeleportSpell(bot, s.magicLevel, s.xp, s.landingTile, s.runes);
+            }
+            if (choice.jewel != null) {
+                // Jewelry tele: emote 9603, gfx 1684 (or 1681 for glories)
+                return Magic.sendItemTeleportSpell(bot, true, 9603, 1684, 4, choice.jewel.landingTile);
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     /** True if bot has all the runes the spell needs. */
@@ -92,6 +158,23 @@ public final class BotTeleporter {
                 if (!bot.getInventory().containsItemToolBelt(runeId, qty)) return false;
             }
             return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** True if bot has any of the jewelry charge variants in inventory or equipped. */
+    private static boolean hasJewelry(AIPlayer bot, JewelryTele j) {
+        try {
+            for (int id : j.itemIds) {
+                if (bot.getInventory().containsItem(id, 1)) return true;
+                // Check equipment slots (amulet, ring, bracelet, neck)
+                try {
+                    if (bot.getEquipment().getAmuletId() == id) return true;
+                    if (bot.getEquipment().getRingId() == id) return true;
+                } catch (Throwable ignored) {}
+            }
+            return false;
         } catch (Throwable t) {
             return false;
         }
