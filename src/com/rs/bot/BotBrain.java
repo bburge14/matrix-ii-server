@@ -950,17 +950,22 @@ public class BotBrain {
     private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
         this.lastMethod = method;
         // Walk-out phase - get to the training area first.
+        // Per-bot jittered target: 10 bots on the same goal don't all walk
+        // to the exact same tile and step on each other. Hash by player
+        // index so each bot gets a stable per-method offset within +/-4.
         if (method.location != null) {
-            int dx = bot.getX() - method.location.getX();
-            int dy = bot.getY() - method.location.getY();
-            if (dx * dx + dy * dy > 64) { // > ~8 tiles
+            int[] jittered = com.rs.bot.ai.WorldKnowledge.jitteredSpot(
+                bot.getIndex(), method.location.getX(), method.location.getY(), 4);
+            int targetX = jittered[0];
+            int targetY = jittered[1];
+            int dx = bot.getX() - targetX;
+            int dy = bot.getY() - targetY;
+            if (dx * dx + dy * dy > 64) { // > ~8 tiles from the jittered target
                 if (com.rs.bot.ai.WorldKnowledge.isWalkingDistance(
-                        bot.getX(), bot.getY(),
-                        method.location.getX(), method.location.getY())) {
-                    BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+                        bot.getX(), bot.getY(), targetX, targetY)) {
+                    BotPathing.walkTo(bot, targetX, targetY);
                 } else {
-                    attemptTeleportTo(method.location.getX(), method.location.getY(),
-                                      bot.getX(), bot.getY());
+                    attemptTeleportTo(targetX, targetY, bot.getX(), bot.getY());
                 }
                 return;
             }
