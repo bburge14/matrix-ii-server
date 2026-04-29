@@ -54,6 +54,15 @@ public final class BotEquipment {
      * get rune. The tools go into the inventory; the action code accepts
      * them from inventory or toolbelt or weapon slot.
      */
+    /**
+     * Public-callable refill - used when a bot's existing kit is missing
+     * the tool needed for its current activity. Equivalent to "buying a
+     * replacement from the master" without the full shop interaction.
+     */
+    public static void ensureGatheringToolkit(Player bot) {
+        applyGatheringToolkit(bot, bot.getSkills().getCombatLevel());
+    }
+
     private static void applyGatheringToolkit(Player bot, int cb) {
         int pickaxe, hatchet;
         if      (cb >= 60) { pickaxe = 1275; hatchet = 1359; } // rune

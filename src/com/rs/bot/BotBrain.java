@@ -1067,6 +1067,12 @@ public class BotBrain {
                 return;
             }
         } catch (Throwable ignored) {}
+        if (com.rs.game.player.actions.Woodcutting.getHatchet(bot, false) == null) {
+            lastDiagnostic = "wc: no hatchet - buying replacement";
+            if (Utils.random(100) < 30) sayDebug("no hatchet, buying one");
+            BotEquipment.ensureGatheringToolkit(bot);
+            return;
+        }
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
@@ -1094,6 +1100,15 @@ public class BotBrain {
                 return;
             }
         } catch (Throwable ignored) {}
+        // Tool check - if no pickaxe, refill toolkit (simulating a buy
+        // from the mining master) so the bot can actually mine instead
+        // of animating then quitting.
+        if (com.rs.game.player.actions.mining.MiningBase.getPickAxeDefinitions(bot, false) == null) {
+            lastDiagnostic = "mining: no pickaxe - buying replacement";
+            if (Utils.random(100) < 30) sayDebug("no pickaxe, buying one");
+            BotEquipment.ensureGatheringToolkit(bot);
+            return;
+        }
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
