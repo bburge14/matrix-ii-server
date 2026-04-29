@@ -37,12 +37,14 @@ public final class NPCSpawns {
 		java.util.Arrays.asList(15085, 4906) // Nails (pickpocket target) + Wilfred (woods wanderer)
 	);
 
-	// NPC IDs that should walk regardless of cache walkMask (for NPCs whose
-	// cache definition has walkMask=0 but should still wander - typically
-	// pickpocket targets and skill-area background NPCs)
-	private static final java.util.Set<Integer> FORCE_WALK_NPCS = new java.util.HashSet<Integer>(
-		java.util.Arrays.asList(3205, 7, 15, 187, 9, 23, 1905, 20, 21, 2109, 4906)
-	);
+	// FORCE_WALK_NPCS removed: pickpocket NPCs were wandering too far for
+	// bots to reliably find them within the 8-tile scan radius. The bots
+	// would announce 'time to pickpocket dwarf trader' then go silent
+	// because the trader had walked away. Letting them be static (per
+	// cache walkMask, usually 0) keeps them at their spawn for bots to
+	// find. Nails (15085) keeps walking for visual variety since he's
+	// the named master, and Wilfred (4906) wanders his wooded area.
+	private static final java.util.Set<Integer> FORCE_WALK_NPCS = new java.util.HashSet<Integer>();
 
 	private static final void loadSpawnsList(String path) {
 		try {

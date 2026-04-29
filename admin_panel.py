@@ -293,35 +293,54 @@ class BotAIFrame(ctk.CTkFrame):
         self.auto_var = tk.BooleanVar(value=True)
         ctk.CTkCheckBox(actions, text="Auto-refresh (3s)", variable=self.auto_var, command=self._toggle_auto).pack(side="left", padx=10)
 
+        # Filter bar
+        filt = ctk.CTkFrame(self, fg_color="transparent")
+        filt.pack(fill="x", padx=20, pady=(0, 4))
+        ctk.CTkLabel(filt, text="Filter:").pack(side="left", padx=(4, 6))
+        self.filter_var = tk.StringVar(value="")
+        ctk.CTkEntry(filt, textvariable=self.filter_var, width=200,
+                     placeholder_text="name / area / goal / diag substring").pack(side="left")
+        self.filter_var.trace_add("write", lambda *a: self._update(self.bot_data))
+        self.problems_only_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(filt, text="Problems only (has [Debug])",
+                        variable=self.problems_only_var,
+                        command=lambda: self._update(self.bot_data)).pack(side="left", padx=10)
+
         tree_frame = ctk.CTkFrame(self)
         tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
-        cols = ("name", "location", "state", "goal", "personality", "emotions")
+        cols = ("name", "cb", "area", "coords", "state", "goal", "method", "diag", "hp", "inv", "working")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
-        widths = (150, 120, 100, 180, 150, 180)
+        widths = (140, 40, 120, 110, 90, 200, 200, 240, 60, 50, 60)
         for c, w in zip(cols, widths):
-            self.tree.heading(c, text=c.title(), anchor="w")
+            self.tree.heading(c, text=c.upper(), anchor="w")
             self.tree.column(c, width=w, anchor="w")
         self.tree.pack(side="left", fill="both", expand=True)
 
         sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         sb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=sb.set)
-        
+
+        # Click-to-detail row
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.detail = ctk.CTkLabel(self, text="(select a bot to see full diagnostic)",
+                                   anchor="w", justify="left", wraplength=900)
+        self.detail.pack(fill="x", padx=20, pady=(0, 10))
+
         self._poll_id = None
         self.bot_data = []
 
     def on_show(self):
         self.refresh()
-        if self.auto_var.get() and self._poll_id is None: 
+        if self.auto_var.get() and self._poll_id is None:
             self._auto_refresh()
 
     def _toggle_auto(self):
-        if self.auto_var.get() and self._poll_id is None: 
+        if self.auto_var.get() and self._poll_id is None:
             self._auto_refresh()
 
     def _auto_refresh(self):
-        if not self.auto_var.get(): 
+        if not self.auto_var.get():
             self._poll_id = None
             return
         self.refresh()
@@ -340,17 +359,73 @@ class BotAIFrame(ctk.CTkFrame):
                 self.after(0, lambda: self._update_error(error_msg))
         threading.Thread(target=do, daemon=True).start()
 
+    def _matches_filter(self, bot):
+        q = (self.filter_var.get() or "").strip().lower()
+        if q:
+            haystack = (
+                str(bot.get("name", "")) + " " +
+                str(bot.get("area", "")) + " " +
+                str(bot.get("goal", "")) + " " +
+                str(bot.get("method", "")) + " " +
+                str(bot.get("diag", ""))
+            ).lower()
+            if q not in haystack:
+                return False
+        if self.problems_only_var.get():
+            d = str(bot.get("diag", "")).lower()
+            if not d:
+                return False
+            if not any(k in d for k in ("stuck", "no ", "broke", "fail", "level", "lvl ", "missing")):
+                return False
+        return True
+
     def _update(self, bots):
         self.tree.delete(*self.tree.get_children())
         for bot in bots:
+            if not self._matches_filter(bot):
+                continue
+            x = bot.get("x", 0)
+            y = bot.get("y", 0)
+            plane = bot.get("plane", 0)
+            coords = f"{x},{y},{plane}"
+            hp = f"{bot.get('hp', 0)}/{bot.get('max_hp', 0)}"
+            inv = bot.get("free_inv", "?")
+            working = "yes" if bot.get("working") else "no"
             self.tree.insert("", "end", values=(
                 bot.get("name", ""),
-                bot.get("location", ""),
-                bot.get("state", "UNKNOWN"),
-                bot.get("goal", "None"),
-                bot.get("personality", "Unknown"),
-                bot.get("emotions", "Unknown")
+                bot.get("cb", "?"),
+                bot.get("area", ""),
+                coords,
+                bot.get("state", ""),
+                bot.get("goal", ""),
+                bot.get("method", ""),
+                bot.get("diag", ""),
+                hp,
+                inv,
+                working,
             ))
+
+    def _on_select(self, _evt=None):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        idx = self.tree.index(sel[0])
+        # idx counts only filtered bots; pick from the filtered subset
+        filtered = [b for b in self.bot_data if self._matches_filter(b)]
+        if idx >= len(filtered):
+            return
+        b = filtered[idx]
+        text = (
+            f"{b.get('name','?')}  cb {b.get('cb','?')}  ({b.get('archetype','')})\n"
+            f"  area    : {b.get('area','')}    coords {b.get('x',0)},{b.get('y',0)},{b.get('plane',0)}\n"
+            f"  state   : {b.get('state','')}\n"
+            f"  goal    : {b.get('goal','')}\n"
+            f"  method  : {b.get('method','')}  ({b.get('method_kind','')})\n"
+            f"  diag    : {b.get('diag','')}\n"
+            f"  hp      : {b.get('hp',0)}/{b.get('max_hp',0)}    inv free {b.get('free_inv','?')}    working {b.get('working')}\n"
+            f"  totalLvl: {b.get('total_lvl','?')}    locked {b.get('locked')}"
+        )
+        self.detail.configure(text=text)
 
     def _update_error(self, error_msg):
         self.tree.delete(*self.tree.get_children())

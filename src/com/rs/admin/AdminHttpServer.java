@@ -575,45 +575,62 @@ public final class AdminHttpServer {
                     first = false;
 
                     String name = p.getDisplayName();
-                    String location = p.getX() + "," + p.getY() + "," + p.getPlane();
+                    int x = p.getX(), y = p.getY(), plane = p.getPlane();
+                    String area = "UNKNOWN";
+                    try { area = com.rs.bot.ai.WorldKnowledge.getCurrentArea(x, y); } catch (Throwable ignored) {}
                     String state = "UNKNOWN";
                     String goal = "None";
-                    String personality = "Unknown";
-                    String emotions = "Unknown";
+                    String activity = "";
+                    String method = "";
+                    String methodKind = "";
+                    String diag = "";
+                    String archetype = "";
+                    int hp = 0, maxHp = 0, cb = 0, totalLvl = 0, freeInv = 0;
+                    boolean locked = false, working = false;
 
                     if (p instanceof com.rs.bot.AIPlayer) {
                         com.rs.bot.AIPlayer bot = (com.rs.bot.AIPlayer) p;
+                        try { archetype = bot.getArchetype(); } catch (Throwable ignored) {}
                         try {
-                            if (bot.getBrain() != null) {
-                                // Get current state
-                                if (bot.getBrain().getCurrentState() != null) {
-                                    state = bot.getBrain().getCurrentState().toString();
+                            com.rs.bot.BotBrain brain = bot.getBrain();
+                            if (brain != null) {
+                                if (brain.getCurrentState() != null) state = brain.getCurrentState().toString();
+                                com.rs.bot.ai.Goal g = brain.getCurrentGoal();
+                                if (g != null) goal = g.getDescription();
+                                activity = brain.getCurrentActivity() == null ? "" : brain.getCurrentActivity();
+                                com.rs.bot.ai.TrainingMethods.Method m = brain.getLastMethod();
+                                if (m != null) {
+                                    method = m.description;
+                                    methodKind = String.valueOf(m.kind);
                                 }
-                                // Get current goal
-                                if (bot.getBrain().getGoalStack() != null && bot.getBrain().getGoalStack().getCurrentGoal() != null) {
-                                    goal = "Active";
-                                }
-                                // Get personality type
-                                if (bot.getBrain().getPersonality() != null && bot.getBrain().getPersonality() != null) {
-                                    personality = "Efficiency-focused";
-                                }
-                                // Get emotional state
-                                if (bot.getBrain().getEmotionalState() != null && bot.getBrain().getEmotionalState() != null) {
-                                    emotions = "H:" + bot.getBrain().getEmotionalState().getHappiness() + " F:" + bot.getBrain().getEmotionalState().getFrustration();
-                                }
+                                diag = brain.getLastDiagnostic() == null ? "" : brain.getLastDiagnostic();
                             }
-                        } catch (Throwable ignored) {
-                            // If any AI call fails, keep defaults
-                        }
+                        } catch (Throwable ignored) {}
+                        try { hp = bot.getHitpoints(); } catch (Throwable ignored) {}
+                        try { maxHp = bot.getMaxHitpoints(); } catch (Throwable ignored) {}
+                        try { cb = bot.getSkills().getCombatLevel(); } catch (Throwable ignored) {}
+                        try { totalLvl = bot.getSkills().getTotalLevel(); } catch (Throwable ignored) {}
+                        try { freeInv = bot.getInventory().getFreeSlots(); } catch (Throwable ignored) {}
+                        try { locked = bot.isLocked(); } catch (Throwable ignored) {}
+                        try { working = bot.getActionManager() != null && bot.getActionManager().hasSkillWorking(); } catch (Throwable ignored) {}
                     }
 
-                    sb.append("{\"name\":\"").append(jsonEscape(name))
-                      .append("\",\"location\":\"").append(location)
-                      .append("\",\"state\":\"").append(state)
-                      .append("\",\"goal\":\"").append(jsonEscape(goal))
-                      .append("\",\"personality\":\"").append(jsonEscape(personality))
-                      .append("\",\"emotions\":\"").append(jsonEscape(emotions))
-                      .append("\"}");
+                    sb.append("{\"name\":\"").append(jsonEscape(name)).append("\"")
+                      .append(",\"x\":").append(x).append(",\"y\":").append(y).append(",\"plane\":").append(plane)
+                      .append(",\"area\":\"").append(jsonEscape(area)).append("\"")
+                      .append(",\"state\":\"").append(jsonEscape(state)).append("\"")
+                      .append(",\"goal\":\"").append(jsonEscape(goal)).append("\"")
+                      .append(",\"activity\":\"").append(jsonEscape(activity)).append("\"")
+                      .append(",\"method\":\"").append(jsonEscape(method)).append("\"")
+                      .append(",\"method_kind\":\"").append(jsonEscape(methodKind)).append("\"")
+                      .append(",\"diag\":\"").append(jsonEscape(diag)).append("\"")
+                      .append(",\"archetype\":\"").append(jsonEscape(archetype)).append("\"")
+                      .append(",\"hp\":").append(hp).append(",\"max_hp\":").append(maxHp)
+                      .append(",\"cb\":").append(cb).append(",\"total_lvl\":").append(totalLvl)
+                      .append(",\"free_inv\":").append(freeInv)
+                      .append(",\"locked\":").append(locked)
+                      .append(",\"working\":").append(working)
+                      .append("}");
                 }
             } catch (Throwable t) {
                 sb = new StringBuilder("{\"ok\":false,\"error\":\"").append(jsonEscape(t.getMessage())).append("\"}");

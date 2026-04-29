@@ -786,14 +786,37 @@ public class BotBrain {
     }
 
     private void executeSmartGoalMovement(Goal goal, int currentX, int currentY) {
-        // First try TrainingMethods - the newer, richer plan source. It
-        // covers skill goals (with level-tier promotion), economic goals
-        // (rank-by-GP across all skills), and combat goals. WorldKnowledge
-        // is only a fallback for the few goals nothing else handles.
-        com.rs.bot.ai.TrainingMethods.Method method =
-            com.rs.bot.ai.TrainingMethods.bestMethodFor(goal, bot);
+        // Reset blacklist when goal changes - we're trying a new objective.
+        if (goal != null && !goal.getDescription().equals(blacklistGoalDesc)) {
+            goalBlacklist.clear();
+            blacklistGoalDesc = goal.getDescription();
+            stuckXpSnapshot = -1;
+            stuckSinceMs = 0;
+        }
+
+        // Ranked Plan A/B/C list - skip any plan we've blacklisted as stuck.
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> ranked =
+            com.rs.bot.ai.TrainingMethods.rankedMethodsFor(goal, bot);
+        com.rs.bot.ai.TrainingMethods.Method method = null;
+        for (com.rs.bot.ai.TrainingMethods.Method m : ranked) {
+            if (!goalBlacklist.contains(m)) { method = m; break; }
+        }
         if (method != null) {
+            // Check if the current method has gone stuck - if so blacklist
+            // and recurse to pick the next plan.
+            if (method == lastMethod && checkAndHandleStuck(method)) {
+                executeSmartGoalMovement(goal, currentX, currentY);
+                return;
+            }
             executeTrainingMethod(goal, method);
+            return;
+        }
+        // All methods blacklisted - clear and try again from the top
+        // (something might have changed - level up, item gained, area cleared).
+        if (!goalBlacklist.isEmpty() && !ranked.isEmpty()) {
+            sayDebug("all plans exhausted, retrying from plan A");
+            goalBlacklist.clear();
+            executeTrainingMethod(goal, ranked.get(0));
             return;
         }
 
@@ -971,6 +994,9 @@ public class BotBrain {
             }
         }
         goal.setCurrentStep(method.description);
+        // Announce the activity once per method change so players hear what
+        // bots are doing instead of generic goal descriptions.
+        announceMethodStart(method);
         switch (method.kind) {
             case WOODCUTTING: tryStartWoodcutting(method); break;
             case MINING:      tryStartMining(method); break;
@@ -980,14 +1006,104 @@ public class BotBrain {
         }
     }
 
+    /** Last training method the bot announced - used to avoid spamming chat. */
+    private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+
+    /** Stuck detection: snapshot of current method's relevant XP, when set. */
+    private long stuckXpSnapshot = -1;
+    private long stuckSinceMs = 0;
+    /** Plans we already tried and failed for the current goal - rotated through. */
+    private final java.util.Set<com.rs.bot.ai.TrainingMethods.Method> goalBlacklist = new java.util.HashSet<>();
+    /** Goal description tied to the current blacklist - reset when goal changes. */
+    private String blacklistGoalDesc = null;
+    /** Threshold: if no XP gained in this many ms, declare method stuck. */
+    private static final long STUCK_THRESHOLD_MS = 30_000;
+    /**
+     * If the current method has produced no XP gain for STUCK_THRESHOLD_MS,
+     * blacklist it and report. Returns true if blacklisted (caller should
+     * rotate to the next plan).
+     */
+    private boolean checkAndHandleStuck(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (method == null || method.skill < 0) return false;
+        long currentXp;
+        try { currentXp = (long) bot.getSkills().getXp(method.skill); }
+        catch (Throwable t) { return false; }
+        long now = System.currentTimeMillis();
+        if (stuckXpSnapshot < 0) {
+            stuckXpSnapshot = currentXp;
+            stuckSinceMs = now;
+            return false;
+        }
+        if (currentXp > stuckXpSnapshot) {
+            // Progress! Reset the timer.
+            stuckXpSnapshot = currentXp;
+            stuckSinceMs = now;
+            return false;
+        }
+        if (now - stuckSinceMs < STUCK_THRESHOLD_MS) return false;
+        // Stuck for the full threshold - blacklist this method for the goal.
+        goalBlacklist.add(method);
+        sayDebug("plan stuck (no xp 30s): " + method.description + " - trying alt");
+        lastDiagnostic = "stuck on " + method.description + " for " + ((now - stuckSinceMs) / 1000) + "s, blacklisted";
+        // Reset snapshot for the NEXT method we'll pick.
+        stuckXpSnapshot = -1;
+        stuckSinceMs = 0;
+        return true;
+    }
+
+    private void announceMethodStart(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (method == null || method == lastAnnouncedMethod) return;
+        lastAnnouncedMethod = method;
+        Goal g = goalStack.getCurrentGoal();
+        if (g != null) sayGoal(g.getDescription());
+        switch (method.kind) {
+            case WOODCUTTING: sayStep("chopping " + treeKindLabel(method)); break;
+            case MINING:      sayStep("mining " + rockKindLabel(method)); break;
+            case FISHING:     sayStep("fishing " + fishKindLabel(method)); break;
+            case THIEVING:    sayStep("pickpocketing " + method.description.replace("Pickpocket ", "").replace(" - Burthorpe", "")); break;
+            case COMBAT:      sayStep("combat training"); break;
+        }
+    }
+
+    private static String treeKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.treeDef == null) return "trees";
+        return m.treeDef.toString().toLowerCase().replace('_', ' ');
+    }
+    private static String rockKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.rockDef == null) return "ore";
+        return m.rockDef.toString().toLowerCase().replace('_', ' ');
+    }
+    private static String fishKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.fishDef == null) return "spots";
+        return m.fishDef.toString().toLowerCase().replace('_', ' ');
+    }
+
     private void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method.npcIds == null || method.npcIds.length == 0) {
             lastDiagnostic = "thieving: no npc ids in method";
             return;
         }
-        com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 6, method.npcIds);
+        // Inventory check - PickPocketAction.checkAll fails if no free slots.
+        try {
+            if (bot.getInventory().getFreeSlots() < 1) {
+                lastDiagnostic = "thieving: inventory full, going to bank next";
+                if (Utils.random(100) < 50) sayDebug("inventory full");
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Skill level pre-check - so we don't try a method we can't actually fire.
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.THIEVING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "thieving: my level " + lvl + " < required " + method.minLevel + " for " + method.description;
+                if (Utils.random(100) < 50) sayDebug("thieving lvl " + lvl + " < required " + method.minLevel);
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 8, method.npcIds);
         if (target == null) {
-            lastDiagnostic = "thieving: no target NPC in 6 tiles";
+            lastDiagnostic = "thieving: no target in 8 tiles for " + method.description;
+            if (Utils.random(100) < 50) sayDebug("no pickpocket target in 8 tiles");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1009,15 +1125,47 @@ public class BotBrain {
     }
 
     private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "wc: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 50) sayDebug("woodcutting lvl " + lvl + " < required " + method.minLevel);
+                return;
+            }
+        } catch (Throwable ignored) {}
+        if (com.rs.game.player.actions.Woodcutting.getHatchet(bot, false) == null) {
+            int cb = bot.getSkills().getCombatLevel();
+            int targetAxe;
+            if      (cb >= 60) targetAxe = 1359;
+            else if (cb >= 30) targetAxe = 1357;
+            else if (cb >= 20) targetAxe = 1355;
+            else if (cb >= 10) targetAxe = 1353;
+            else               targetAxe = 1351;
+            if (BotEquipment.tryBuyTool(bot, targetAxe)) {
+                lastDiagnostic = "wc: bought a hatchet";
+                if (Utils.random(100) < 50) sayDebug("bought a hatchet");
+                return;
+            }
+            if (targetAxe != 1351 && BotEquipment.tryBuyTool(bot, 1351)) {
+                lastDiagnostic = "wc: bought a bronze axe (couldn't afford " + targetAxe + ")";
+                if (Utils.random(100) < 50) sayDebug("can only afford a bronze axe");
+                return;
+            }
+            goalBlacklist.add(method);
+            lastDiagnostic = "wc: broke and no hatchet - need to earn money first";
+            if (Utils.random(100) < 50) sayDebug("no axe + no gp, need to earn first");
+            return;
+        }
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
-            lastDiagnostic = "wc: no tree found in 12 tiles (def=" + (method == null ? "any" : method.treeDef) + ")";
+            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 12 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            lastDiagnostic = "wc: walking to tree at " + match.object.getX() + "," + match.object.getY();
+            lastDiagnostic = "wc: walking to " + match.definition + " at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
@@ -1027,15 +1175,52 @@ public class BotBrain {
     }
 
     private void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "mining: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 50) sayDebug("mining lvl " + lvl + " < required " + method.minLevel);
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Tool check - if no pickaxe: try to BUY one with coins. If broke,
+        // blacklist mining and fall back to no-tool activity.
+        if (com.rs.game.player.actions.mining.MiningBase.getPickAxeDefinitions(bot, false) == null) {
+            int cb = bot.getSkills().getCombatLevel();
+            int targetPickaxe;
+            if      (cb >= 60) targetPickaxe = 1275;
+            else if (cb >= 30) targetPickaxe = 1271;
+            else if (cb >= 20) targetPickaxe = 1269;
+            else if (cb >= 10) targetPickaxe = 1267;
+            else               targetPickaxe = 1265;
+            if (BotEquipment.tryBuyTool(bot, targetPickaxe)) {
+                lastDiagnostic = "mining: bought a pickaxe";
+                if (Utils.random(100) < 50) sayDebug("bought a pickaxe");
+                return;
+            }
+            // Can't afford even bronze - fall back to bronze if higher tier failed
+            if (targetPickaxe != 1265 && BotEquipment.tryBuyTool(bot, 1265)) {
+                lastDiagnostic = "mining: bought a bronze pickaxe (couldn't afford " + targetPickaxe + ")";
+                if (Utils.random(100) < 50) sayDebug("can only afford a bronze pickaxe");
+                return;
+            }
+            // Truly broke - blacklist mining for this goal and fall back
+            // to a no-tool earner (the goal-driver will pick pickpocket Man next tick).
+            goalBlacklist.add(method);
+            lastDiagnostic = "mining: broke and no pickaxe - need to earn money first";
+            if (Utils.random(100) < 50) sayDebug("no pickaxe + no gp, need to earn first");
+            return;
+        }
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
-            lastDiagnostic = "mining: no rock in 12 tiles (def=" + (method == null ? "any" : method.rockDef) + ")";
+            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 12 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            lastDiagnostic = "mining: walking to rock at " + match.object.getX() + "," + match.object.getY();
+            lastDiagnostic = "mining: walking to " + match.definition + " at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
@@ -1045,15 +1230,44 @@ public class BotBrain {
     }
 
     private void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "fishing: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 50) sayDebug("fishing lvl " + lvl + " < required " + method.minLevel);
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Tool check by fishing-spot type
+        int neededTool = -1;
+        if (method.fishDef != null) {
+            String spot = method.fishDef.toString();
+            if (spot.contains("NET"))     neededTool = 303;       // Small net
+            else if (spot.contains("CAGE")) neededTool = 301;     // Lobster pot
+            else if (spot.contains("HARPOON")) neededTool = 311;  // Harpoon
+            else if (spot.contains("LURE") || spot.contains("BAIT")) neededTool = 307; // Fishing rod
+        }
+        if (neededTool > 0 && !bot.getInventory().containsItem(neededTool, 1)) {
+            if (BotEquipment.tryBuyTool(bot, neededTool)) {
+                lastDiagnostic = "fishing: bought tool " + neededTool;
+                if (Utils.random(100) < 50) sayDebug("bought a fishing tool");
+                return;
+            }
+            goalBlacklist.add(method);
+            lastDiagnostic = "fishing: broke + missing tool " + neededTool;
+            if (Utils.random(100) < 50) sayDebug("can't afford a fishing tool");
+            return;
+        }
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {
-            lastDiagnostic = "fishing: no spot in 14 tiles (def=" + (method == null ? "any" : method.fishDef) + ")";
+            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 14 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.npc.getX(), match.npc.getY())) {
-            lastDiagnostic = "fishing: walking to spot at " + match.npc.getX() + "," + match.npc.getY();
+            lastDiagnostic = "fishing: walking to " + match.definition + " at " + match.npc.getX() + "," + match.npc.getY();
             BotPathing.walkToEntity(bot, match.npc);
             return;
         }
@@ -1206,6 +1420,11 @@ public class BotBrain {
             System.err.println("[BotChat] failed for " + bot.getDisplayName() + ": " + t);
         }
     }
+
+    /** Tagged chat - prefixes the message so observers can tell what kind of update it is. */
+    private void sayGoal(String text)  { say("[Goal] " + text); }
+    private void sayStep(String text)  { say("[Step] " + text); }
+    private void sayDebug(String text) { say("[Debug] " + text); }
 
     private void broadcastPublicMessage(String text) {
         PublicChatMessage msg = new PublicChatMessage(text, 0);

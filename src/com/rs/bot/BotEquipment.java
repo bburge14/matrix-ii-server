@@ -37,8 +37,106 @@ public final class BotEquipment {
             }
             // Common accessories regardless of archetype
             applyAccessories(bot, archetype, combatLevel);
+            // Universal gathering toolkit so bots can actually skill -
+            // Mining/WC/Fishing all checkAll() against tool presence.
+            applyGatheringToolkit(bot, combatLevel);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
+        }
+    }
+
+    /**
+     * Give every bot a basic gathering toolkit. Without these, the skill
+     * Action.checkAll() returns false and the bot animates (briefly) but
+     * never actually gathers - exactly what was happening before.
+     *
+     * Tier scales with combat level so low-level bots get bronze, high
+     * get rune. The tools go into the inventory; the action code accepts
+     * them from inventory or toolbelt or weapon slot.
+     */
+    /**
+     * Public-callable refill - used when a bot's existing kit is missing
+     * the tool needed for its current activity. Equivalent to "buying a
+     * replacement from the master" without the full shop interaction.
+     */
+    public static void ensureGatheringToolkit(Player bot) {
+        applyGatheringToolkit(bot, bot.getSkills().getCombatLevel());
+    }
+
+    /**
+     * Try to "buy" a single tool by deducting gp from the bot's money.
+     * Returns true if purchase succeeded (item added, coins deducted).
+     * If the bot can't afford it, returns false so the caller can fall
+     * back to a no-tool activity.
+     *
+     * Tool prices match the in-game shop value at the relevant master.
+     */
+    public static boolean tryBuyTool(Player bot, int itemId) {
+        int price;
+        switch (itemId) {
+            case 1265: price = 1;     break; // Bronze pickaxe
+            case 1267: price = 200;   break; // Iron pickaxe
+            case 1269: price = 500;   break; // Steel pickaxe
+            case 1273: price = 1300;  break; // Mithril pickaxe (skip black tier 1271)
+            case 1271: price = 3200;  break; // Adamant pickaxe
+            case 1275: price = 32000; break; // Rune pickaxe
+            case 1351: price = 1;     break; // Bronze axe
+            case 1353: price = 200;   break; // Iron axe
+            case 1355: price = 500;   break; // Steel axe
+            case 1357: price = 1300;  break; // Mithril axe
+            case 1359: price = 32000; break; // Rune axe
+            case 303:  price = 5;     break; // Small fishing net
+            case 307:  price = 5;     break; // Fishing rod
+            case 313:  price = 4;     break; // Fishing bait (per)
+            case 301:  price = 20;    break; // Lobster pot
+            case 311:  price = 45;    break; // Harpoon
+            case 590:  price = 1;     break; // Tinderbox
+            case 2347: price = 1;     break; // Hammer
+            case 1755: price = 1;     break; // Chisel
+            default:   price = 100;
+        }
+        try {
+            int pouch = bot.getMoneyPouch().getCoinsAmount();
+            int invCoins = bot.getInventory().getAmountOf(995);
+            int totalGp = pouch + invCoins;
+            if (totalGp < price) return false;
+            // Pay from pouch first, then inventory.
+            int fromPouch = Math.min(pouch, price);
+            if (fromPouch > 0) bot.getMoneyPouch().setCoinsAmount(pouch - fromPouch);
+            int rem = price - fromPouch;
+            if (rem > 0) bot.getInventory().deleteItem(995, rem);
+            bot.getInventory().addItem(itemId, 1);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static void applyGatheringToolkit(Player bot, int cb) {
+        int pickaxe, hatchet;
+        if      (cb >= 60) { pickaxe = 1275; hatchet = 1359; } // rune
+        else if (cb >= 30) { pickaxe = 1271; hatchet = 1357; } // adamant
+        else if (cb >= 20) { pickaxe = 1269; hatchet = 1355; } // mithril
+        else if (cb >= 10) { pickaxe = 1267; hatchet = 1353; } // steel
+        else               { pickaxe = 1265; hatchet = 1351; } // bronze
+        try {
+            if (!bot.getInventory().containsItem(pickaxe, 1)) bot.getInventory().addItem(pickaxe, 1);
+            if (!bot.getInventory().containsItem(hatchet, 1)) bot.getInventory().addItem(hatchet, 1);
+            // Fishing - small net (works for shrimp)
+            if (!bot.getInventory().containsItem(303, 1)) bot.getInventory().addItem(303, 1);
+            // Fishing rod + bait (trout/pike)
+            if (!bot.getInventory().containsItem(307, 1)) bot.getInventory().addItem(307, 1);
+            if (!bot.getInventory().containsItem(313, 50)) bot.getInventory().addItem(313, 50);
+            // Lobster pot (cage method)
+            if (!bot.getInventory().containsItem(301, 1)) bot.getInventory().addItem(301, 1);
+            // Harpoon (sharks)
+            if (!bot.getInventory().containsItem(311, 1)) bot.getInventory().addItem(311, 1);
+            // Tinderbox (firemaking) + hammer (smithing/construction) + chisel (crafting)
+            if (!bot.getInventory().containsItem(590, 1)) bot.getInventory().addItem(590, 1);
+            if (!bot.getInventory().containsItem(2347, 1)) bot.getInventory().addItem(2347, 1);
+            if (!bot.getInventory().containsItem(1755, 1)) bot.getInventory().addItem(1755, 1);
+        } catch (Throwable t) {
+            System.err.println("[BotEquipment] toolkit failed: " + t);
         }
     }
 
