@@ -158,6 +158,21 @@ public class Toolbelt implements Serializable {
 		return true;
 	}
 
+	/**
+	 * Direct-add for bots / programmatic kit setup. Skips the click-to-add
+	 * UI flow that needs an inventory slot - just marks the tool present
+	 * on the toolbelt. Returns true if added, false if the item ID isn't
+	 * a recognized toolbelt-eligible tool.
+	 */
+	public boolean addToolDirect(int itemId) {
+		int[] slot = getItemSlot(itemId);
+		if (slot == null) return false;
+		if (getItems()[slot[0]] == slot[1] + 1) return true; // already present
+		getItems()[slot[0]] = slot[1] + 1;
+		try { refreshConfigs(); } catch (Throwable ignored) {}
+		return true;
+	}
+
 	public void switchDungeonneringToolbelt() {
 		this.dungeonnering = !dungeonnering;
 		player.getPackets().sendCSVarInteger(1725, dungeonnering ? 11 : 1);

@@ -63,6 +63,27 @@ public final class BotEquipment {
         applyGatheringToolkit(bot, bot.getSkills().getCombatLevel());
     }
 
+    /** Pickaxe item ID at-or-below the bot's mining level. */
+    public static int pickaxeForMiningLevel(int miningLevel) {
+        if      (miningLevel >= 61) return 15259; // Dragon pickaxe
+        else if (miningLevel >= 41) return 1275;  // Rune
+        else if (miningLevel >= 31) return 1271;  // Adamant
+        else if (miningLevel >= 21) return 1269;  // Mithril
+        else if (miningLevel >= 6)  return 1267;  // Steel
+        else                        return 1265;  // Bronze
+    }
+
+    /** Hatchet item ID at-or-below the bot's woodcutting level. */
+    public static int hatchetForWoodcuttingLevel(int wcLevel) {
+        if      (wcLevel >= 61) return 6739; // Dragon hatchet
+        else if (wcLevel >= 41) return 1359; // Rune
+        else if (wcLevel >= 31) return 1357; // Adamant
+        else if (wcLevel >= 21) return 1355; // Mithril
+        else if (wcLevel >= 11) return 1361; // Black
+        else if (wcLevel >= 6)  return 1353; // Steel
+        else                    return 1351; // Bronze
+    }
+
     /**
      * Try to "buy" a single tool by deducting gp from the bot's money.
      * Returns true if purchase succeeded (item added, coins deducted).
@@ -113,31 +134,48 @@ public final class BotEquipment {
     }
 
     private static void applyGatheringToolkit(Player bot, int cb) {
-        int pickaxe, hatchet;
-        if      (cb >= 60) { pickaxe = 1275; hatchet = 1359; } // rune
-        else if (cb >= 30) { pickaxe = 1271; hatchet = 1357; } // adamant
-        else if (cb >= 20) { pickaxe = 1269; hatchet = 1355; } // mithril
-        else if (cb >= 10) { pickaxe = 1267; hatchet = 1353; } // steel
-        else               { pickaxe = 1265; hatchet = 1351; } // bronze
+        // Per-skill tier selection - a bot with 50 mining + 1 woodcutting
+        // gets a rune pickaxe but a bronze hatchet, matching what they
+        // can actually use.
+        int miningLvl, wcLvl, fishingLvl;
+        try { miningLvl  = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING); } catch (Throwable t) { miningLvl  = 1; }
+        try { wcLvl      = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING); } catch (Throwable t) { wcLvl  = 1; }
+        try { fishingLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING); } catch (Throwable t) { fishingLvl = 1; }
+        int pickaxe = pickaxeForMiningLevel(miningLvl);
+        int hatchet = hatchetForWoodcuttingLevel(wcLvl);
         try {
-            if (!bot.getInventory().containsItem(pickaxe, 1)) bot.getInventory().addItem(pickaxe, 1);
-            if (!bot.getInventory().containsItem(hatchet, 1)) bot.getInventory().addItem(hatchet, 1);
-            // Fishing - small net (works for shrimp)
-            if (!bot.getInventory().containsItem(303, 1)) bot.getInventory().addItem(303, 1);
-            // Fishing rod + bait (trout/pike)
-            if (!bot.getInventory().containsItem(307, 1)) bot.getInventory().addItem(307, 1);
-            if (!bot.getInventory().containsItem(313, 50)) bot.getInventory().addItem(313, 50);
-            // Lobster pot (cage method)
-            if (!bot.getInventory().containsItem(301, 1)) bot.getInventory().addItem(301, 1);
-            // Harpoon (sharks)
-            if (!bot.getInventory().containsItem(311, 1)) bot.getInventory().addItem(311, 1);
-            // Tinderbox (firemaking) + hammer (smithing/construction) + chisel (crafting)
-            if (!bot.getInventory().containsItem(590, 1)) bot.getInventory().addItem(590, 1);
-            if (!bot.getInventory().containsItem(2347, 1)) bot.getInventory().addItem(2347, 1);
-            if (!bot.getInventory().containsItem(1755, 1)) bot.getInventory().addItem(1755, 1);
+            // Straight to the toolbelt (doesn't take inventory slots).
+            // Mining/WC/Fishing checkAll() accepts toolbelt items.
+            addToBeltOrInv(bot, pickaxe);
+            addToBeltOrInv(bot, hatchet);
+            if (fishingLvl >= 1)  addToBeltOrInv(bot, 303); // Small net
+            if (fishingLvl >= 5)  addToBeltOrInv(bot, 307); // Fishing rod
+            if (fishingLvl >= 35) addToBeltOrInv(bot, 311); // Harpoon
+            if (fishingLvl >= 40) addToBeltOrInv(bot, 301); // Lobster pot
+            addToBeltOrInv(bot, 590);  // Tinderbox
+            addToBeltOrInv(bot, 2347); // Hammer
+            addToBeltOrInv(bot, 1755); // Chisel
+            // Bait stays in inventory - it's a stack consumable, not a toolbelt tool.
+            if (fishingLvl >= 5 && !bot.getInventory().containsItem(313, 50))
+                bot.getInventory().addItem(313, 50);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] toolkit failed: " + t);
         }
+    }
+
+    /**
+     * Add a tool to the toolbelt directly. Falls back to inventory if the
+     * item isn't toolbelt-eligible (e.g. item ID not in the toolbelt's
+     * item table).
+     */
+    public static void addToBeltOrInv(Player bot, int itemId) {
+        try {
+            if (bot.getToolbelt() != null && bot.getToolbelt().addToolDirect(itemId)) return;
+        } catch (Throwable ignored) {}
+        try {
+            if (!bot.getInventory().containsItem(itemId, 1))
+                bot.getInventory().addItem(itemId, 1);
+        } catch (Throwable ignored) {}
     }
 
     // ===== Wealth tier (drives gear quality) =====

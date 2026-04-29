@@ -311,15 +311,20 @@ class BotAIFrame(ctk.CTkFrame):
 
         cols = ("name", "cb", "area", "coords", "state", "goal", "method", "diag", "hp", "inv", "working")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
-        widths = (140, 40, 120, 110, 90, 200, 200, 240, 60, 50, 60)
+        widths = (140, 40, 120, 110, 90, 200, 200, 320, 60, 50, 60)
         for c, w in zip(cols, widths):
             self.tree.heading(c, text=c.upper(), anchor="w")
-            self.tree.column(c, width=w, anchor="w")
-        self.tree.pack(side="left", fill="both", expand=True)
+            self.tree.column(c, width=w, anchor="w", stretch=False)
 
-        sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        sb.pack(side="right", fill="y")
-        self.tree.configure(yscrollcommand=sb.set)
+        # Both scrollbars - need a wrapper grid so vertical+horizontal coexist.
+        ysb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        xsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ysb.set, xscrollcommand=xsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        ysb.grid(row=0, column=1, sticky="ns")
+        xsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
 
         # Click-to-detail row
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
