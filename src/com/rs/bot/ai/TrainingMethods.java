@@ -51,6 +51,9 @@ public final class TrainingMethods {
         public final FishingSpots fishDef;
         // Combat-only: NPC IDs to attack at this location.
         public final int[] npcIds;
+        // Risky locations (wilderness, deep dungeons, bosses) - bots
+        // need adequate combat level + gear to even consider these.
+        public final boolean dangerous;
 
         private Method(Builder b) {
             this.description = b.description;
@@ -67,6 +70,7 @@ public final class TrainingMethods {
             this.rockDef = b.rockDef;
             this.fishDef = b.fishDef;
             this.npcIds = b.npcIds;
+            this.dangerous = b.dangerous;
         }
 
         public boolean isApplicable(AIPlayer bot) {
@@ -77,6 +81,11 @@ public final class TrainingMethods {
                 }
                 if (requiredCombatLevel > 0
                         && bot.getSkills().getCombatLevel() < requiredCombatLevel) return false;
+                // Dangerous spots (wilderness, deep dungeons, bosses) need a
+                // bot that can survive. Hard gate at cb 80 even before
+                // requiredCombatLevel kicks in - prevents low-level bots
+                // teleporting to runite mine and getting one-shot.
+                if (dangerous && bot.getSkills().getCombatLevel() < 80) return false;
                 if (requiredItems != null && requiredItems.length > 0) {
                     boolean hasOne = false;
                     for (int id : requiredItems) {
@@ -116,6 +125,7 @@ public final class TrainingMethods {
         int gpRate;
         int[] requiredItems = new int[0];
         int requiredCombatLevel = 0;
+        boolean dangerous = false;
         TreeDefinitions treeDef;
         RockDefinitions rockDef;
         FishingSpots fishDef;
@@ -132,6 +142,7 @@ public final class TrainingMethods {
         Builder rock(RockDefinitions r) { rockDef = r; return this; }
         Builder fish(FishingSpots f) { fishDef = f; return this; }
         Builder npcs(int... ids) { npcIds = ids; return this; }
+        Builder dangerous() { dangerous = true; return this; }
         Method build() { return new Method(this); }
     }
 
@@ -213,13 +224,13 @@ public final class TrainingMethods {
             .rock(RockDefinitions.Mithril_Ore).build());
         ALL.add(b("Mine mithril - Wilderness mine", Kind.MINING)
             .skill(Skills.MINING).lvl(55, 75).at(3092, 3568).xp(60000).gp(40000)
-            .rock(RockDefinitions.Mithril_Ore).build());
+            .rock(RockDefinitions.Mithril_Ore).dangerous().build());
         ALL.add(b("Mine adamantite - Mining Guild basement", Kind.MINING)
             .skill(Skills.MINING).lvl(70, 85).at(3033, 9737).xp(65000).gp(60000)
             .rock(RockDefinitions.Adamant_Ore).build());
         ALL.add(b("Mine runite - Wilderness", Kind.MINING)
             .skill(Skills.MINING).lvl(85, 99).at(3058, 3884).xp(45000).gp(120000)
-            .rock(RockDefinitions.Runite_Ore).build());
+            .rock(RockDefinitions.Runite_Ore).dangerous().build());
 
         // ---- Fishing (verified spots per tier) ----
         ALL.add(b("Net shrimp - Lumbridge swamp", Kind.FISHING)
@@ -356,27 +367,27 @@ public final class TrainingMethods {
         ALL.add(b("Boss - King Black Dragon", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(85, 99).at(2273, 4680).xp(80000).cb(95)
             .gp(800000)
-            .npcs(50).build());
+            .npcs(50).dangerous().build());
         ALL.add(b("Boss - Kalphite Queen", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(90, 99).at(3485, 9510).xp(90000).cb(110)
             .gp(1500000)
-            .npcs(1158, 1160).build());
+            .npcs(1158, 1160).dangerous().build());
         ALL.add(b("Boss - GWD Bandos", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(70, 99).at(2864, 5354).xp(75000).cb(110)
             .gp(2000000)
-            .npcs(6260).build());
+            .npcs(6260).dangerous().build());
         ALL.add(b("Boss - GWD Armadyl", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(70, 99).at(2839, 5296).xp(75000).cb(110)
             .gp(2500000)
-            .npcs(6222).build());
+            .npcs(6222).dangerous().build());
         ALL.add(b("Boss - GWD Saradomin", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(70, 99).at(2913, 5273).xp(75000).cb(110)
             .gp(1800000)
-            .npcs(6247).build());
+            .npcs(6247).dangerous().build());
         ALL.add(b("Boss - GWD Zamorak", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(70, 99).at(2926, 5333).xp(75000).cb(110)
             .gp(1700000)
-            .npcs(6203).build());
+            .npcs(6203).dangerous().build());
     }
 
     private static Builder b(String d, Kind k) { return new Builder(d, k); }
@@ -406,8 +417,11 @@ public final class TrainingMethods {
      * Used by the fallback system: BotBrain tries Plan A, on stuck moves
      * to Plan B, etc. through this list.
      *
-     * Ranking same as bestMethodFor (rankByGp for ECONOMIC/equipment goals,
-     * rankFor otherwise) so Plan A here matches what bestMethodFor returned.
+     * Tier-aware per-bot shuffle: methods within 5% of the top score are
+     * grouped into a tier and shuffled by bot-index hash, so 10 bots on
+     * the same goal don't all pick the same #1 method as Plan A. Each
+     * bot still gets the same Plan A on subsequent ticks (deterministic
+     * by hash) so they don't oscillate.
      */
     public static java.util.List<Method> rankedMethodsFor(Goal goal, AIPlayer bot) {
         java.util.List<Method> out = new java.util.ArrayList<Method>();
@@ -419,20 +433,56 @@ public final class TrainingMethods {
             type.getCategory() == Goal.GoalCategory.ECONOMIC
             || (key != null && (key.startsWith("equipment:") || key.startsWith("weapon:")))
         );
+        java.util.List<Method> applicable = new java.util.ArrayList<Method>();
         for (Method m : ALL) {
             if (required != null && m.kind != required) continue;
             if (!m.isApplicable(bot)) continue;
-            out.add(m);
+            applicable.add(m);
         }
+        if (applicable.isEmpty()) return out;
         // Sort descending by score
-        java.util.Collections.sort(out, new java.util.Comparator<Method>() {
+        java.util.Collections.sort(applicable, new java.util.Comparator<Method>() {
             @Override public int compare(Method a, Method b) {
                 int sa = rankByGp ? a.rankForGp(bot) : a.rankFor(a.kind, bot);
                 int sb = rankByGp ? b.rankForGp(bot) : b.rankFor(b.kind, bot);
                 return Integer.compare(sb, sa);
             }
         });
+        // Group into tiers (within 5% of the leader of the tier).
+        // Within each tier, shuffle by bot-index hash so different bots
+        // pick different #1s.
+        long h = (long) bot.getIndex() * 2654435761L;
+        java.util.List<Method> tier = new java.util.ArrayList<Method>();
+        int leaderScore = Integer.MIN_VALUE;
+        for (Method m : applicable) {
+            int s = rankByGp ? m.rankForGp(bot) : m.rankFor(m.kind, bot);
+            if (leaderScore == Integer.MIN_VALUE) {
+                leaderScore = s;
+            }
+            int threshold = leaderScore - Math.max(1, Math.abs(leaderScore) / 4); // within 25% of leader (was 5%)
+            if (s >= threshold) {
+                tier.add(m);
+            } else {
+                // Flush the previous tier (shuffled per bot) and start a new one.
+                shuffleByHash(tier, h);
+                out.addAll(tier);
+                tier.clear();
+                leaderScore = s;
+                tier.add(m);
+            }
+        }
+        if (!tier.isEmpty()) {
+            shuffleByHash(tier, h);
+            out.addAll(tier);
+        }
         return out;
+    }
+
+    /** Deterministic shuffle by integer seed - same seed = same order. */
+    private static void shuffleByHash(java.util.List<Method> list, long seed) {
+        if (list.size() < 2) return;
+        java.util.Random r = new java.util.Random(seed);
+        java.util.Collections.shuffle(list, r);
     }
 
     public static Method bestMethodFor(Goal goal, AIPlayer bot) {

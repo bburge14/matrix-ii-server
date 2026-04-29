@@ -70,6 +70,7 @@ public final class AdminHttpServer {
             server.createContext("/admin/bots/diagnose",   auth(new BotDiagnoseHandler()));
             server.createContext("/admin/bots/scan",       auth(new BotScanHandler()));
             server.createContext("/admin/bots/force",      auth(postOnly(new BotForceHandler())));
+            server.createContext("/admin/world/scan",      auth(new WorldScanHandler()));
             server.createContext("/admin/items/find",       auth(new ItemFindHandler()));
             server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
@@ -1085,6 +1086,37 @@ public final class AdminHttpServer {
             if (m == null) { sendText(ex, 404, "{\"ok\":false,\"error\":\"no applicable method\"}"); return; }
             bot.getBrain().forceTrainingMethod(m);
             sendText(ex, 200, "{\"ok\":true,\"method\":\"" + jsonEscape(m.description) + "\"}");
+        }
+    }
+
+    /**
+     * GET /admin/world/scan?x=X&y=Y&plane=P&radius=R
+     * Returns the nearest tree, rock, and fishing spot from any tile in
+     * the world. Use this to verify whether a TrainingMethod's coord is
+     * actually near the right resource. Defaults: plane=0, radius=24.
+     */
+    private static class WorldScanHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            int x = parseIntOr(queryParam(ex, "x"), -1);
+            int y = parseIntOr(queryParam(ex, "y"), -1);
+            int plane = parseIntOr(queryParam(ex, "plane"), 0);
+            int radius = parseIntOr(queryParam(ex, "radius"), 24);
+            if (x < 0 || y < 0) { sendText(ex, 400, "{\"ok\":false,\"error\":\"need x and y query\"}"); return; }
+            com.rs.game.WorldTile from = new com.rs.game.WorldTile(x, y, plane);
+            com.rs.bot.ai.EnvironmentScanner.TreeMatch tm = com.rs.bot.ai.EnvironmentScanner.findNearestTree(from, radius);
+            com.rs.bot.ai.EnvironmentScanner.RockMatch rm = com.rs.bot.ai.EnvironmentScanner.findNearestRock(from, radius);
+            com.rs.bot.ai.EnvironmentScanner.FishMatch fm = com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(from, radius);
+            StringBuilder sb = new StringBuilder("{\"ok\":true");
+            sb.append(",\"x\":").append(x).append(",\"y\":").append(y).append(",\"plane\":").append(plane);
+            sb.append(",\"radius\":").append(radius);
+            if (tm != null) sb.append(",\"tree\":{\"def\":\"").append(jsonEscape(String.valueOf(tm.definition))).append("\",\"x\":").append(tm.object.getX()).append(",\"y\":").append(tm.object.getY()).append(",\"id\":").append(tm.object.getId()).append("}");
+            else sb.append(",\"tree\":null");
+            if (rm != null) sb.append(",\"rock\":{\"def\":\"").append(jsonEscape(String.valueOf(rm.definition))).append("\",\"x\":").append(rm.object.getX()).append(",\"y\":").append(rm.object.getY()).append(",\"id\":").append(rm.object.getId()).append("}");
+            else sb.append(",\"rock\":null");
+            if (fm != null) sb.append(",\"fish\":{\"def\":\"").append(jsonEscape(String.valueOf(fm.definition))).append("\",\"x\":").append(fm.npc.getX()).append(",\"y\":").append(fm.npc.getY()).append(",\"id\":").append(fm.npc.getId()).append("}");
+            else sb.append(",\"fish\":null");
+            sb.append("}");
+            sendText(ex, 200, sb.toString());
         }
     }
 
