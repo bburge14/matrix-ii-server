@@ -30,7 +30,7 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING }
+    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING }
 
     public static final class Method {
         public final String description;
@@ -293,6 +293,21 @@ public final class TrainingMethods {
         ALL.add(b("Harpoon shark - Catherby", Kind.FISHING)
             .skill(Skills.FISHING).lvl(76, 99).at(2837, 3429).xp(55000).gp(80000)
             .fish(FishingSpots.HARPOON).build());
+
+        // ---- Firemaking (process-skill: requires logs in inventory) ----
+        // Single method with all log tiers in requiredItems - the action
+        // picker (BotBrain.tryStartFiremaking) chooses the highest-tier
+        // log the bot can light. Location is GE-area open ground; could
+        // be done anywhere with a clear tile.
+        ALL.add(b("Firemake logs - GE area", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3164, 3487).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Edgeville bank", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3094, 3491).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
         // NPC IDs verified in 830 cache via examines:
@@ -589,6 +604,7 @@ public final class TrainingMethods {
         if (key.startsWith("skill:mining"))      return Kind.MINING;
         if (key.startsWith("skill:fishing"))     return Kind.FISHING;
         if (key.startsWith("skill:thieving"))    return Kind.THIEVING;
+        if (key.startsWith("skill:firemaking"))  return Kind.FIREMAKING;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")

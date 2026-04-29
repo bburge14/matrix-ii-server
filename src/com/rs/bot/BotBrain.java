@@ -1018,7 +1018,51 @@ public class BotBrain {
             case FISHING:     tryStartFishing(method); break;
             case COMBAT:      tryStartCombat(method); break;
             case THIEVING:    tryStartThieving(method); break;
+            case FIREMAKING:  tryStartFiremaking(method); break;
         }
+    }
+
+    private void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "fm: my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Need a tinderbox (toolkit-level) and logs in inventory
+        if (!bot.getInventory().containsItemToolBelt(590)) {
+            BotEquipment.tryBuyTool(bot, 590);
+        }
+        // Find the highest-tier log the bot can use
+        com.rs.game.player.actions.Firemaking.Fire targetFire = null;
+        int botFmLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
+        for (com.rs.game.player.actions.Firemaking.Fire f : com.rs.game.player.actions.Firemaking.Fire.values()) {
+            try {
+                java.lang.reflect.Method getLogId = f.getClass().getMethod("getLogId");
+                int logId = (Integer) getLogId.invoke(f);
+                java.lang.reflect.Method getLevel = f.getClass().getMethod("getLevel");
+                int lvlReq = (Integer) getLevel.invoke(f);
+                if (botFmLvl >= lvlReq && bot.getInventory().containsItem(logId, 1)) {
+                    if (targetFire == null) targetFire = f;
+                    else {
+                        java.lang.reflect.Method otherLevel = targetFire.getClass().getMethod("getLevel");
+                        int curLvl = (Integer) otherLevel.invoke(targetFire);
+                        if (lvlReq > curLvl) targetFire = f;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (targetFire == null) {
+            // No logs - blacklist FM, switch to WC to chop some
+            lastDiagnostic = "fm: no logs in inventory, need to chop first";
+            if (Utils.random(100) < 30) sayDebug("no logs to burn");
+            goalBlacklist.add(method);
+            return;
+        }
+        bot.getActionManager().setAction(new com.rs.game.player.actions.Firemaking(targetFire));
+        lastDiagnostic = "fm: lighting " + targetFire;
+        if (Utils.random(100) < 30) say("nice cozy fire");
     }
 
     /** Last training method the bot announced - used to avoid spamming chat. */
