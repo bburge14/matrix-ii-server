@@ -1017,7 +1017,7 @@ public class BotBrain {
     /** Goal description tied to the current blacklist - reset when goal changes. */
     private String blacklistGoalDesc = null;
     /** Threshold: if no XP gained in this many ms, declare method stuck. */
-    private static final long STUCK_THRESHOLD_MS = 30_000;
+    private static final long STUCK_THRESHOLD_MS = 60_000;
     /**
      * If the current method has produced no XP gain for STUCK_THRESHOLD_MS,
      * blacklist it and report. Returns true if blacklisted (caller should
@@ -1157,7 +1157,7 @@ public class BotBrain {
             return;
         }
         EnvironmentScanner.TreeMatch match =
-            EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
+            EnvironmentScanner.findNearestTree(bot, 24, method == null ? null : method.treeDef);
         if (match == null) {
             lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 12 tiles");
@@ -1212,7 +1212,7 @@ public class BotBrain {
             return;
         }
         EnvironmentScanner.RockMatch match =
-            EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
+            EnvironmentScanner.findNearestRock(bot, 24, method == null ? null : method.rockDef);
         if (match == null) {
             lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 12 tiles");
@@ -1259,7 +1259,7 @@ public class BotBrain {
             return;
         }
         EnvironmentScanner.FishMatch match =
-            EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
+            EnvironmentScanner.findNearestFishingSpot(bot, 24, method == null ? null : method.fishDef);
         if (match == null) {
             lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 14 tiles");
