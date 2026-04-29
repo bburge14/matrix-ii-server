@@ -29,6 +29,72 @@ public enum GoalType {
                       "skill:summoning", 99, "Get 99 Summoning for all familiars"),
     MAX_COMBAT_STATS("Max all combat stats", Goal.GoalCategory.COMBAT, Goal.Priority.URGENT, 7200000,
                     "combat:max", 138, "Achieve maximum combat level"),
+
+    // Skill-checkpoint goals - intermediate stops on the way to 99 so a
+    // level-3 bot has real targets it can hit in hours.
+    TRAIN_ATTACK_30("Train Attack to 30", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 30000,
+                    "skill:attack", 30, "Train Attack to level 30"),
+    TRAIN_ATTACK_50("Train Attack to 50", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 120000,
+                    "skill:attack", 50, "Train Attack to level 50"),
+    TRAIN_ATTACK_70("Train Attack to 70", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 600000,
+                    "skill:attack", 70, "Train Attack to level 70"),
+    TRAIN_STRENGTH_30("Train Strength to 30", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 30000,
+                      "skill:strength", 30, "Train Strength to level 30"),
+    TRAIN_STRENGTH_50("Train Strength to 50", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 120000,
+                      "skill:strength", 50, "Train Strength to level 50"),
+    TRAIN_STRENGTH_70("Train Strength to 70", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 600000,
+                      "skill:strength", 70, "Train Strength to level 70"),
+    TRAIN_DEFENCE_30("Train Defence to 30", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 30000,
+                     "skill:defence", 30, "Train Defence to level 30 (rune cap)"),
+    TRAIN_DEFENCE_50("Train Defence to 50", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 120000,
+                     "skill:defence", 50, "Train Defence to level 50"),
+    TRAIN_DEFENCE_70("Train Defence to 70", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 600000,
+                     "skill:defence", 70, "Train Defence to level 70 (barrows cap)"),
+    TRAIN_HITPOINTS_30("Train HP to 30", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 30000,
+                       "skill:hitpoints", 30, "Train Hitpoints to level 30"),
+    TRAIN_HITPOINTS_50("Train HP to 50", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 120000,
+                       "skill:hitpoints", 50, "Train Hitpoints to level 50"),
+    TRAIN_RANGED_50("Train Ranged to 50", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 120000,
+                    "skill:ranged", 50, "Train Ranged to level 50"),
+    TRAIN_RANGED_70("Train Ranged to 70", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 600000,
+                    "skill:ranged", 70, "Train Ranged to level 70"),
+    TRAIN_MAGIC_50("Train Magic to 50", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 120000,
+                   "skill:magic", 50, "Train Magic to level 50"),
+
+    // Skilling-skill checkpoints
+    TRAIN_MINING_30("30 Mining", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 30000,
+                    "skill:mining", 30, "Train Mining to level 30"),
+    TRAIN_MINING_50("50 Mining", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 120000,
+                    "skill:mining", 50, "Train Mining to level 50"),
+    TRAIN_MINING_70("70 Mining", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 600000,
+                    "skill:mining", 70, "Train Mining to level 70"),
+    TRAIN_WC_30("30 Woodcutting", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 30000,
+                "skill:woodcutting", 30, "Train Woodcutting to level 30"),
+    TRAIN_WC_50("50 Woodcutting", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 120000,
+                "skill:woodcutting", 50, "Train Woodcutting to level 50"),
+    TRAIN_WC_70("70 Woodcutting", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 600000,
+                "skill:woodcutting", 70, "Train Woodcutting to level 70"),
+    TRAIN_FISHING_30("30 Fishing", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 30000,
+                     "skill:fishing", 30, "Train Fishing to level 30"),
+    TRAIN_FISHING_50("50 Fishing", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 120000,
+                     "skill:fishing", 50, "Train Fishing to level 50"),
+    TRAIN_FISHING_70("70 Fishing", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 600000,
+                     "skill:fishing", 70, "Train Fishing to level 70"),
+    TRAIN_THIEVING_30("30 Thieving", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 30000,
+                      "skill:thieving", 30, "Train Thieving to level 30"),
+    TRAIN_THIEVING_50("50 Thieving", Goal.GoalCategory.SKILL, Goal.Priority.MEDIUM, 120000,
+                      "skill:thieving", 50, "Train Thieving to level 50"),
+
+    // Tier 0/1 combat checkpoints - real intermediate goals new bots can
+    // actually finish, not 99-aspirations.
+    REACH_COMBAT_30("Reach combat level 30", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 60000,
+                    "combat:30", 30, "Train your combat skills to combat level 30"),
+    REACH_COMBAT_50("Reach combat level 50", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 240000,
+                    "combat:50", 50, "Train your combat skills to combat level 50"),
+    REACH_COMBAT_70("Reach combat level 70", Goal.GoalCategory.COMBAT, Goal.Priority.HIGH, 600000,
+                    "combat:70", 70, "Train your combat skills to combat level 70"),
+    REACH_COMBAT_90("Reach combat level 90", Goal.GoalCategory.COMBAT, Goal.Priority.URGENT, 1800000,
+                    "combat:90", 90, "Train your combat skills to combat level 90"),
     
     // Equipment Tier Goals (12)
     GET_RUNE_ARMOR("Get full Rune armor set", Goal.GoalCategory.COMBAT, Goal.Priority.MEDIUM, 300000,
@@ -123,8 +189,15 @@ public enum GoalType {
                      "resource:herbs", 10000, "Harvest 10,000 herbs for profit"),
     
     // ========== ECONOMIC GOALS (20) ==========
-    
+
     // Wealth Targets (8)
+    // Tier 0 wealth checkpoints - achievable for new bots in hours, not days
+    BUILD_50K_BANK("Build 50K bank", Goal.GoalCategory.ECONOMIC, Goal.Priority.MEDIUM, 60000,
+                   "wealth:50k", 50000, "Save up your first 50,000 coins"),
+    BUILD_100K_BANK("Build 100K bank", Goal.GoalCategory.ECONOMIC, Goal.Priority.MEDIUM, 120000,
+                    "wealth:100k", 100000, "Save 100,000 coins for early gear"),
+    BUILD_500K_BANK("Build 500K bank", Goal.GoalCategory.ECONOMIC, Goal.Priority.MEDIUM, 240000,
+                    "wealth:500k", 500000, "Save 500K coins"),
     BUILD_1M_BANK("Build 1M bank", Goal.GoalCategory.ECONOMIC, Goal.Priority.MEDIUM, 600000,
                  "wealth:1m", 1000000, "Accumulate 1 million coins"),
     BUILD_10M_BANK("Build 10M bank", Goal.GoalCategory.ECONOMIC, Goal.Priority.HIGH, 1800000,

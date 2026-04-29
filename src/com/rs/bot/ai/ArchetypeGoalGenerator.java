@@ -57,6 +57,12 @@ public class ArchetypeGoalGenerator {
         // Add universal goals that all bots might want
         goals.addAll(generateUniversalGoals(bot, analysis));
 
+        // Tier 0/1 checkpoint goals - level-3 bots need objectives they
+        // can hit in hours, not 99-aspirations. Adds combat-30/50/70,
+        // skill-30/50/70, and small bank checkpoints. The isAchievable
+        // filter below drops anything the bot has already passed.
+        goals.addAll(generateTierCheckpointGoals(bot, analysis));
+
         // Drop goals the bot has already accomplished, AND drop goals we
         // have no plan for. Without isAchievable, bots ended up with goals
         // like "99 Fletching" with no TrainingMethods entry, and just
@@ -337,6 +343,61 @@ public class ArchetypeGoalGenerator {
     /**
      * Generate universal goals that any bot might want
      */
+    /**
+     * Tier-0/1 checkpoint goals - the missing link between 'level 3 bot'
+     * and 'aspirational 99'. Adds combat 30/50/70/90 + per-skill 30/50/70
+     * + small bank milestones (50K -> 1M). The isAchievable filter that
+     * runs after this strips any checkpoints the bot has already passed,
+     * so a cb-50 bot only sees combat 70/90 (not 30/50 which it's done).
+     *
+     * This is what lets a low-level bot have a meaningful 'next thing
+     * to do' instead of grinding hopelessly toward Bandos for 100 hours.
+     */
+    private static List<Goal> generateTierCheckpointGoals(AIPlayer bot, BotAnalysis analysis) {
+        List<Goal> goals = new ArrayList<>();
+        int cb = analysis.combatLevel;
+        // Combat-level checkpoints
+        if (cb < 30)  goals.add(createGoal(GoalType.REACH_COMBAT_30, bot, analysis));
+        if (cb < 50)  goals.add(createGoal(GoalType.REACH_COMBAT_50, bot, analysis));
+        if (cb < 70)  goals.add(createGoal(GoalType.REACH_COMBAT_70, bot, analysis));
+        if (cb < 90)  goals.add(createGoal(GoalType.REACH_COMBAT_90, bot, analysis));
+        // Per-skill combat checkpoints
+        addSkillCheckpoints(goals, bot, analysis, Skills.ATTACK,
+            GoalType.TRAIN_ATTACK_30, GoalType.TRAIN_ATTACK_50, GoalType.TRAIN_ATTACK_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.STRENGTH,
+            GoalType.TRAIN_STRENGTH_30, GoalType.TRAIN_STRENGTH_50, GoalType.TRAIN_STRENGTH_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.DEFENCE,
+            GoalType.TRAIN_DEFENCE_30, GoalType.TRAIN_DEFENCE_50, GoalType.TRAIN_DEFENCE_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.HITPOINTS,
+            GoalType.TRAIN_HITPOINTS_30, GoalType.TRAIN_HITPOINTS_50, null);
+        addSkillCheckpoints(goals, bot, analysis, Skills.RANGE,
+            null, GoalType.TRAIN_RANGED_50, GoalType.TRAIN_RANGED_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.MAGIC,
+            null, GoalType.TRAIN_MAGIC_50, null);
+        // Gathering skills
+        addSkillCheckpoints(goals, bot, analysis, Skills.MINING,
+            GoalType.TRAIN_MINING_30, GoalType.TRAIN_MINING_50, GoalType.TRAIN_MINING_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.WOODCUTTING,
+            GoalType.TRAIN_WC_30, GoalType.TRAIN_WC_50, GoalType.TRAIN_WC_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.FISHING,
+            GoalType.TRAIN_FISHING_30, GoalType.TRAIN_FISHING_50, GoalType.TRAIN_FISHING_70);
+        addSkillCheckpoints(goals, bot, analysis, Skills.THIEVING,
+            GoalType.TRAIN_THIEVING_30, GoalType.TRAIN_THIEVING_50, null);
+        // Small bank checkpoints - so new bots have a real wealth target
+        if (analysis.bankValue < 50000)  goals.add(createGoal(GoalType.BUILD_50K_BANK, bot, analysis));
+        if (analysis.bankValue < 100000) goals.add(createGoal(GoalType.BUILD_100K_BANK, bot, analysis));
+        if (analysis.bankValue < 500000) goals.add(createGoal(GoalType.BUILD_500K_BANK, bot, analysis));
+        return goals;
+    }
+
+    private static void addSkillCheckpoints(List<Goal> goals, AIPlayer bot, BotAnalysis analysis,
+                                            int skill, GoalType lvl30, GoalType lvl50, GoalType lvl70) {
+        int level = analysis.getSkillLevel(skill);
+        if (lvl30 != null && level < 30) goals.add(createGoal(lvl30, bot, analysis));
+        if (lvl50 != null && level < 50) goals.add(createGoal(lvl50, bot, analysis));
+        if (lvl70 != null && level < 70) goals.add(createGoal(lvl70, bot, analysis));
+    }
+
     private static List<Goal> generateUniversalGoals(AIPlayer bot, BotAnalysis analysis) {
         List<Goal> goals = new ArrayList<>();
         
