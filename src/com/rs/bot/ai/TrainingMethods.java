@@ -329,6 +329,40 @@ public final class TrainingMethods {
         return null;
     }
 
+    /**
+     * Return ALL methods applicable to this bot+goal, ranked best-first.
+     * Used by the fallback system: BotBrain tries Plan A, on stuck moves
+     * to Plan B, etc. through this list.
+     *
+     * Ranking same as bestMethodFor (rankByGp for ECONOMIC/equipment goals,
+     * rankFor otherwise) so Plan A here matches what bestMethodFor returned.
+     */
+    public static java.util.List<Method> rankedMethodsFor(Goal goal, AIPlayer bot) {
+        java.util.List<Method> out = new java.util.ArrayList<Method>();
+        if (goal == null || bot == null) return out;
+        GoalType type = goal.getData("goalType", GoalType.class);
+        Kind required = type == null ? null : kindForGoal(type);
+        String key = type == null ? null : type.getRequirementKey();
+        final boolean rankByGp = type != null && (
+            type.getCategory() == Goal.GoalCategory.ECONOMIC
+            || (key != null && (key.startsWith("equipment:") || key.startsWith("weapon:")))
+        );
+        for (Method m : ALL) {
+            if (required != null && m.kind != required) continue;
+            if (!m.isApplicable(bot)) continue;
+            out.add(m);
+        }
+        // Sort descending by score
+        java.util.Collections.sort(out, new java.util.Comparator<Method>() {
+            @Override public int compare(Method a, Method b) {
+                int sa = rankByGp ? a.rankForGp(bot) : a.rankFor(a.kind, bot);
+                int sb = rankByGp ? b.rankForGp(bot) : b.rankFor(b.kind, bot);
+                return Integer.compare(sb, sa);
+            }
+        });
+        return out;
+    }
+
     public static Method bestMethodFor(Goal goal, AIPlayer bot) {
         if (goal == null || bot == null) return null;
         GoalType type = goal.getData("goalType", GoalType.class);

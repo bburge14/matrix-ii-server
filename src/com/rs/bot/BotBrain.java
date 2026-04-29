@@ -786,14 +786,37 @@ public class BotBrain {
     }
 
     private void executeSmartGoalMovement(Goal goal, int currentX, int currentY) {
-        // First try TrainingMethods - the newer, richer plan source. It
-        // covers skill goals (with level-tier promotion), economic goals
-        // (rank-by-GP across all skills), and combat goals. WorldKnowledge
-        // is only a fallback for the few goals nothing else handles.
-        com.rs.bot.ai.TrainingMethods.Method method =
-            com.rs.bot.ai.TrainingMethods.bestMethodFor(goal, bot);
+        // Reset blacklist when goal changes - we're trying a new objective.
+        if (goal != null && !goal.getDescription().equals(blacklistGoalDesc)) {
+            goalBlacklist.clear();
+            blacklistGoalDesc = goal.getDescription();
+            stuckXpSnapshot = -1;
+            stuckSinceMs = 0;
+        }
+
+        // Ranked Plan A/B/C list - skip any plan we've blacklisted as stuck.
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> ranked =
+            com.rs.bot.ai.TrainingMethods.rankedMethodsFor(goal, bot);
+        com.rs.bot.ai.TrainingMethods.Method method = null;
+        for (com.rs.bot.ai.TrainingMethods.Method m : ranked) {
+            if (!goalBlacklist.contains(m)) { method = m; break; }
+        }
         if (method != null) {
+            // Check if the current method has gone stuck - if so blacklist
+            // and recurse to pick the next plan.
+            if (method == lastMethod && checkAndHandleStuck(method)) {
+                executeSmartGoalMovement(goal, currentX, currentY);
+                return;
+            }
             executeTrainingMethod(goal, method);
+            return;
+        }
+        // All methods blacklisted - clear and try again from the top
+        // (something might have changed - level up, item gained, area cleared).
+        if (!goalBlacklist.isEmpty() && !ranked.isEmpty()) {
+            sayDebug("all plans exhausted, retrying from plan A");
+            goalBlacklist.clear();
+            executeTrainingMethod(goal, ranked.get(0));
             return;
         }
 
@@ -985,6 +1008,49 @@ public class BotBrain {
 
     /** Last training method the bot announced - used to avoid spamming chat. */
     private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+
+    /** Stuck detection: snapshot of current method's relevant XP, when set. */
+    private long stuckXpSnapshot = -1;
+    private long stuckSinceMs = 0;
+    /** Plans we already tried and failed for the current goal - rotated through. */
+    private final java.util.Set<com.rs.bot.ai.TrainingMethods.Method> goalBlacklist = new java.util.HashSet<>();
+    /** Goal description tied to the current blacklist - reset when goal changes. */
+    private String blacklistGoalDesc = null;
+    /** Threshold: if no XP gained in this many ms, declare method stuck. */
+    private static final long STUCK_THRESHOLD_MS = 30_000;
+    /**
+     * If the current method has produced no XP gain for STUCK_THRESHOLD_MS,
+     * blacklist it and report. Returns true if blacklisted (caller should
+     * rotate to the next plan).
+     */
+    private boolean checkAndHandleStuck(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (method == null || method.skill < 0) return false;
+        long currentXp;
+        try { currentXp = (long) bot.getSkills().getXp(method.skill); }
+        catch (Throwable t) { return false; }
+        long now = System.currentTimeMillis();
+        if (stuckXpSnapshot < 0) {
+            stuckXpSnapshot = currentXp;
+            stuckSinceMs = now;
+            return false;
+        }
+        if (currentXp > stuckXpSnapshot) {
+            // Progress! Reset the timer.
+            stuckXpSnapshot = currentXp;
+            stuckSinceMs = now;
+            return false;
+        }
+        if (now - stuckSinceMs < STUCK_THRESHOLD_MS) return false;
+        // Stuck for the full threshold - blacklist this method for the goal.
+        goalBlacklist.add(method);
+        sayDebug("plan stuck (no xp 30s): " + method.description + " - trying alt");
+        lastDiagnostic = "stuck on " + method.description + " for " + ((now - stuckSinceMs) / 1000) + "s, blacklisted";
+        // Reset snapshot for the NEXT method we'll pick.
+        stuckXpSnapshot = -1;
+        stuckSinceMs = 0;
+        return true;
+    }
+
     private void announceMethodStart(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method == lastAnnouncedMethod) return;
         lastAnnouncedMethod = method;
