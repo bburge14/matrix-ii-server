@@ -971,6 +971,9 @@ public class BotBrain {
      * scan for the right tree/rock/spot type (filtered) and start.
      */
     private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
+        // Humanization: pause briefly between actions / occasionally AFK.
+        // Without this, all bots tick in lockstep and look mechanical.
+        if (!canActNow()) return;
         // Crowding tracker - tells TrainingMethods how many bots are on each
         // method. A bot switching from A to B decrements A and increments B.
         if (method != lastMethod) {
@@ -982,8 +985,11 @@ public class BotBrain {
         // to the exact same tile and step on each other. Hash by player
         // index so each bot gets a stable per-method offset within +/-4.
         if (method.location != null) {
+            // Wider jitter (was 4 -> 8 tiles) so bots don't form conga lines
+            // when many converge on the same training spot. Combined with
+            // reaction-delay timing variance, paths and arrivals scatter.
             int[] jittered = com.rs.bot.ai.WorldKnowledge.jitteredSpot(
-                bot.getIndex(), method.location.getX(), method.location.getY(), 4);
+                bot.getIndex(), method.location.getX(), method.location.getY(), 8);
             int targetX = jittered[0];
             int targetY = jittered[1];
             int dx = bot.getX() - targetX;
@@ -1017,6 +1023,40 @@ public class BotBrain {
 
     /** Last training method the bot announced - used to avoid spamming chat. */
     private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+
+    /**
+     * Humanization: per-bot reaction delay. After picking a new method or
+     * action, bot pauses briefly before doing the next thing. Real players
+     * take a fraction of a second to a few seconds to react / move mouse /
+     * read tooltips. Without this, 50 bots all click 'fight' on the same
+     * tick and look obviously synchronized.
+     *
+     * Stored as an absolute timestamp the bot must wait until before acting.
+     */
+    private long actNotBefore = 0L;
+    /** Occasional longer AFK pause - bots pretending to alt-tab, snack, scroll. */
+    private long afkUntil = 0L;
+
+    /**
+     * Returns true if the bot is allowed to act this tick. Sets the next
+     * reaction delay so subsequent ticks pause appropriately.
+     */
+    private boolean canActNow() {
+        long now = System.currentTimeMillis();
+        if (now < afkUntil) return false;
+        if (now < actNotBefore) return false;
+        // Roll a tiny chance of a longer AFK pause - 0.3% per check, ~once
+        // every 5-10 minutes of activity. Mimics tab-out / snack / scroll.
+        if (Utils.random(1000) < 3) {
+            afkUntil = now + (5_000 + Utils.random(25_000)); // 5-30s
+            return false;
+        }
+        // Normal reaction delay: 350-1500ms with occasional longer thinks.
+        int delay = 350 + Utils.random(1150);
+        if (Utils.random(100) < 8) delay += Utils.random(2500); // 8% chance of 'thinking'
+        actNotBefore = now + delay;
+        return true;
+    }
 
     /**
      * Set bot's melee/ranged/magic XP style based on the current goal's
