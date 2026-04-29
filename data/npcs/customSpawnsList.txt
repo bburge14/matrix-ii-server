@@ -53,10 +53,14 @@
 // ^ Diviner (Wizard Finix variant) at user-specified coords
 682 - 2918 3474 0
 // ^ Armour salesman (Ranging Guild) - Master Ranger - moved to be next to Allison Elmshaper (Fletching) per user
-15403 - 2914 3531 0
-// ^ Master Mage near Commander Denulth
+946 - 2914 3531 0
+// ^ Master of Magics (replaces broken 15403 which had no cache model)
 589 - 2913 3534 0
 // ^ Plate mail armour seller -> Defence Master near Commander Denulth (shop 227)
+216 - 2915 3532 0
+// ^ High Priest of Entrana - Prayer Master near Denulth (shop 225)
+706 - 2916 3531 0
+// ^ Old wizard - secondary Runecrafting Master near Denulth (shop 217)
 // Donator zone entrance NPCs
 2253 - 3787 4358 1
 9085 - 3789 4360 1

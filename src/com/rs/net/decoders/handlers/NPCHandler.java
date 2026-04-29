@@ -1245,8 +1245,10 @@ public class NPCHandler {
 	    case 1060:  return 221; // Commander Denulth (Combat) - corrected from 15024
 	    case 15407: return 222; // Diviner
 	    case 682:   return 223; // Armour salesman (Ranging Guild) - Master Ranger - replaces broken 1585 Fire Giant
-	    case 15403: return 224; // Master Mage
+	    case 946:   return 224; // Master of Magics (replaces broken 15403)
 	    case 589:   return 227; // Plate mail armour seller -> Defence shop near Denulth
+	    case 216:   return 225; // High Priest of Entrana -> Prayer Master shop near Denulth
+	    case 706:   return 217; // Old wizard -> RC Master shop (secondary, near Denulth)
 	    case 14864: return 56;  // Ayleth Beaststalker -> Aleck's Hunter Emporium
 	    case 14877: return 19;  // Jack Oval -> Crafting (existing shop) - corrected from 14926
 	    case 14862: return 128; // Alfred Stonemason -> Construction - corrected from 15043
