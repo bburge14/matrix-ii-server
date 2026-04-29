@@ -230,10 +230,73 @@ public class Goal implements Serializable {
         if (!isRelevant(bot)) return false;
         GoalType type = getData("goalType", GoalType.class);
         if (type == null) return true;
+        // Tier-0 filter: drop goals the bot can't realistically attempt
+        // RIGHT NOW. A level-3 bot with combat 3 should not see 'Get
+        // Bandos armor' (needs 70 def to wear); they should see basic
+        // training/wealth goals first.
+        if (!isWithinReachableTier(bot, type)) return false;
         if (type.getCategory() == Goal.GoalCategory.SKILL) {
             return com.rs.bot.ai.TrainingMethods.bestMethodFor(this, bot) != null;
         }
         return true;
+    }
+
+    /**
+     * Reachable-tier check. Each goal has an implied combat-level/total-
+     * level minimum based on its requirementKey. Goals below that are
+     * filtered out at generation time so the bot's goal pool only
+     * contains things they can actually work toward right now.
+     *
+     * The thresholds aren't strict (a level-30 bot CAN start working
+     * toward rune armor by saving up) - they're "would a real player
+     * choose this as their next goal at this level" gates.
+     */
+    private static boolean isWithinReachableTier(AIPlayer bot, GoalType type) {
+        try {
+            String key = type.getRequirementKey();
+            int cb = bot.getSkills().getCombatLevel();
+            int total = bot.getSkills().getTotalLevel();
+            if (key == null) return true;
+
+            // Equipment goals - need enough Defence to actually wear it,
+            // plus enough cb to plausibly aim for it.
+            if (key.startsWith("equipment:bandos") || key.startsWith("equipment:armadyl")
+                || key.startsWith("equipment:barrows")) return cb >= 50;
+            if (key.startsWith("equipment:dragon")) return cb >= 40;
+            if (key.startsWith("equipment:rune"))   return cb >= 25;
+            if (key.startsWith("equipment:void"))   return cb >= 50;
+            if (key.startsWith("equipment:firecape")) return cb >= 80;
+
+            // Weapon goals
+            if (key.startsWith("weapon:bis"))      return cb >= 90;
+            if (key.startsWith("weapon:chaotic"))  return cb >= 80;
+            if (key.startsWith("weapon:godsword")) return cb >= 70;
+            if (key.startsWith("weapon:sol"))      return cb >= 70;
+            if (key.startsWith("weapon:whip"))     return cb >= 60;
+
+            // Combat goals - max-combat-style require having gone through
+            // the prior tiers.
+            if (key.startsWith("combat:max")) return cb >= 80;
+
+            // Skill 99 goals are always reachable in principle (start at 1).
+            if (key.startsWith("skill:")) return true;
+
+            // Wealth goals - small/big distinction. 1B requires meaningful cb.
+            if (key.startsWith("wealth:1b") || key.startsWith("wealth:1000m")) return cb >= 70;
+            if (key.startsWith("wealth:100m")) return cb >= 40;
+            if (key.startsWith("wealth:10m"))  return cb >= 20;
+            // Smaller wealth goals are always reachable.
+            if (key.startsWith("wealth:"))    return true;
+
+            // Quest / boss / collection goals - need combat for survivability.
+            if (key.startsWith("quest:") && total < 100) return false;
+            if (key.startsWith("boss:") || key.startsWith("kill:")) return cb >= 70;
+            if (key.startsWith("collection:")) return cb >= 30;
+
+            return true;
+        } catch (Throwable t) {
+            return true; // fail-open if we can't check
+        }
     }
     
     // ===== Data Storage =====

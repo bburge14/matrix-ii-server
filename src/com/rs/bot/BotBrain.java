@@ -971,6 +971,11 @@ public class BotBrain {
      * scan for the right tree/rock/spot type (filtered) and start.
      */
     private void executeTrainingMethod(Goal goal, com.rs.bot.ai.TrainingMethods.Method method) {
+        // Crowding tracker - tells TrainingMethods how many bots are on each
+        // method. A bot switching from A to B decrements A and increments B.
+        if (method != lastMethod) {
+            com.rs.bot.ai.TrainingMethods.registerActive(method, lastMethod);
+        }
         this.lastMethod = method;
         // Walk-out phase - get to the training area first.
         // Per-bot jittered target: 10 bots on the same goal don't all walk

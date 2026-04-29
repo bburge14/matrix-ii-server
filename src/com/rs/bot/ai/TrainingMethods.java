@@ -150,6 +150,36 @@ public final class TrainingMethods {
 
     private static final List<Method> ALL = new ArrayList<>();
 
+    // Crowding tracker - how many bots are CURRENTLY pursuing each method.
+    // bestMethodFor / rankedMethodsFor apply a penalty per active bot so 400
+    // bots don't all converge on the single highest-GP method. Each tick a
+    // bot stays on a method, the count stays elevated; switching decrements
+    // the old and increments the new (tracked by BotBrain).
+    private static final java.util.Map<Method, Integer> ACTIVE_BOTS_PER_METHOD =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Tells the registry that a bot picked this method. Idempotent. */
+    public static void registerActive(Method m, Method previous) {
+        if (m == previous) return;
+        if (previous != null) {
+            ACTIVE_BOTS_PER_METHOD.merge(previous, -1, (a, b) -> Math.max(0, a + b));
+        }
+        if (m != null) {
+            ACTIVE_BOTS_PER_METHOD.merge(m, 1, Integer::sum);
+        }
+    }
+
+    /** Tells the registry the bot stopped pursuing all methods. */
+    public static void unregisterActive(Method previous) {
+        if (previous != null) {
+            ACTIVE_BOTS_PER_METHOD.merge(previous, -1, (a, b) -> Math.max(0, a + b));
+        }
+    }
+
+    public static int activeBotsOn(Method m) {
+        return ACTIVE_BOTS_PER_METHOD.getOrDefault(m, 0);
+    }
+
     static {
         // ---- Woodcutting (multiple known F2P+P2P spots per tier so bots
         // scatter across the world instead of all stacking at one tree)
@@ -440,11 +470,15 @@ public final class TrainingMethods {
             applicable.add(m);
         }
         if (applicable.isEmpty()) return out;
-        // Sort descending by score
+        // Sort descending by score, with a CROWDING PENALTY: each bot
+        // already on a method shaves a chunk off the score. With 400 bots
+        // chasing 'wealth', the highest-GP method sees its score drop fast
+        // as bots pile on, making alternatives more attractive. Naturally
+        // load-balances the world without needing explicit slot reservations.
         java.util.Collections.sort(applicable, new java.util.Comparator<Method>() {
             @Override public int compare(Method a, Method b) {
-                int sa = rankByGp ? a.rankForGp(bot) : a.rankFor(a.kind, bot);
-                int sb = rankByGp ? b.rankForGp(bot) : b.rankFor(b.kind, bot);
+                int sa = (rankByGp ? a.rankForGp(bot) : a.rankFor(a.kind, bot)) - crowdPenalty(a);
+                int sb = (rankByGp ? b.rankForGp(bot) : b.rankFor(b.kind, bot)) - crowdPenalty(b);
                 return Integer.compare(sb, sa);
             }
         });
@@ -483,6 +517,21 @@ public final class TrainingMethods {
         if (list.size() < 2) return;
         java.util.Random r = new java.util.Random(seed);
         java.util.Collections.shuffle(list, r);
+    }
+
+    /**
+     * Penalty applied to a method's ranking score based on how many bots
+     * are already pursuing it. Each bot on the method reduces the
+     * method's effective score, making alternatives proportionally more
+     * attractive. Sublinear growth so a 200-bot method isn't penalized
+     * 200x - just enough to push the next-best alternatives over the line.
+     */
+    private static int crowdPenalty(Method m) {
+        int n = activeBotsOn(m);
+        if (n <= 2) return 0;          // first 2 bots are free
+        if (n <= 10) return 1000 * (n - 2);    // mild penalty for small crowds
+        if (n <= 30) return 8000 + 2500 * (n - 10);
+        return 58000 + 4000 * (n - 30);  // steep for large crowds
     }
 
     public static Method bestMethodFor(Goal goal, AIPlayer bot) {

@@ -21,6 +21,14 @@ public final class BotEquipment {
         if (archetype == null) return;
         archetype = archetype.toLowerCase();
         try {
+            // Brand-new level-3 bots (combat 3, total level low) skip the
+            // archetype loadout entirely - they get the proper starter kit
+            // instead, like a real new account. No full bronze, no plate.
+            if (isBrandNewBot(bot, combatLevel)) {
+                applyStarterKit(bot);
+                applyGatheringToolkit(bot, combatLevel); // bronze pick/axe
+                return;
+            }
             switch (archetype) {
                 case "skiller":  applySkiller(bot, combatLevel); break;
                 case "ranged":   applyRanger(bot, combatLevel); break;
@@ -40,6 +48,10 @@ public final class BotEquipment {
             // Universal gathering toolkit so bots can actually skill -
             // Mining/WC/Fishing all checkAll() against tool presence.
             applyGatheringToolkit(bot, combatLevel);
+            // Random "lived-in" bank + inventory clutter + GP scaled to
+            // the bot's combat level. Makes mid-tier bots feel like real
+            // accounts with accumulated stuff, not freshly-loaded NPCs.
+            applyAccumulatedWealth(bot, combatLevel);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
         }
@@ -61,6 +73,112 @@ public final class BotEquipment {
      */
     public static void ensureGatheringToolkit(Player bot) {
         applyGatheringToolkit(bot, bot.getSkills().getCombatLevel());
+    }
+
+    /**
+     * True if this bot is a brand-new level-3 account: combat=3 and the
+     * total level is low enough to confirm default 1-everything stats
+     * (10 hp + 7 base skills = 17 minimum total). Anything higher means
+     * the bot rolled real stats and should get the appropriate kit.
+     */
+    private static boolean isBrandNewBot(Player bot, int combatLevel) {
+        try {
+            return combatLevel <= 3 && bot.getSkills().getTotalLevel() <= 25;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Tutorial-Island-style starter pack. A real new player gets a basic
+     * pile of stuff to start them off. Replaces the old "spawn with full
+     * bronze armor" which was unrealistic for cb 3.
+     */
+    private static void applyStarterKit(Player bot) {
+        try {
+            // Stash items - go in inventory not equipped (new players don't
+            // start auto-equipped except for skills).
+            bot.getInventory().addItem(1265, 1);  // Bronze pickaxe
+            bot.getInventory().addItem(1351, 1);  // Bronze hatchet
+            bot.getInventory().addItem(303, 1);   // Small fishing net
+            bot.getInventory().addItem(590, 1);   // Tinderbox
+            bot.getInventory().addItem(1205, 1);  // Bronze dagger
+            bot.getInventory().addItem(841, 1);   // Shortbow
+            bot.getInventory().addItem(882, 25);  // Bronze arrows x25
+            bot.getInventory().addItem(556, 30);  // Air runes
+            bot.getInventory().addItem(558, 15);  // Mind runes
+            bot.getInventory().addItem(2309, 1);  // Bread
+            bot.getInventory().addItem(1925, 1);  // Bucket
+            bot.getInventory().addItem(1931, 1);  // Pot
+            bot.getInventory().addItem(995, 25);  // 25 coins (starter cash)
+        } catch (Throwable t) {
+            System.err.println("[BotEquipment] starter kit failed: " + t);
+        }
+    }
+
+    /**
+     * Add random "lived-in" items + GP to the bank/inventory based on
+     * combat level. Higher cb = more accumulated wealth + variety.
+     * Skips brand-new bots (they get just the starter kit).
+     *
+     * Picks from food/potions/herbs/seeds/runes/raw drops/processed
+     * supplies so each bot feels like a real account with a history.
+     */
+    private static void applyAccumulatedWealth(Player bot, int combatLevel) {
+        try {
+            // GP scaled by cb - rough OSRS economy expectations
+            int baseGp;
+            if      (combatLevel >= 100) baseGp = 5_000_000 + Utils.random(15_000_000);
+            else if (combatLevel >= 70)  baseGp = 500_000   + Utils.random(2_000_000);
+            else if (combatLevel >= 40)  baseGp = 50_000    + Utils.random(200_000);
+            else if (combatLevel >= 20)  baseGp = 5_000     + Utils.random(20_000);
+            else                          baseGp = 100      + Utils.random(2_000);
+            try { bot.getMoneyPouch().setCoinsAmount(baseGp); } catch (Throwable t) {}
+
+            // Random food (any cb gets food in bank)
+            int[] foodChoices = combatLevel >= 70
+                ? new int[]{379, 385, 7946, 15272, 391, 397}  // lobster, swordfish, monkfish, rocktail
+                : combatLevel >= 30
+                ? new int[]{315, 333, 379, 2309, 333}         // shrimp, trout, lobster, bread
+                : new int[]{2309, 315, 1965};                  // bread, shrimp, cabbage
+            int foodId = foodChoices[Utils.random(foodChoices.length)];
+            int foodQty = combatLevel >= 70 ? 50 + Utils.random(150) : 10 + Utils.random(50);
+            bot.getBank().addItem(foodId, foodQty, true);
+
+            // Random raw stash (logs/fish/ore/hide) - looks like past skilling
+            if (Utils.random(100) < 40) {
+                int[] rawIds = {1511, 1521, 1519, 1517, 1515, 1513, 6332, 317, 327, 321, 331, 359, 377, 436, 438, 440, 442, 444, 447, 449, 451, 1739, 1745, 2505};
+                int rawId = rawIds[Utils.random(rawIds.length)];
+                int rawQty = 50 + Utils.random(500);
+                bot.getBank().addItem(rawId, rawQty, true);
+            }
+
+            // Random potion - more potions for combat-focused bots
+            if (combatLevel >= 30 && Utils.random(100) < 60) {
+                int[] potIds = {2440, 113, 2434, 3024, 6685, 12695}; // str pot, attack pot, prayer pot, super attack, sara brew, super combat
+                int potId = potIds[Utils.random(potIds.length)];
+                int potQty = 1 + Utils.random(15);
+                bot.getBank().addItem(potId, potQty, true);
+            }
+
+            // Random rune stash (low-cb might have starter runes still)
+            if (Utils.random(100) < 70) {
+                int[] runeIds = {556, 555, 557, 554, 558, 562, 560, 565};
+                int runeId = runeIds[Utils.random(runeIds.length)];
+                int runeQty = 100 + Utils.random(2000);
+                bot.getBank().addItem(runeId, runeQty, true);
+            }
+
+            // Random herb/seed for skiller bots
+            if (Utils.random(100) < 30) {
+                int[] herbIds = {199, 201, 203, 205, 207, 209, 211, 213, 215, 2998, 3000};
+                int herbId = herbIds[Utils.random(herbIds.length)];
+                int herbQty = 1 + Utils.random(20);
+                bot.getBank().addItem(herbId, herbQty, true);
+            }
+        } catch (Throwable t) {
+            System.err.println("[BotEquipment] accumulated wealth failed: " + t);
+        }
     }
 
     /** Pickaxe item ID at-or-below the bot's mining level. */
