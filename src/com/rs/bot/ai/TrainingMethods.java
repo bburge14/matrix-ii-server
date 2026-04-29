@@ -459,7 +459,7 @@ public final class TrainingMethods {
             if (leaderScore == Integer.MIN_VALUE) {
                 leaderScore = s;
             }
-            int threshold = leaderScore - Math.max(1, Math.abs(leaderScore) / 20);
+            int threshold = leaderScore - Math.max(1, Math.abs(leaderScore) / 4); // within 25% of leader (was 5%)
             if (s >= threshold) {
                 tier.add(m);
             } else {

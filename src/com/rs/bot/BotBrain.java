@@ -1422,9 +1422,18 @@ public class BotBrain {
     }
 
     /** Tagged chat - prefixes the message so observers can tell what kind of update it is. */
-    private void sayGoal(String text)  { say("[Goal] " + text); }
-    private void sayStep(String text)  { say("[Step] " + text); }
-    private void sayDebug(String text) { say("[Debug] " + text); }
+    private void sayGoal(String text)  {
+        say("[Goal] " + text);
+        com.rs.bot.BotLog.log(bot.getDisplayName(), "[goal] " + text);
+    }
+    private void sayStep(String text)  {
+        say("[Step] " + text);
+        com.rs.bot.BotLog.log(bot.getDisplayName(), "[step] " + text);
+    }
+    private void sayDebug(String text) {
+        say("[Debug] " + text);
+        com.rs.bot.BotLog.log(bot.getDisplayName(), "[debug] " + text);
+    }
 
     private void broadcastPublicMessage(String text) {
         PublicChatMessage msg = new PublicChatMessage(text, 0);
