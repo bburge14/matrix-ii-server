@@ -83,6 +83,11 @@ public class GameLauncher {
 		Logger.log("Launcher", "Initing File System...");  
 		SerializableFilesManager.init();
 			com.rs.bot.BotPool.initialize();
+		// Schedule a recurring audit of every TrainingMethod's location
+		// against the live 830 cache. First pass at +60s (after world
+		// fully loads), then every ~10 minutes. Output goes to
+		// data/logs/audit.log - tail it to see broken coords.
+		com.rs.bot.BotAuditor.scheduleAutoAudit();
 		com.rs.admin.AdminHttpServer.start();
 			// Bot shutdown hook: save online bots on graceful shutdown (SIGTERM)
 			Runtime.getRuntime().addShutdownHook(new Thread("Server-shutdown-save") {
