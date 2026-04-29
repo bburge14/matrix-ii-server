@@ -3387,7 +3387,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Head Farmer Jones, 0
 14860 - 2885 3475 0
 //RSBOT DUMPED - null, 0
-14957 - 2886 3455 0
+// REMOVED: 14957 - 2886 3455 0 (Blood nihil - dump labeled "Nails Newton" was wrong; cache renders 14957 as nihil)
 //RSBOT DUMPED - Nails Newton, 0
 15085 - 2881 3444 0
 //RSBOT DUMPED - Farmer, 0
@@ -3563,7 +3563,7 @@ RSBOT DUMPED - Jossik, 0, 6739
 //RSBOT DUMPED - Pompous Merchant, 0
 14911 - 2915 3472 0
 //RSBOT DUMPED - null, 0
-14942 - 2923 3472 0
+// REMOVED: 14942 - 2923 3472 0 (Shadow nihil - dump labeled "Alison Elmshaper" was wrong; cache renders 14942 as nihil)
 //RSBOT DUMPED - Alison Elmshaper, 0
 14858 - 2917 3474 0
 //RSBOT DUMPED - Chicken, 1
