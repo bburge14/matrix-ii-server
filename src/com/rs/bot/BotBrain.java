@@ -971,6 +971,9 @@ public class BotBrain {
             }
         }
         goal.setCurrentStep(method.description);
+        // Announce the activity once per method change so players hear what
+        // bots are doing instead of generic goal descriptions.
+        announceMethodStart(method);
         switch (method.kind) {
             case WOODCUTTING: tryStartWoodcutting(method); break;
             case MINING:      tryStartMining(method); break;
@@ -980,14 +983,59 @@ public class BotBrain {
         }
     }
 
+    /** Last training method the bot announced - used to avoid spamming chat. */
+    private com.rs.bot.ai.TrainingMethods.Method lastAnnouncedMethod;
+    private void announceMethodStart(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (method == null || method == lastAnnouncedMethod) return;
+        lastAnnouncedMethod = method;
+        switch (method.kind) {
+            case WOODCUTTING: say("off to chop " + treeKindLabel(method)); break;
+            case MINING:      say("off to mine " + rockKindLabel(method)); break;
+            case FISHING:     say("heading to fish " + fishKindLabel(method)); break;
+            case THIEVING:    say("time to pickpocket - " + method.description.replace("Pickpocket ", "")); break;
+            case COMBAT:      say("training combat at " + (method.location == null ? "?" : method.location.getX() + "," + method.location.getY())); break;
+        }
+    }
+
+    private static String treeKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.treeDef == null) return "trees";
+        return m.treeDef.toString().toLowerCase().replace('_', ' ');
+    }
+    private static String rockKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.rockDef == null) return "ore";
+        return m.rockDef.toString().toLowerCase().replace('_', ' ');
+    }
+    private static String fishKindLabel(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m.fishDef == null) return "spots";
+        return m.fishDef.toString().toLowerCase().replace('_', ' ');
+    }
+
     private void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method.npcIds == null || method.npcIds.length == 0) {
             lastDiagnostic = "thieving: no npc ids in method";
             return;
         }
-        com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 6, method.npcIds);
+        // Inventory check - PickPocketAction.checkAll fails if no free slots.
+        try {
+            if (bot.getInventory().getFreeSlots() < 1) {
+                lastDiagnostic = "thieving: inventory full, going to bank next";
+                if (Utils.random(100) < 30) say("inv full, can't steal more");
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Skill level pre-check - so we don't try a method we can't actually fire.
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.THIEVING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "thieving: my level " + lvl + " < required " + method.minLevel + " for " + method.description;
+                if (Utils.random(100) < 25) say("my thieving's only " + lvl + ", can't do this one");
+                return;
+            }
+        } catch (Throwable ignored) {}
+        com.rs.game.npc.NPC target = EnvironmentScanner.findNearestNPC(bot, 8, method.npcIds);
         if (target == null) {
-            lastDiagnostic = "thieving: no target NPC in 6 tiles";
+            lastDiagnostic = "thieving: no target in 8 tiles for " + method.description;
+            if (Utils.random(100) < 15) say("can't find one to pickpocket");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1009,15 +1057,24 @@ public class BotBrain {
     }
 
     private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "wc: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 25) say("my woodcutting's only " + lvl + ", these trees are too tough");
+                return;
+            }
+        } catch (Throwable ignored) {}
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 12, method == null ? null : method.treeDef);
         if (match == null) {
-            lastDiagnostic = "wc: no tree found in 12 tiles (def=" + (method == null ? "any" : method.treeDef) + ")";
+            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
+            if (Utils.random(100) < 15) say("can't find any " + treeKindLabel(method) + " here");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            lastDiagnostic = "wc: walking to tree at " + match.object.getX() + "," + match.object.getY();
+            lastDiagnostic = "wc: walking to " + match.definition + " at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
@@ -1027,15 +1084,24 @@ public class BotBrain {
     }
 
     private void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "mining: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 25) say("my mining's only " + lvl + ", this rock is too hard");
+                return;
+            }
+        } catch (Throwable ignored) {}
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 12, method == null ? null : method.rockDef);
         if (match == null) {
-            lastDiagnostic = "mining: no rock in 12 tiles (def=" + (method == null ? "any" : method.rockDef) + ")";
+            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
+            if (Utils.random(100) < 15) say("can't find any " + rockKindLabel(method) + " here");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.object)) {
-            lastDiagnostic = "mining: walking to rock at " + match.object.getX() + "," + match.object.getY();
+            lastDiagnostic = "mining: walking to " + match.definition + " at " + match.object.getX() + "," + match.object.getY();
             BotPathing.walkToObject(bot, match.object);
             return;
         }
@@ -1045,15 +1111,24 @@ public class BotBrain {
     }
 
     private void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+        try {
+            int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = "fishing: my level " + lvl + " < required " + method.minLevel;
+                if (Utils.random(100) < 25) say("my fishing's only " + lvl + ", can't catch these");
+                return;
+            }
+        } catch (Throwable ignored) {}
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 14, method == null ? null : method.fishDef);
         if (match == null) {
-            lastDiagnostic = "fishing: no spot in 14 tiles (def=" + (method == null ? "any" : method.fishDef) + ")";
+            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
+            if (Utils.random(100) < 15) say("no fish around here");
             BotPathing.wiggle(bot, 5);
             return;
         }
         if (!isAdjacent(bot.getX(), bot.getY(), match.npc.getX(), match.npc.getY())) {
-            lastDiagnostic = "fishing: walking to spot at " + match.npc.getX() + "," + match.npc.getY();
+            lastDiagnostic = "fishing: walking to " + match.definition + " at " + match.npc.getX() + "," + match.npc.getY();
             BotPathing.walkToEntity(bot, match.npc);
             return;
         }
