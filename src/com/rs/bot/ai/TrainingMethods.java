@@ -653,6 +653,11 @@ public final class TrainingMethods {
         if (key.startsWith("skill:smithing"))    return Kind.SMELTING; // smelting bars covers most smithing xp
         if (key.startsWith("skill:crafting"))    return Kind.CRAFTING;
         if (key.startsWith("skill:prayer"))      return Kind.PRAYER;
+        // Slayer = combat with monsters; existing combat library covers slayer monsters
+        // (abyssal demons, gargoyles, dust devils, nechryael).
+        if (key.startsWith("skill:slayer"))      return Kind.COMBAT;
+        // Hitpoints and other combat-stat goals share combat methods (style differs).
+        if (key.startsWith("skill:hitpoints"))   return Kind.COMBAT;
         if (key.startsWith("skill:attack")
             || key.startsWith("skill:strength")
             || key.startsWith("skill:defence")
