@@ -86,6 +86,8 @@
 // ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
+4906 - 2917 3445 0
+// ^ Wilfred - Woodcutting Master in Taverly skill cluster (shop 200)
 // === DZ Lobby Trader Hub - 24 skill masters around the hub at (3787, 4384, 1) ===
 // 4 rows of 6 NPCs each, surrounding the central hub area but leaving the
 // middle (y=4382-4386) clear for the existing statue/tree/decor.

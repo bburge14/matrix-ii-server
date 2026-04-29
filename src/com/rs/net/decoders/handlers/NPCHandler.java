@@ -1223,6 +1223,7 @@ public class NPCHandler {
 	switch (npcId) {
 	    // Free-zone skill masters (NPC IDs verified by user via ::npchere)
 	    case 1401: return 200;  // Lumberjack Leif (Woodcutting)
+	    case 4906: return 200;  // Wilfred (Woodcutting) - Taverly
 	    case 666:  return 201;  // Master Fisher Harry
 	    case 14879: return 201; // Nicholas Angle (Fishing) - corrected from 14998
 	    case 39:   return 202;  // Foreman (Mining)
