@@ -34,7 +34,14 @@ public final class NPCSpawns {
 
 	// Skill-shop NPCs that should still wander (override the static-trader rule)
 	private static final java.util.Set<Integer> WALKING_TRADERS = new java.util.HashSet<Integer>(
-		java.util.Arrays.asList(15085) // Nails Newton - pickpocket target
+		java.util.Arrays.asList(15085, 4906) // Nails (pickpocket target) + Wilfred (woods wanderer)
+	);
+
+	// NPC IDs that should walk regardless of cache walkMask (for NPCs whose
+	// cache definition has walkMask=0 but should still wander - typically
+	// pickpocket targets and skill-area background NPCs)
+	private static final java.util.Set<Integer> FORCE_WALK_NPCS = new java.util.HashSet<Integer>(
+		java.util.Arrays.asList(1, 7, 18, 187, 296, 23, 1905, 20, 21, 2109, 4906)
 	);
 
 	private static final void loadSpawnsList(String path) {
@@ -83,13 +90,16 @@ public final class NPCSpawns {
 			return;
 		for(NPCSpawn spawn : spawns[x][y]) {
 			com.rs.game.npc.NPC npc = World.spawnNPC(spawn.npcId, spawn.tile, spawn.mapAreaNameHash, spawn.canBeAttackFromOutOfArea);
+			if (npc == null) continue;
 			// Skill-shop trader NPCs stay put - no random walk - so players
 			// can find them at fixed coords. WALKING_TRADERS is the opt-out
 			// for NPCs that should keep wandering (e.g. Nails - pickpocket
 			// gameplay needs him to move).
-			if (npc != null && com.rs.net.decoders.handlers.NPCHandler.skillShopForNpc(spawn.npcId) != -1
+			if (com.rs.net.decoders.handlers.NPCHandler.skillShopForNpc(spawn.npcId) != -1
 					&& !WALKING_TRADERS.contains(spawn.npcId))
 				npc.setRandomWalk(0);
+			else if (FORCE_WALK_NPCS.contains(spawn.npcId))
+				npc.setRandomWalk(com.rs.game.npc.NPC.NORMAL_WALK);
 		}
 		spawns[x][y] = null;
 	}
