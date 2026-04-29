@@ -2327,12 +2327,75 @@ public final class Commands {
 			    sb.append(" activity=").append(brain.getCurrentActivity());
 			    com.rs.bot.ai.Goal g = brain.getCurrentGoal();
 			    sb.append(" goal=").append(g == null ? "null" : g.getDescription());
+			    com.rs.bot.ai.TrainingMethods.Method m = brain.getLastMethod();
+			    sb.append(" method=").append(m == null ? "null" : m.description);
+			    sb.append(" diag=").append(brain.getLastDiagnostic());
 			}
 		    }
-		    player.getPackets().sendGameMessage(sb.toString());
+		    for (String line : sb.toString().split(" (?=(?:goal|method|diag|state|activity|region)=)")) {
+			player.getPackets().sendGameMessage(line);
+		    }
 		    return true;
 		}
 		player.getPackets().sendGameMessage("No online player named '" + want + "'.");
+		return true;
+	    }
+
+	    case "botscan": {
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::botscan botName - shows what EnvironmentScanner sees at the bot's tile");
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').trim();
+		for (Player other : com.rs.game.World.getPlayers()) {
+		    if (other == null || other.hasFinished()) continue;
+		    if (!(other instanceof com.rs.bot.AIPlayer)) continue;
+		    if (!other.getDisplayName().toLowerCase().equals(want)) continue;
+		    com.rs.bot.AIPlayer bot = (com.rs.bot.AIPlayer) other;
+		    com.rs.bot.ai.EnvironmentScanner.TreeMatch tm = com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, 12);
+		    com.rs.bot.ai.EnvironmentScanner.RockMatch rm = com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, 12);
+		    com.rs.bot.ai.EnvironmentScanner.FishMatch fm = com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, 14);
+		    player.getPackets().sendGameMessage("scan @ " + bot.getX() + "," + bot.getY() + ":");
+		    player.getPackets().sendGameMessage("  tree: " + (tm == null ? "none" : tm.definition + " @ " + tm.object.getX() + "," + tm.object.getY()));
+		    player.getPackets().sendGameMessage("  rock: " + (rm == null ? "none" : rm.definition + " @ " + rm.object.getX() + "," + rm.object.getY()));
+		    player.getPackets().sendGameMessage("  fish: " + (fm == null ? "none" : fm.definition + " @ " + fm.npc.getX() + "," + fm.npc.getY()));
+		    return true;
+		}
+		player.getPackets().sendGameMessage("No bot named '" + want + "'.");
+		return true;
+	    }
+
+	    case "botforce": {
+		if (cmd.length < 3) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::botforce botName skill (skill = wc/mining/fishing/thieving/combat)");
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').trim();
+		String skill = cmd[2].toLowerCase();
+		for (Player other : com.rs.game.World.getPlayers()) {
+		    if (other == null || other.hasFinished()) continue;
+		    if (!(other instanceof com.rs.bot.AIPlayer)) continue;
+		    if (!other.getDisplayName().toLowerCase().equals(want)) continue;
+		    com.rs.bot.AIPlayer bot = (com.rs.bot.AIPlayer) other;
+		    com.rs.bot.ai.TrainingMethods.Kind kind;
+		    switch (skill) {
+			case "wc": case "woodcutting": kind = com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING; break;
+			case "mining":   kind = com.rs.bot.ai.TrainingMethods.Kind.MINING; break;
+			case "fishing":  kind = com.rs.bot.ai.TrainingMethods.Kind.FISHING; break;
+			case "thieving": kind = com.rs.bot.ai.TrainingMethods.Kind.THIEVING; break;
+			case "combat":   kind = com.rs.bot.ai.TrainingMethods.Kind.COMBAT; break;
+			default: player.getPackets().sendGameMessage("unknown skill '" + skill + "'"); return true;
+		    }
+		    com.rs.bot.ai.TrainingMethods.Method m = com.rs.bot.ai.TrainingMethods.firstApplicable(bot, kind);
+		    if (m == null) {
+			player.getPackets().sendGameMessage("no applicable " + kind + " method for that bot's level");
+			return true;
+		    }
+		    bot.getBrain().forceTrainingMethod(m);
+		    player.getPackets().sendGameMessage("forced " + want + " to " + m.description);
+		    return true;
+		}
+		player.getPackets().sendGameMessage("No bot named '" + want + "'.");
 		return true;
 	    }
 

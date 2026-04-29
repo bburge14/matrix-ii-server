@@ -163,19 +163,95 @@ public class WorldKnowledge {
         put("DRAYNOR_GENERAL", new int[]{3079, 3249});
         put("VARROCK_GENERAL", new int[]{3216, 3414});
         put("FALADOR_GENERAL", new int[]{2955, 3390});
-        
+
         // Weapon Shops
         put("VARROCK_SWORD_SHOP", new int[]{3201, 3403});
         put("FALADOR_WEAPON_SHOP", new int[]{2973, 3387});
         put("AL_KHARID_SCIMITAR", new int[]{3283, 3192});
-        
+
         // Magic Shops
         put("VARROCK_MAGIC_SHOP", new int[]{3253, 3401});
         put("DRAYNOR_MAGIC_SHOP", new int[]{3079, 3249});
-        
+
         // Food Shops
         put("PORT_SARIM_FOOD", new int[]{3012, 3208});
         put("CATHERBY_FOOD", new int[]{2817, 3443});
+    }};
+
+    // ===== SKILL MASTERS - free zone =====
+    // Each entry: skill key -> {x, y, plane, npcId, shopId}
+    // Bots use these for: buying supplies before training + selling skilled
+    // output afterward (sell-back implicit via shop stock).
+    public static final Map<String, int[]> SKILL_MASTERS = new HashMap<String, int[]>() {{
+        // Burthorpe / Taverly skill cluster
+        put("WOODCUTTING",   new int[]{2917, 3445, 0, 4906,  200}); // Wilfred (woods) / Lumberjack Leif
+        put("FISHING",       new int[]{2885, 3475, 0, 14879, 201}); // Nicholas Angle
+        put("MINING",        new int[]{2911, 3429, 0, 14870, 202}); // Tobias Bronzearms
+        put("TANNING",       new int[]{3279, 3192, 0, 18,    203}); // Ellis (Al-Kharid)
+        put("FLETCHING",     new int[]{2917, 3474, 0, 14858, 207}); // Alison Elmshaper
+        put("SMITHING",      new int[]{2890, 3455, 0, 14874, 208}); // Martin Steelweaver (approx)
+        put("COOKING",       new int[]{2896, 3442, 0, 7883,  209}); // Master Cook
+        put("SUMMONING",     new int[]{2921, 3445, 0, 6988,  216}); // Pikkupstix
+        put("RUNECRAFTING",  new int[]{2916, 3531, 0, 706,   217}); // Old wizard (central)
+        put("FIREMAKING",    new int[]{2925, 3477, 0, 14883, 218}); // Marcus Everburn
+        put("THIEVING",      new int[]{2923, 3460, 0, 15085, 219}); // Nails Newton (walks)
+        put("AGILITY",       new int[]{2919, 3549, 0, 14852, 220}); // Drill Sgt Hartman
+        put("COMBAT",        new int[]{2911, 3534, 0, 1060,  221}); // Commander Denulth
+        put("DIVINATION",    new int[]{2923, 3524, 0, 1798,  222}); // Eccentric seer
+        put("RANGED",        new int[]{2918, 3474, 0, 682,   223}); // Armour salesman (next to Alison)
+        put("MAGIC",         new int[]{2914, 3531, 0, 946,   224}); // Master of Magics
+        put("PRAYER",        new int[]{2915, 3532, 0, 216,   225}); // High Priest of Entrana
+        put("DEFENCE",       new int[]{2913, 3534, 0, 589,   227}); // Plate mail seller
+        put("CRAFTING",      new int[]{2890, 3455, 0, 14877, 19});  // Jack Oval
+        put("CONSTRUCTION",  new int[]{2894, 3453, 0, 14862, 128}); // Alfred Stonemason
+        put("SLAYER",        new int[]{2909, 3423, 0, 14868, 29});  // Jacquelyn Manslaughter
+        put("FARMING",       new int[]{2885, 3475, 0, 14860, 111}); // Head Farmer Jones
+        put("HUNTER",        new int[]{2907, 3485, 0, 14864, 56});  // Ayleth Beaststalker
+        put("PETSHOP",       new int[]{2925, 3445, 0, 6893,  226}); // Master Pet Shop
+    }};
+
+    // ===== SKILL MASTERS - donator zone lobby (all 24 in a 4x6 grid) =====
+    public static final Map<String, int[]> DZ_SKILL_MASTERS = new HashMap<String, int[]>() {{
+        put("WOODCUTTING",   new int[]{3779, 4378, 1, 1401,  200});
+        put("FISHING",       new int[]{3782, 4378, 1, 666,   201});
+        put("MINING",        new int[]{3785, 4378, 1, 14870, 202});
+        put("TANNING",       new int[]{3788, 4378, 1, 18,    203});
+        put("FLETCHING",     new int[]{3791, 4378, 1, 14858, 207});
+        put("SMITHING",      new int[]{3794, 4378, 1, 14874, 208});
+        put("COOKING",       new int[]{3779, 4380, 1, 7883,  209});
+        put("SUMMONING",     new int[]{3782, 4380, 1, 6988,  216});
+        put("RUNECRAFTING",  new int[]{3785, 4380, 1, 706,   217});
+        put("FIREMAKING",    new int[]{3788, 4380, 1, 14883, 218});
+        put("THIEVING",      new int[]{3791, 4380, 1, 15085, 219});
+        put("AGILITY",       new int[]{3794, 4380, 1, 14852, 220});
+        put("COMBAT",        new int[]{3779, 4388, 1, 1060,  221});
+        put("DIVINATION",    new int[]{3782, 4388, 1, 1798,  222});
+        put("RANGED",        new int[]{3785, 4388, 1, 682,   223});
+        put("MAGIC",         new int[]{3788, 4388, 1, 946,   224});
+        put("PRAYER",        new int[]{3791, 4388, 1, 216,   225});
+        put("PETSHOP",       new int[]{3794, 4388, 1, 6893,  226});
+        put("DEFENCE",       new int[]{3779, 4390, 1, 589,   227});
+        put("CRAFTING",      new int[]{3782, 4390, 1, 14877, 19});
+        put("CONSTRUCTION",  new int[]{3785, 4390, 1, 14862, 128});
+        put("SLAYER",        new int[]{3788, 4390, 1, 14868, 29});
+        put("FARMING",       new int[]{3791, 4390, 1, 14860, 111});
+        put("HUNTER",        new int[]{3794, 4390, 1, 14864, 56});
+    }};
+
+    // ===== PICKPOCKET TARGETS - around Nails Newton (2920-2926, 3458-3464) =====
+    // Each entry: thieving level required -> {x, y, plane, npcId}
+    public static final Map<Integer, int[]> PICKPOCKET_TARGETS = new HashMap<Integer, int[]>() {{
+        put(1,  new int[]{2920, 3458, 0, 1});    // Man
+        put(10, new int[]{2922, 3458, 0, 7});    // Farmer
+        put(25, new int[]{2924, 3458, 0, 18});   // Warrior
+        put(32, new int[]{2920, 3460, 0, 187});  // Rogue
+        put(38, new int[]{2923, 3459, 0, 2234}); // Master Farmer (existing spawn)
+        put(40, new int[]{2926, 3460, 0, 296});  // Guard
+        put(55, new int[]{2920, 3462, 0, 23});   // Ardougne Knight
+        put(65, new int[]{2922, 3462, 0, 1905}); // Menaphite Thug
+        put(70, new int[]{2924, 3462, 0, 20});   // Paladin
+        put(80, new int[]{2926, 3462, 0, 21});   // Hero
+        put(90, new int[]{2920, 3464, 0, 2109}); // Dwarf Trader
     }};
     
     // ===== QUEST LOCATIONS =====
@@ -228,7 +304,55 @@ public class WorldKnowledge {
     }};
     
     // ===== UTILITY METHODS =====
-    
+
+    /**
+     * Get the master entry for a skill (free zone).
+     * Returns {x, y, plane, npcId, shopId} or null.
+     */
+    public static int[] getSkillMaster(String skill) {
+        if (skill == null) return null;
+        return SKILL_MASTERS.get(skill.toUpperCase());
+    }
+
+    /**
+     * Get the DZ master entry for a skill. Returns null if not found.
+     */
+    public static int[] getDZSkillMaster(String skill) {
+        if (skill == null) return null;
+        return DZ_SKILL_MASTERS.get(skill.toUpperCase());
+    }
+
+    /**
+     * Get a deterministically-jittered training tile near (baseX, baseY).
+     *
+     * Anti-cluster: if 5/10 bots are sent to the same coords, they all
+     * step on each other. Hashing botId picks a different offset per bot
+     * within +/-radius, so the same goal gets spread across the area.
+     * Same bot gets the same tile back so it doesn't oscillate.
+     */
+    public static int[] jitteredSpot(long botId, int baseX, int baseY, int radius) {
+        long h = botId * 2654435761L; // Knuth multiplicative hash
+        int dx = (int) ((h >>> 32) % (2L * radius + 1)) - radius;
+        int dy = (int) ((h & 0xffffffffL) % (2L * radius + 1)) - radius;
+        return new int[]{baseX + dx, baseY + dy};
+    }
+
+    /**
+     * Get the highest-level pickpocket target the bot qualifies for.
+     * Returns {x, y, plane, npcId} or null.
+     */
+    public static int[] getPickpocketTarget(int thievingLevel) {
+        int[] best = null;
+        int bestLvl = -1;
+        for (Map.Entry<Integer, int[]> e : PICKPOCKET_TARGETS.entrySet()) {
+            if (e.getKey() <= thievingLevel && e.getKey() > bestLvl) {
+                bestLvl = e.getKey();
+                best = e.getValue();
+            }
+        }
+        return best;
+    }
+
     public static String getCurrentArea(int x, int y) {
         String closestArea = "UNKNOWN";
         double minDistance = Double.MAX_VALUE;
