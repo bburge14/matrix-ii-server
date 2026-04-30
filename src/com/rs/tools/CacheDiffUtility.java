@@ -80,17 +80,27 @@ public final class CacheDiffUtility {
         System.out.println("[CacheDiff] dlc     = " + dlcPath);
         System.out.println("[CacheDiff] output  = " + outPath);
 
-        if (!new File(primaryPath).exists()) {
-            System.err.println("[CacheDiff] primary cache path does not exist: " + primaryPath);
-            System.exit(1);
-        }
-        if (!new File(dlcPath).exists()) {
-            System.err.println("[CacheDiff] dlc cache path does not exist: " + dlcPath);
-            System.exit(1);
-        }
+        primaryPath = resolveCachePath(primaryPath, "primary");
+        dlcPath     = resolveCachePath(dlcPath, "dlc");
 
         Store primary = new Store(primaryPath);
         Store dlc     = new Store(dlcPath);
+
+        // Sanity-check the Store actually loaded indexes. If the .idx files
+        // weren't where we pointed, getIndexes() comes back length 0 and the
+        // first index access blows up with ArrayIndexOutOfBounds. Catch it here.
+        if (primary.getIndexes() == null || primary.getIndexes().length == 0) {
+            System.err.println("[CacheDiff] primary store loaded 0 indexes from " + primaryPath);
+            System.err.println("  Path must contain main_file_cache.dat2 + main_file_cache.idx* files directly.");
+            System.exit(1);
+        }
+        if (dlc.getIndexes() == null || dlc.getIndexes().length == 0) {
+            System.err.println("[CacheDiff] dlc store loaded 0 indexes from " + dlcPath);
+            System.err.println("  Path must contain main_file_cache.dat2 + main_file_cache.idx* files directly.");
+            System.exit(1);
+        }
+        System.out.println("[CacheDiff] primary indexes loaded: " + primary.getIndexes().length);
+        System.out.println("[CacheDiff] dlc     indexes loaded: " + dlc.getIndexes().length);
 
         // Build per-type ID lists by walking each store's index and collecting
         // every (archive, file) pair. This avoids guessing max IDs and is
@@ -170,6 +180,37 @@ public final class CacheDiffUtility {
 
         System.out.println("[CacheDiff] wrote " + out.getAbsolutePath());
         System.out.println("[CacheDiff] incompatible IDs: " + incompat.size());
+    }
+
+    /**
+     * Find the directory that actually contains the .dat2/.idx files.
+     * Accepts: "/foo/" (flat) or "/foo" (with /cache/ subdir or /cache subdir).
+     * Returns the path Store should be given, or exits if nothing matches.
+     */
+    private static String resolveCachePath(String path, String label) {
+        File root = new File(path);
+        if (!root.exists()) {
+            System.err.println("[CacheDiff] " + label + " path does not exist: " + path);
+            System.exit(1);
+        }
+        // Already pointing at the cache files directly?
+        if (new File(root, "main_file_cache.dat2").exists()) return appendSlash(path);
+        // Common nested layout: <path>/cache/main_file_cache.dat2
+        File nested = new File(root, "cache");
+        if (new File(nested, "main_file_cache.dat2").exists()) {
+            String resolved = appendSlash(nested.getAbsolutePath());
+            System.out.println("[CacheDiff] " + label + " resolved to nested cache dir: " + resolved);
+            return resolved;
+        }
+        System.err.println("[CacheDiff] " + label + " path has no main_file_cache.dat2: " + path);
+        System.err.println("  Looked for: " + path + "main_file_cache.dat2");
+        System.err.println("        and:  " + path + "cache/main_file_cache.dat2");
+        System.exit(1);
+        return null;
+    }
+
+    private static String appendSlash(String p) {
+        return p.endsWith("/") ? p : p + "/";
     }
 
     // === ID enumeration ===
