@@ -1613,6 +1613,11 @@ public class BotBrain {
         // prayer if level allows. Mimics what real players do before pulling.
         applyPreFightBuffs();
 
+        // Combat depth: switch to Revolution mode + activate the highest
+        // prayer the bot's level supports for its archetype style. Lowbies
+        // stay in Legacy so they can auto-attack without ability cooldowns.
+        com.rs.bot.ai.BotCombat.preparePreFight(bot);
+
         // Scan parity: 24 tiles like other skills (was 12, made low-cb bots
         // miss visible NPCs on a jittered teleport landing).
         NPC target = EnvironmentScanner.findNearestNPC(bot, 24, method.npcIds);
@@ -1690,17 +1695,31 @@ public class BotBrain {
     }
 
     /**
-     * If HP <= 30% try to eat. If no food, stop combat and walk a few
-     * tiles away. Returns true if we acted (caller should not start a
-     * new combat action this tick).
+     * In-fight maintenance: eat when HP gets low, drink prayer potions
+     * when prayer drops, and bail to safety if we have no food at all.
+     * Eat threshold 50% (was 30%) - matches what real players do during
+     * sustained training. Returns true if we acted (caller should not
+     * start a new combat action this tick).
      */
     private boolean handleLowHpRetreat() {
         int hp = bot.getHitpoints();
         int maxHp = bot.getMaxHitpoints();
-        if (maxHp <= 0 || hp > maxHp * 0.30) return false;
 
-        // Try to eat the first food we own. Keep this minimal - we're not
-        // simulating proper food cooldowns, just keeping the bot alive.
+        // Top up prayer first if it's getting low. Cheap to do mid-fight
+        // and lets the prayer-buffed bot keep its damage/accuracy boost.
+        try {
+            int pp = bot.getPrayer().getPrayerpoints();
+            int maxPp = bot.getPrayer().getMaxPrayerpoints();
+            if (maxPp > 0 && pp < maxPp * 0.30) drinkPrayerPotion();
+        } catch (Throwable ignored) {}
+
+        // Eat at 50% HP - real players don't tank to 30%, and PlayerCombatNew
+        // can take a few hits before we get another chance to eat. If we're
+        // already above 50% bail out and let combat continue.
+        if (maxHp <= 0 || hp > maxHp * 0.50) return false;
+
+        // Try to eat the strongest food we own. Keep this minimal - we're
+        // not simulating proper food cooldowns, just keeping the bot alive.
         for (int foodId : FOOD_ITEM_IDS) {
             if (bot.getInventory().containsItem(foodId, 1)) {
                 bot.getInventory().deleteItem(foodId, 1);
@@ -1708,19 +1727,59 @@ public class BotBrain {
                 bot.heal(healAmount);
                 bot.setNextAnimation(new Animation(829)); // eat anim
                 if (Utils.random(100) < 25) say("eating up");
-                return true;
+                // Don't bail combat just because we ate - keep attacking
+                // unless we're actually below the panic threshold (30%).
+                return hp < maxHp * 0.30;
             }
         }
 
-        // No food - bail on combat, run a few tiles away.
-        if (bot.getActionManager().getAction() instanceof PlayerCombatNew) {
-            bot.getActionManager().forceStop();
+        // No food - bail on combat only if we're truly low (< 30% HP).
+        if (hp < maxHp * 0.30) {
+            if (bot.getActionManager().getAction() instanceof PlayerCombatNew) {
+                bot.getActionManager().forceStop();
+            }
+            int dx = Utils.random(-6, 7);
+            int dy = Utils.random(-6, 7);
+            bot.addWalkSteps(bot.getX() + dx, bot.getY() + dy, 8, true);
+            if (Utils.random(100) < 50) say("running, no food!");
+            return true;
         }
-        int dx = Utils.random(-6, 7);
-        int dy = Utils.random(-6, 7);
-        bot.addWalkSteps(bot.getX() + dx, bot.getY() + dy, 8, true);
-        if (Utils.random(100) < 50) say("running, no food!");
-        return true;
+        return false;
+    }
+
+    /**
+     * Drink a prayer potion if the bot owns one. Restores prayer points
+     * for the rest of the fight. Item ID list covers prayer pot (3) ->
+     * (1) and super restore (4) -> (1) which also restores stats.
+     */
+    private void drinkPrayerPotion() {
+        // Pairs of (current dose ID, replacement one-dose-lower ID, restore amount)
+        int[][] prayerPots = new int[][] {
+            {2434, 2436, 70},   // Prayer pot (4) -> (3)
+            {2436, 139, 70},    // Prayer pot (3) -> (2)
+            {139, 141, 70},     // Prayer pot (2) -> (1)
+            {141, -1, 70},      // Prayer pot (1) -> empty vial
+            {3024, 3026, 80},   // Super restore (4) -> (3)
+            {3026, 3028, 80},   // Super restore (3) -> (2)
+            {3028, 3030, 80},   // Super restore (2) -> (1)
+            {3030, -1, 80}      // Super restore (1) -> empty vial
+        };
+        for (int[] pot : prayerPots) {
+            try {
+                if (bot.getInventory().containsItem(pot[0], 1)) {
+                    bot.getInventory().deleteItem(pot[0], 1);
+                    bot.setNextAnimation(new Animation(829));
+                    int restore = pot[2];
+                    int newPts = Math.min(bot.getPrayer().getMaxPrayerpoints(),
+                        bot.getPrayer().getPrayerpoints() + restore);
+                    bot.getPrayer().setPrayerpoints(newPts);
+                    bot.getPrayer().refreshPrayerPoints();
+                    if (pot[1] != -1) bot.getInventory().addItem(pot[1], 1);
+                    if (Utils.random(100) < 30) say("drinking prayer pot");
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
     }
 
     // Common food item IDs. First-match wins, so list strongest first.
