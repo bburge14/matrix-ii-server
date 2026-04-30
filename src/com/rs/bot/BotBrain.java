@@ -1675,10 +1675,10 @@ public class BotBrain {
                             if (idx > 0) bot.getInventory().addItem(pot[idx - 1], 1);
                             // Apply rough stat boost (10% + 4 - matches super combat-ish)
                             try {
-                                bot.getSkills().setSkillLevel(com.rs.game.player.Skills.STRENGTH,
-                                    Math.min(99, bot.getSkills().getLevel(com.rs.game.player.Skills.STRENGTH) + 5));
-                                bot.getSkills().setSkillLevel(com.rs.game.player.Skills.ATTACK,
-                                    Math.min(99, bot.getSkills().getLevel(com.rs.game.player.Skills.ATTACK) + 5));
+                                bot.getSkills().set(com.rs.game.player.Skills.STRENGTH,
+                                    Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.STRENGTH) + 5));
+                                bot.getSkills().set(com.rs.game.player.Skills.ATTACK,
+                                    Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.ATTACK) + 5));
                             } catch (Throwable ignored) {}
                             if (Utils.random(100) < 30) say("chugging a potion");
                             break;
