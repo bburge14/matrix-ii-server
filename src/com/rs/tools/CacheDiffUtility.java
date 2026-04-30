@@ -65,7 +65,14 @@ public final class CacheDiffUtility {
 
     public static void main(String[] args) throws Exception {
         String home = System.getProperty("user.home");
-        String primaryPath = args.length > 0 ? args[0] : home + "/matrix/876_cache/cache/";
+        // Default paths match the user's actual VM layout:
+        //   ~/matrix/Server/    = repo root
+        //   ~/matrix/876_cache/ = primary (no /cache/ subdir)
+        //   ~/830_cache/        = older base, useful as the "primary" if you
+        //                         want to dump everything that arrived in 876
+        //   ~/caches/           = 900+ DLC cache (when available)
+        // Pass paths as args to override.
+        String primaryPath = args.length > 0 ? args[0] : home + "/matrix/876_cache/";
         String dlcPath     = args.length > 1 ? args[1] : home + "/caches/";
         String outPath     = args.length > 2 ? args[2] : "data/dump/cache_comparison.txt";
 

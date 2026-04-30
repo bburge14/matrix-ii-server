@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
-# Run the cache delta dumper. Compares the 876 base cache against the 900+ DLC cache.
+# Run the cache delta dumper. Compares two FileStore caches and dumps the
+# differences (new IDs, ID shifts, name changes) to data/dump/cache_comparison.txt.
 #
-# Usage:
-#   ./run_cache_diff.sh                                      # uses default paths
-#   ./run_cache_diff.sh /path/to/876_cache /path/to/dlc      # custom paths
-#   ./run_cache_diff.sh /path/to/876_cache /path/to/dlc /tmp/out.txt
+# Usage examples:
+#   ./run_cache_diff.sh                                            # default: 876 vs 900+
+#   ./run_cache_diff.sh ~/matrix/876_cache/ ~/caches/              # explicit DLC path
+#   ./run_cache_diff.sh ~/830_cache/ ~/matrix/876_cache/           # 830 -> 876 delta
+#   ./run_cache_diff.sh ~/830_cache/ ~/matrix/876_cache/ /tmp/o.txt
 #
-# Output: data/dump/cache_comparison.txt (unless arg 3 overrides)
+# Useful comparisons:
+#   - 830 vs 876: shows everything Jagex added in the 830->876 update window
+#                 (useful right now since the 900+ DLC isn't reachable yet)
+#   - 876 vs 900+: shows what the DLC parts bin contributes once you wire it
+#
+# Default paths assume:
+#   ~/matrix/Server/    = repo root (where you run this script)
+#   ~/matrix/876_cache/ = primary cache (no /cache/ subdir)
+#   ~/caches/           = DLC cache
 #
 # Where to put this script:
 #   This must live in the SAME DIRECTORY as src/, data/, run_game.sh
