@@ -871,12 +871,12 @@ public class BotBrain {
             return;
         }
 
-        // Try a real spellbook teleport first (proper rune cost + animation).
-        com.rs.bot.ai.BotTeleporter.Spell spell =
+        // Try jewelry teleport or spellbook teleport (jewelry preferred).
+        com.rs.bot.ai.BotTeleporter.Choice tele =
             com.rs.bot.ai.BotTeleporter.pickBest(bot, targetX, targetY);
-        if (spell != null && com.rs.bot.ai.BotTeleporter.cast(bot, spell)) {
+        if (tele != null && com.rs.bot.ai.BotTeleporter.cast(bot, tele)) {
             teleportCooldownUntil = System.currentTimeMillis() + 60_000;
-            lastDiagnostic = "teleporting: " + spell.name + " spell";
+            lastDiagnostic = "teleporting: " + tele.name + (tele.jewel != null ? " (jewelry)" : " (spell)");
             return;
         }
 
@@ -987,6 +987,7 @@ public class BotBrain {
         // method. A bot switching from A to B decrements A and increments B.
         if (method != lastMethod) {
             com.rs.bot.ai.TrainingMethods.registerActive(method, lastMethod);
+            if (method != null) com.rs.bot.SuccessTracker.onMethodPicked(method.description);
         }
         this.lastMethod = method;
         // Walk-out phase - get to the training area first.
@@ -1046,7 +1047,7 @@ public class BotBrain {
         com.rs.game.WorldObject altar =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "altar");
         if (altar == null) {
-            lastDiagnostic = "prayer: no altar in 12 tiles";
+            lastDiagnostic = "prayer: no altar in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no altar nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1129,7 +1130,7 @@ public class BotBrain {
         com.rs.game.WorldObject furnace =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "furnace");
         if (furnace == null) {
-            lastDiagnostic = "smelt: no furnace in 12 tiles";
+            lastDiagnostic = "smelt: no furnace in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no furnace nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1178,7 +1179,7 @@ public class BotBrain {
         com.rs.game.WorldObject range =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "range", "stove", "fire", "firepit");
         if (range == null) {
-            lastDiagnostic = "cook: no range/stove/fire in 12 tiles";
+            lastDiagnostic = "cook: no range/stove/fire in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no range nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1350,7 +1351,10 @@ public class BotBrain {
             return false;
         }
         if (currentXp > stuckXpSnapshot) {
-            // Progress! Reset the timer.
+            // Progress! Reset the timer + count as success once.
+            if (stuckXpSnapshot > 0 && method != null) {
+                com.rs.bot.SuccessTracker.onMethodSuccess(method.description);
+            }
             stuckXpSnapshot = currentXp;
             stuckSinceMs = now;
             return false;
@@ -1358,6 +1362,7 @@ public class BotBrain {
         if (now - stuckSinceMs < STUCK_THRESHOLD_MS) return false;
         // Stuck for the full threshold - blacklist this method for the goal.
         goalBlacklist.add(method);
+        com.rs.bot.SuccessTracker.onMethodStuck(method.description);
         sayDebug("plan stuck (no xp 30s): " + method.description + " - trying alt");
         lastDiagnostic = "stuck on " + method.description + " for " + ((now - stuckSinceMs) / 1000) + "s, blacklisted";
         // Reset snapshot for the NEXT method we'll pick.
@@ -1474,8 +1479,8 @@ public class BotBrain {
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 24, method == null ? null : method.treeDef);
         if (match == null) {
-            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 12 tiles");
+            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1529,8 +1534,8 @@ public class BotBrain {
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 24, method == null ? null : method.rockDef);
         if (match == null) {
-            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 12 tiles");
+            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1576,8 +1581,8 @@ public class BotBrain {
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 24, method == null ? null : method.fishDef);
         if (match == null) {
-            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 14 tiles");
+            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1740,14 +1745,17 @@ public class BotBrain {
     private void sayGoal(String text)  {
         say("[Goal] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[goal] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [goal] " + text);
     }
     private void sayStep(String text)  {
         say("[Step] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[step] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [step] " + text);
     }
     private void sayDebug(String text) {
         say("[Debug] " + text);
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[debug] " + text);
+        if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [debug] " + text);
     }
 
     private void broadcastPublicMessage(String text) {
