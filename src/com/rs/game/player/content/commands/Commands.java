@@ -2422,6 +2422,26 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "profilestart": {
+		// Per-phase WorldThread timing - dumps to stdout every 100 ticks (~60s).
+		// Use this BEFORE multi-threading work so we know the actual hot loops.
+		com.rs.executor.WorldTickProfiler.enable();
+		player.getPackets().sendGameMessage("Tick profiler ON. Watch stdout - stats every ~60s.");
+		return true;
+	    }
+
+	    case "profilestop": {
+		com.rs.executor.WorldTickProfiler.disable();
+		player.getPackets().sendGameMessage("Tick profiler OFF.");
+		return true;
+	    }
+
+	    case "profiledump": {
+		com.rs.executor.WorldTickProfiler.dump();
+		player.getPackets().sendGameMessage("Profiler stats dumped to stdout.");
+		return true;
+	    }
+
 	    case "botforce": {
 		if (cmd.length < 3) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::botforce botName skill (skill = wc/mining/fishing/thieving/combat)");
