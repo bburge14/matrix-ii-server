@@ -26,12 +26,25 @@ public class ArchetypeGoalGenerator {
         // Get bot's current state
         BotAnalysis analysis = analyzeBot(bot);
         
-        // Generate goals based on archetype and analysis
+        // Generate goals based on archetype and analysis.
+        // Combat archetypes (melee/ranged/magic/tank/pure/main/maxed/f2p)
+        // all funnel through generateCombatantGoals - their MAIN focus is
+        // whichever combat style their archetype specifies, but they still
+        // train non-combat skills too (added inside generateCombatantGoals).
+        // Skillers go through generateSkillerGoals which strips combat goals.
         switch (archetype.toLowerCase()) {
             case "skiller":
                 goals.addAll(generateSkillerGoals(bot, analysis));
                 break;
             case "combatant":
+            case "melee":
+            case "ranged":
+            case "magic":
+            case "tank":
+            case "pure":
+            case "main":
+            case "maxed":
+            case "f2p":
                 goals.addAll(generateCombatantGoals(bot, analysis));
                 break;
             case "pker":
@@ -128,25 +141,44 @@ public class ArchetypeGoalGenerator {
     }
     
     /**
-     * Generate goals for Combatant archetype bots
+     * Generate goals for Combatant archetype bots. Combat is the MAIN focus
+     * (and stays priority via LifetimeIdentity bias), but combat archetypes
+     * still train non-combat skills - real players don't ignore cooking,
+     * fletching, smithing, etc. just because they're a melee main. The
+     * archetype controls WHICH combat styles get prioritized:
+     *   melee  -> attack/strength/defence
+     *   ranged -> ranged + defence
+     *   magic  -> magic + defence
+     *   tank   -> defence + hp
+     *   pure   -> attack/strength only (no defence)
+     *   hybrid/main -> all
      */
     private static List<Goal> generateCombatantGoals(AIPlayer bot, BotAnalysis analysis) {
         List<Goal> goals = new ArrayList<>();
-        
-        // Combat stat priorities
+        String archetype = bot.getArchetype() == null ? "main" : bot.getArchetype().toLowerCase();
+
+        // Combat stat priorities - filtered by archetype style focus
         int attack = analysis.getSkillLevel(Skills.ATTACK);
         int strength = analysis.getSkillLevel(Skills.STRENGTH);
         int defence = analysis.getSkillLevel(Skills.DEFENCE);
         int magic = analysis.getSkillLevel(Skills.MAGIC);
         int ranged = analysis.getSkillLevel(Skills.RANGE);
-        
-        // Priority: Balance combat stats, then max them
-        if (attack < 99) goals.add(createGoal(GoalType.TRAIN_ATTACK_99, bot, analysis));
-        if (strength < 99) goals.add(createGoal(GoalType.TRAIN_STRENGTH_99, bot, analysis));
-        if (defence < 99) goals.add(createGoal(GoalType.TRAIN_DEFENCE_99, bot, analysis));
-        if (magic < 99) goals.add(createGoal(GoalType.TRAIN_MAGIC_99, bot, analysis));
-        if (ranged < 99) goals.add(createGoal(GoalType.TRAIN_RANGED_99, bot, analysis));
-        
+
+        boolean wantsMelee  = archetype.equals("melee") || archetype.equals("main") || archetype.equals("hybrid")
+                            || archetype.equals("tank") || archetype.equals("pure") || archetype.equals("combatant")
+                            || archetype.equals("maxed") || archetype.equals("f2p");
+        boolean wantsRanged = archetype.equals("ranged") || archetype.equals("main") || archetype.equals("hybrid")
+                            || archetype.equals("maxed");
+        boolean wantsMagic  = archetype.equals("magic") || archetype.equals("main") || archetype.equals("hybrid")
+                            || archetype.equals("maxed");
+        boolean wantsDefence = !archetype.equals("pure"); // pures explicitly avoid defence
+
+        if (wantsMelee && attack < 99) goals.add(createGoal(GoalType.TRAIN_ATTACK_99, bot, analysis));
+        if (wantsMelee && strength < 99) goals.add(createGoal(GoalType.TRAIN_STRENGTH_99, bot, analysis));
+        if (wantsDefence && defence < 99) goals.add(createGoal(GoalType.TRAIN_DEFENCE_99, bot, analysis));
+        if (wantsMagic && magic < 99) goals.add(createGoal(GoalType.TRAIN_MAGIC_99, bot, analysis));
+        if (wantsRanged && ranged < 99) goals.add(createGoal(GoalType.TRAIN_RANGED_99, bot, analysis));
+
         // Equipment progression based on combat level
         int combatLevel = analysis.combatLevel;
         if (combatLevel >= 40 && !analysis.hasEquipment("rune")) {
@@ -161,7 +193,7 @@ public class ArchetypeGoalGenerator {
         if (combatLevel >= 70 && analysis.bankValue > 50000000) {
             goals.add(createGoal(GoalType.GET_BANDOS_ARMOR, bot, analysis));
         }
-        
+
         // Weapon goals
         if (attack >= 70 && !analysis.hasEquipment("whip")) {
             goals.add(createGoal(GoalType.GET_ABYSSAL_WHIP, bot, analysis));
@@ -169,13 +201,41 @@ public class ArchetypeGoalGenerator {
         if (attack >= 75) {
             goals.add(createGoal(GoalType.GET_GODSWORD, bot, analysis));
         }
-        
+
         // Money for gear
         if (analysis.bankValue < 50000000) {
             goals.add(createGoal(GoalType.BUILD_100M_BANK, bot, analysis));
         }
-        
+
+        // Non-combat skill goals - combat bots also train support skills.
+        // Lifetime identity bias keeps combat goals on top, but these
+        // provide variety so a melee main isn't just attacking the same
+        // chicken for 24h. Cooking and Fletching are universally useful;
+        // others scale based on what makes sense for a fighter.
+        addNonCombatSkillGoals(goals, bot, analysis);
+
         return goals;
+    }
+
+    /**
+     * Add non-combat skill goals to a goal pool. Used by combat archetypes
+     * so they still train cooking, fletching, smithing, crafting, etc.
+     * alongside their combat focus. The lifetime alignment boost still
+     * keeps combat goals as primary (alignmentBoost gives +50 to combat:*
+     * for COMBAT_MAXER), but these support goals fire when the bot is
+     * idle, stuck on combat methods, or just wants variety.
+     */
+    private static void addNonCombatSkillGoals(List<Goal> goals, AIPlayer bot, BotAnalysis analysis) {
+        // Universal support skills every combat bot benefits from
+        if (analysis.getSkillLevel(Skills.COOKING) < 99)     goals.add(createGoal(GoalType.SKILL_COOKING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.FLETCHING) < 99)   goals.add(createGoal(GoalType.SKILL_FLETCHING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.FIREMAKING) < 99)  goals.add(createGoal(GoalType.SKILL_FIREMAKING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.WOODCUTTING) < 99) goals.add(createGoal(GoalType.SKILL_WOODCUTTING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.FISHING) < 99)     goals.add(createGoal(GoalType.SKILL_FISHING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.MINING) < 99)      goals.add(createGoal(GoalType.SKILL_MINING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.SMITHING) < 99)    goals.add(createGoal(GoalType.SKILL_SMITHING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.CRAFTING) < 99)    goals.add(createGoal(GoalType.SKILL_CRAFTING_99, bot, analysis));
+        if (analysis.getSkillLevel(Skills.THIEVING) < 99)    goals.add(createGoal(GoalType.SKILL_THIEVING_99, bot, analysis));
     }
     
     /**
@@ -206,10 +266,13 @@ public class ArchetypeGoalGenerator {
         
         // Money for supplies
         goals.add(createGoal(GoalType.BUILD_10M_BANK, bot, analysis));
-        
+
+        // Support skills - PKers still cook, fletch arrows, herblore for pots, etc.
+        addNonCombatSkillGoals(goals, bot, analysis);
+
         return goals;
     }
-    
+
     /**
      * Generate goals for Bosser archetype bots
      */
@@ -251,10 +314,14 @@ public class ArchetypeGoalGenerator {
         // Collection goals
         goals.add(createGoal(GoalType.GET_ALL_BARROWS_ITEMS, bot, analysis));
         goals.add(createGoal(GoalType.GET_ALL_GWD_ITEMS, bot, analysis));
-        
+
+        // Support skills - bossers still need cooking for sharks, fletching
+        // for darts, herblore for super combat pots, etc.
+        addNonCombatSkillGoals(goals, bot, analysis);
+
         return goals;
     }
-    
+
     /**
      * Generate goals for Quester archetype bots
      */
@@ -372,24 +439,26 @@ public class ArchetypeGoalGenerator {
     private static List<Goal> generateTierCheckpointGoals(AIPlayer bot, BotAnalysis analysis) {
         List<Goal> goals = new ArrayList<>();
         int cb = analysis.combatLevel;
-        // Combat-level checkpoints
-        if (cb < 30)  goals.add(createGoal(GoalType.REACH_COMBAT_30, bot, analysis));
-        if (cb < 50)  goals.add(createGoal(GoalType.REACH_COMBAT_50, bot, analysis));
-        if (cb < 70)  goals.add(createGoal(GoalType.REACH_COMBAT_70, bot, analysis));
-        if (cb < 90)  goals.add(createGoal(GoalType.REACH_COMBAT_90, bot, analysis));
-        // Per-skill combat checkpoints
-        addSkillCheckpoints(goals, bot, analysis, Skills.ATTACK,
-            GoalType.TRAIN_ATTACK_30, GoalType.TRAIN_ATTACK_50, GoalType.TRAIN_ATTACK_70);
-        addSkillCheckpoints(goals, bot, analysis, Skills.STRENGTH,
-            GoalType.TRAIN_STRENGTH_30, GoalType.TRAIN_STRENGTH_50, GoalType.TRAIN_STRENGTH_70);
-        addSkillCheckpoints(goals, bot, analysis, Skills.DEFENCE,
-            GoalType.TRAIN_DEFENCE_30, GoalType.TRAIN_DEFENCE_50, GoalType.TRAIN_DEFENCE_70);
-        addSkillCheckpoints(goals, bot, analysis, Skills.HITPOINTS,
-            GoalType.TRAIN_HITPOINTS_30, GoalType.TRAIN_HITPOINTS_50, null);
-        addSkillCheckpoints(goals, bot, analysis, Skills.RANGE,
-            null, GoalType.TRAIN_RANGED_50, GoalType.TRAIN_RANGED_70);
-        addSkillCheckpoints(goals, bot, analysis, Skills.MAGIC,
-            null, GoalType.TRAIN_MAGIC_50, null);
+        boolean skiller = isSkiller(bot);
+        // Combat-level + per-combat-skill checkpoints - skip entirely for skillers
+        if (!skiller) {
+            if (cb < 30)  goals.add(createGoal(GoalType.REACH_COMBAT_30, bot, analysis));
+            if (cb < 50)  goals.add(createGoal(GoalType.REACH_COMBAT_50, bot, analysis));
+            if (cb < 70)  goals.add(createGoal(GoalType.REACH_COMBAT_70, bot, analysis));
+            if (cb < 90)  goals.add(createGoal(GoalType.REACH_COMBAT_90, bot, analysis));
+            addSkillCheckpoints(goals, bot, analysis, Skills.ATTACK,
+                GoalType.TRAIN_ATTACK_30, GoalType.TRAIN_ATTACK_50, GoalType.TRAIN_ATTACK_70);
+            addSkillCheckpoints(goals, bot, analysis, Skills.STRENGTH,
+                GoalType.TRAIN_STRENGTH_30, GoalType.TRAIN_STRENGTH_50, GoalType.TRAIN_STRENGTH_70);
+            addSkillCheckpoints(goals, bot, analysis, Skills.DEFENCE,
+                GoalType.TRAIN_DEFENCE_30, GoalType.TRAIN_DEFENCE_50, GoalType.TRAIN_DEFENCE_70);
+            addSkillCheckpoints(goals, bot, analysis, Skills.HITPOINTS,
+                GoalType.TRAIN_HITPOINTS_30, GoalType.TRAIN_HITPOINTS_50, null);
+            addSkillCheckpoints(goals, bot, analysis, Skills.RANGE,
+                null, GoalType.TRAIN_RANGED_50, GoalType.TRAIN_RANGED_70);
+            addSkillCheckpoints(goals, bot, analysis, Skills.MAGIC,
+                null, GoalType.TRAIN_MAGIC_50, null);
+        }
         // Gathering skills
         addSkillCheckpoints(goals, bot, analysis, Skills.MINING,
             GoalType.TRAIN_MINING_30, GoalType.TRAIN_MINING_50, GoalType.TRAIN_MINING_70);
@@ -416,22 +485,23 @@ public class ArchetypeGoalGenerator {
 
     private static List<Goal> generateUniversalGoals(AIPlayer bot, BotAnalysis analysis) {
         List<Goal> goals = new ArrayList<>();
-        
-        // Financial security
+        boolean skiller = isSkiller(bot);
+
+        // Financial security - applies to all
         if (analysis.bankValue < 1000000) {
             goals.add(createGoal(GoalType.BUILD_1M_BANK, bot, analysis));
         }
-        
-        // Basic equipment progression
-        if (analysis.combatLevel > 40 && !analysis.hasEquipment("rune")) {
-            goals.add(createGoal(GoalType.GET_RUNE_ARMOR, bot, analysis));
+
+        // Combat-only universal goals - skip for skillers
+        if (!skiller) {
+            if (analysis.combatLevel > 40 && !analysis.hasEquipment("rune")) {
+                goals.add(createGoal(GoalType.GET_RUNE_ARMOR, bot, analysis));
+            }
+            if (analysis.combatLevel > 80) {
+                goals.add(createGoal(GoalType.GET_FIRE_CAPE, bot, analysis));
+            }
         }
-        
-        // Fire cape for any combat-capable bot
-        if (analysis.combatLevel > 80) {
-            goals.add(createGoal(GoalType.GET_FIRE_CAPE, bot, analysis));
-        }
-        
+
         return goals;
     }
     
@@ -449,8 +519,11 @@ public class ArchetypeGoalGenerator {
             return Long.compare(a.getEstimatedTime(), b.getEstimatedTime());
         });
         
-        // Limit to top goals to avoid overwhelming the bot
-        int maxGoals = 10;
+        // Cap goal pool. Combat archetypes now bring ~5 combat goals + ~9
+        // support skill goals + ~4 equipment + checkpoints, so we widen
+        // the cap from 10 to 20 to keep both primary and secondary goals
+        // visible. Lifetime alignment bias still puts primary on top.
+        int maxGoals = 20;
         if (goals.size() > maxGoals) {
             goals = goals.subList(0, maxGoals);
         }
