@@ -36,6 +36,7 @@ public final class BotAuditor {
             String reason = "";
             WorldTile from = m.location;
             int radius = 24;
+            try {
             switch (m.kind) {
                 case WOODCUTTING: {
                     EnvironmentScanner.TreeMatch tm =
@@ -95,6 +96,10 @@ public final class BotAuditor {
             if (!ok) {
                 broken++;
                 AuditLog.log("FAIL: " + m.description + " @ " + from.getX() + "," + from.getY() + " -> " + reason);
+            }
+            } catch (Throwable methodEx) {
+                broken++;
+                AuditLog.log("ERROR scanning " + m.description + " @ " + from.getX() + "," + from.getY() + " -> " + methodEx);
             }
         }
         AuditLog.log("audit complete: " + total + " methods scanned, " + broken + " broken");
@@ -156,7 +161,9 @@ public final class BotAuditor {
                     dumpOnlineBots();
                     passCount++;
                 } catch (Throwable t) {
-                    AuditLog.log("auto-audit threw: " + t);
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    t.printStackTrace(new java.io.PrintWriter(sw));
+                    AuditLog.log("auto-audit threw: " + t + "\n" + sw.toString());
                 }
             }
         }, 50, 100); // 50 ticks (~30s) initial, then every 100 ticks (~60s)

@@ -1046,7 +1046,7 @@ public class BotBrain {
         com.rs.game.WorldObject altar =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "altar");
         if (altar == null) {
-            lastDiagnostic = "prayer: no altar in 12 tiles";
+            lastDiagnostic = "prayer: no altar in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no altar nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1129,7 +1129,7 @@ public class BotBrain {
         com.rs.game.WorldObject furnace =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "furnace");
         if (furnace == null) {
-            lastDiagnostic = "smelt: no furnace in 12 tiles";
+            lastDiagnostic = "smelt: no furnace in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no furnace nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1178,7 +1178,7 @@ public class BotBrain {
         com.rs.game.WorldObject range =
             EnvironmentScanner.findNearestObjectByName(bot, 12, "range", "stove", "fire", "firepit");
         if (range == null) {
-            lastDiagnostic = "cook: no range/stove/fire in 12 tiles";
+            lastDiagnostic = "cook: no range/stove/fire in 24 tiles";
             if (Utils.random(100) < 30) sayDebug("no range nearby");
             BotPathing.wiggle(bot, 4);
             return;
@@ -1474,8 +1474,8 @@ public class BotBrain {
         EnvironmentScanner.TreeMatch match =
             EnvironmentScanner.findNearestTree(bot, 24, method == null ? null : method.treeDef);
         if (match == null) {
-            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 12 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 12 tiles");
+            lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1529,8 +1529,8 @@ public class BotBrain {
         EnvironmentScanner.RockMatch match =
             EnvironmentScanner.findNearestRock(bot, 24, method == null ? null : method.rockDef);
         if (match == null) {
-            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 12 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 12 tiles");
+            lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
@@ -1576,8 +1576,8 @@ public class BotBrain {
         EnvironmentScanner.FishMatch match =
             EnvironmentScanner.findNearestFishingSpot(bot, 24, method == null ? null : method.fishDef);
         if (match == null) {
-            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 14 tiles";
-            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 14 tiles");
+            lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
             return;
         }
