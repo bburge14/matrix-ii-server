@@ -154,8 +154,10 @@ public final class ItemDefinitions {
 	}
 
 	public final void loadItemDefinitions() {
-		//change this when uw anna use price editor.
-		byte [] data = Cache.STORE.getIndexes()[Constants.ITEM_DEFINITIONS_INDEX].getFile(getArchiveId(), getFileId());
+		// DLC fallback: try primary store first, fall through to DLC store
+		// if configured. When DLC isn't enabled this behaves identically to
+		// the previous direct STORE lookup.
+		byte [] data = Cache.getFileWithDlcFallback(Constants.ITEM_DEFINITIONS_INDEX, getArchiveId(), getFileId());
 		if (data == null) {
 			// System.out.println("Failed loading Item " + id+".");
 			return;

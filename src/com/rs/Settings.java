@@ -14,7 +14,63 @@ import com.rs.utils.Utils;
 public final class Settings {
 
 	public static final String SERVER_NAME = "Brad's Playground";
-	public static final String CACHE_PATH = System.getProperty("user.home") + "/830_cache/";
+
+	// === Cache configuration ===
+	//
+	// Three-tier setup designed for cache 830 -> 876 migration:
+	//
+	//   PRIMARY  = 876 base cache    (the OS - main game data)
+	//   LEGACY   = 830 cache         (fallback while 876 isn't fully ready)
+	//   DLC      = 900+ cache        (read-only parts bin, set later)
+	//
+	// Cache.init() tries PRIMARY first. If that fails to load (path missing,
+	// no idx files, corrupt archives), it falls back to LEGACY so the server
+	// still boots. When DLC is configured, ID lookups fall through to it
+	// after PRIMARY misses.
+	//
+	// Today: PRIMARY may not load (876 cache in OpenRS2 loose format -
+	// see CacheRepacker), so the server boots from LEGACY 830. Once you
+	// get 876 properly packed (or replace it with a pre-packed cache),
+	// PRIMARY takes over automatically with no code change.
+
+	/**
+	 * Primary cache path. The server's main game data. Currently 876.
+	 * Falls through to CACHE_PATH_LEGACY if it can't load.
+	 */
+	public static final String CACHE_PATH_PRIMARY = System.getProperty("user.home") + "/matrix/876_packed/";
+
+	/**
+	 * Legacy fallback cache. Used if primary fails to load. Currently 830.
+	 * Keeps the server bootable during the migration. Once 876 is solid
+	 * for an extended period, this can be removed.
+	 */
+	public static final String CACHE_PATH_LEGACY = System.getProperty("user.home") + "/830_cache/";
+
+	/**
+	 * Secondary "DLC" cache path. Read-only parts-bin for newer assets
+	 * (War's Retreat, Master Capes, etc) not in the 876 primary. Set to
+	 * null/empty until you have a 900+ cache available.
+	 *
+	 * When set, ID lookups in ItemDefinitions/ObjectDefinitions/
+	 * NPCDefinitions fall through here after the primary misses.
+	 */
+	public static final String CACHE_PATH_DLC = null;
+
+	/**
+	 * If true, ID lookups fall through to the DLC store when primary
+	 * returns null. No-op when CACHE_PATH_DLC is null.
+	 */
+	public static final boolean DLC_FALLBACK_ENABLED = true;
+
+	/**
+	 * Legacy single-cache constant. Hundreds of files in the codebase
+	 * reference Settings.CACHE_PATH directly - tools, dumpers, packers.
+	 * Resolved at boot to whichever store actually loaded (primary or
+	 * legacy). Don't read this before Cache.init() - it'll point at the
+	 * legacy default.
+	 */
+	public static final String CACHE_PATH = CACHE_PATH_LEGACY;
+
 	public static final String LOGIN_DATA_PATH = "data/accounts_data";
 	public static final String DATA_PATH = "data/server_data";
 

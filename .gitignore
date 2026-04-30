@@ -6,9 +6,12 @@ bin/
 lib/*.jar
 
 # Cache and data files
-cache/
-*.dat
-*.idx*
+# (anchored with leading slash so it only matches top-level cache dirs -
+# don't catch src/com/rs/cache/ which is a Java package, not the game cache.)
+/cache/
+/*_cache/
+main_file_cache.dat2
+main_file_cache.idx*
 
 # Log files
 logs/
