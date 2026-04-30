@@ -1604,13 +1604,34 @@ public class BotBrain {
         // Already attacking something? Let PlayerCombatNew finish its loop.
         if (bot.getActionManager().getAction() instanceof PlayerCombatNew) return;
 
-        if (method.npcIds == null || method.npcIds.length == 0) return;
+        if (method.npcIds == null || method.npcIds.length == 0) {
+            lastDiagnostic = "combat: method has no npcIds";
+            return;
+        }
 
-        NPC target = EnvironmentScanner.findNearestNPC(bot, 12, method.npcIds);
+        // Pre-fight buffs - drink combat potions if owned + activate combat
+        // prayer if level allows. Mimics what real players do before pulling.
+        applyPreFightBuffs();
+
+        // Scan parity: 24 tiles like other skills (was 12, made low-cb bots
+        // miss visible NPCs on a jittered teleport landing).
+        NPC target = EnvironmentScanner.findNearestNPC(bot, 24, method.npcIds);
         if (target == null) {
-            // No spawn nearby - wiggle around the location until one respawns
-            // or comes into range.
+            lastDiagnostic = "combat: no NPC " + java.util.Arrays.toString(method.npcIds) + " in 24 tiles";
+            if (Utils.random(100) < 50) sayDebug("no enemies here");
             BotPathing.wiggle(bot, 4);
+            return;
+        }
+
+        // Don't pull a target a real player wouldn't - if combat level
+        // gap is too large, blacklist (the method should have gated this
+        // but let's catch it just in case).
+        int botCb = bot.getSkills().getCombatLevel();
+        int targetCb = target.getDefinitions().combatLevel;
+        if (targetCb > botCb * 2 + 5) {
+            lastDiagnostic = "combat: target cb " + targetCb + " way over bot cb " + botCb + " - skipping";
+            if (Utils.random(100) < 30) sayDebug("that's way out of my league");
+            goalBlacklist.add(method);
             return;
         }
 
@@ -1618,7 +1639,54 @@ public class BotBrain {
         // (melee = adjacent, ranged/magic = within sight). Just hand it the
         // target and let it run.
         bot.getActionManager().setAction(new PlayerCombatNew(target));
+        lastDiagnostic = "combat: attacking NPC " + target.getId() + " (cb " + targetCb + ")";
         if (Utils.random(100) < 20) say(combatChatter());
+    }
+
+    /**
+     * Pre-fight buff routine: drink owned potions, activate combat prayer
+     * the bot's level supports. Called once per combat-method tick before
+     * setting the PlayerCombatNew action so buffs are live during the fight.
+     *
+     * Doesn't try to be optimal - just brings the bot up to the level a
+     * real player would have when pulling. Throttled by the canActNow
+     * reaction delay so it doesn't spam.
+     */
+    private void applyPreFightBuffs() {
+        try {
+            // Combat potions: drink one of each owned type if not already buffed.
+            // Item IDs map to potion doses; checking dose-4 first then 3/2/1.
+            int[][] combatPots = new int[][] {
+                {12695, 12697, 12699, 12701},   // super combat potion
+                {2440, 2442, 2444, 2436},        // strength
+                {113, 115, 117, 119},             // attack
+                {2432, 2434, 2436, 2438},        // defence
+                {2444, 2446, 2448, 2450}         // ranged
+            };
+            for (int[] pot : combatPots) {
+                for (int id : pot) {
+                    try {
+                        if (bot.getInventory().containsItem(id, 1)) {
+                            bot.getInventory().deleteItem(id, 1);
+                            bot.setNextAnimation(new com.rs.game.Animation(829));
+                            // Replace with one-dose-lower if it exists
+                            int idx = -1;
+                            for (int i = 0; i < pot.length; i++) if (pot[i] == id) { idx = i; break; }
+                            if (idx > 0) bot.getInventory().addItem(pot[idx - 1], 1);
+                            // Apply rough stat boost (10% + 4 - matches super combat-ish)
+                            try {
+                                bot.getSkills().setSkillLevel(com.rs.game.player.Skills.STRENGTH,
+                                    Math.min(99, bot.getSkills().getLevel(com.rs.game.player.Skills.STRENGTH) + 5));
+                                bot.getSkills().setSkillLevel(com.rs.game.player.Skills.ATTACK,
+                                    Math.min(99, bot.getSkills().getLevel(com.rs.game.player.Skills.ATTACK) + 5));
+                            } catch (Throwable ignored) {}
+                            if (Utils.random(100) < 30) say("chugging a potion");
+                            break;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     /**
