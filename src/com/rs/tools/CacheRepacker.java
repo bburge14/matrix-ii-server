@@ -55,13 +55,19 @@ public final class CacheRepacker {
         }
 
         // Discover loose-format index ids. Each numeric subdir name = one cache index.
+        // We exclude 255 from the regular-index list because that's the master
+        // reference table, rebuilt by alex/store on rewriteTable() and accessed
+        // via store.getIndex255() not store.getIndexes()[255]. Treating it as a
+        // regular index would pad placeholder slots all the way to 255.
         TreeSet<Integer> indexIds = new TreeSet<>();
         File[] children = inputDir.listFiles();
         if (children != null) {
             for (File f : children) {
                 if (!f.isDirectory()) continue;
                 try {
-                    indexIds.add(Integer.parseInt(f.getName()));
+                    int id = Integer.parseInt(f.getName());
+                    if (id == 255) continue; // skip master ref table
+                    indexIds.add(id);
                 } catch (NumberFormatException ignored) {}
             }
         }
@@ -69,7 +75,7 @@ public final class CacheRepacker {
             System.err.println("[CacheRepacker] no numbered subdirs in " + inputDir);
             System.exit(1);
         }
-        System.out.println("[CacheRepacker] found " + indexIds.size() + " loose indexes: " + indexIds);
+        System.out.println("[CacheRepacker] found " + indexIds.size() + " loose indexes (excluding 255): " + indexIds);
 
         // Inventory: index -> sorted list of archive ids present
         TreeMap<Integer, List<Integer>> archivesPerIndex = new TreeMap<>();
@@ -121,22 +127,20 @@ public final class CacheRepacker {
         // alex/store's Store auto-creates idx255 inside the constructor (getIndex255()).
 
         // Now write each archive blob into its index's MainFile.
+        // CRITICAL: alex/store's MainFile caches every archive blob in memory
+        // when you putArchiveData() - that cache grows unbounded and OOMs after
+        // ~270k archives on a 4GB heap. We call resetCachedArchives() every
+        // 500 archives to keep RSS flat. Each batch is also wrapped in try/
+        // finally so rewriteTable() runs even if a later index OOMs.
         long writtenArchives = 0;
         long startMs = System.currentTimeMillis();
+        long lastReset = 0;
+        final int RESET_INTERVAL = 500;
+
         for (int idx : indexIds) {
             File idxDir = new File(inputDir, String.valueOf(idx));
             List<Integer> archives = archivesPerIndex.get(idx);
             if (archives.isEmpty()) continue;
-
-            // Index 255 is special: it's the master ref table, accessed via
-            // store.getIndex255() not store.getIndexes()[255]. Skip writing
-            // archives into 255 here - alex/store rebuilds the master table
-            // automatically when each Index's table is written.
-            if (idx == 255) {
-                System.out.println("[CacheRepacker] index 255: " + archives.size()
-                    + " ref-tables present (will be rebuilt by alex/store)");
-                continue;
-            }
 
             if (idx >= store.getIndexes().length || store.getIndexes()[idx] == null) {
                 System.err.println("[CacheRepacker] WARN: index slot " + idx + " missing, skipping " + archives.size() + " archives");
@@ -144,29 +148,46 @@ public final class CacheRepacker {
             }
             Index targetIndex = store.getIndexes()[idx];
             int written = 0;
-            for (int archiveId : archives) {
-                File datFile = new File(idxDir, archiveId + ".dat");
-                byte[] bytes = Files.readAllBytes(datFile.toPath());
-                if (bytes.length == 0) continue; // skip empty stub
-                boolean ok = targetIndex.getMainFile().putArchiveData(archiveId, bytes);
-                if (!ok) {
-                    System.err.println("[CacheRepacker] putArchiveData FAILED idx=" + idx + " archive=" + archiveId);
-                } else {
-                    written++;
-                    writtenArchives++;
-                }
-                if (writtenArchives % 1000 == 0) {
-                    long ms = System.currentTimeMillis() - startMs;
-                    System.out.println("[CacheRepacker] " + writtenArchives + " archives written (" + ms + " ms)");
-                }
-            }
-            System.out.println("[CacheRepacker] index " + idx + ": " + written + "/" + archives.size() + " archives");
 
-            // Flush the index reference table after each batch.
             try {
-                targetIndex.rewriteTable();
-            } catch (Throwable t) {
-                System.err.println("[CacheRepacker] rewriteTable threw on index " + idx + ": " + t);
+                for (int archiveId : archives) {
+                    File datFile = new File(idxDir, archiveId + ".dat");
+                    byte[] bytes = Files.readAllBytes(datFile.toPath());
+                    if (bytes.length == 0) continue;
+                    boolean ok = targetIndex.getMainFile().putArchiveData(archiveId, bytes);
+                    if (!ok) {
+                        System.err.println("[CacheRepacker] putArchiveData FAILED idx=" + idx + " archive=" + archiveId);
+                    } else {
+                        written++;
+                        writtenArchives++;
+                    }
+
+                    // Periodically drop the in-memory archive cache. Without
+                    // this we'd hold every blob ever written and OOM at ~270k.
+                    if (writtenArchives - lastReset >= RESET_INTERVAL) {
+                        try {
+                            targetIndex.getMainFile().resetCachedArchives();
+                        } catch (Throwable t) {
+                            // Non-fatal - cache reset is opportunistic.
+                        }
+                        lastReset = writtenArchives;
+                    }
+
+                    if (writtenArchives % 1000 == 0) {
+                        long ms = System.currentTimeMillis() - startMs;
+                        long usedMb = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024;
+                        System.out.println("[CacheRepacker] " + writtenArchives + " archives (" + ms + " ms, " + usedMb + " MB used)");
+                    }
+                }
+                System.out.println("[CacheRepacker] index " + idx + ": " + written + "/" + archives.size() + " archives");
+            } finally {
+                // Always flush the table so a partial repack at least has its
+                // completed indexes readable.
+                try {
+                    targetIndex.rewriteTable();
+                } catch (Throwable t) {
+                    System.err.println("[CacheRepacker] rewriteTable threw on index " + idx + ": " + t);
+                }
             }
         }
 

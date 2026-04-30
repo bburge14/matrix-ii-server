@@ -40,4 +40,7 @@ if [ ! -f bin/com/rs/tools/CacheRepacker.class ] \
   fi
 fi
 
-java -Xmx4G -cp "bin:data/libs/*" com.rs.tools.CacheRepacker "$INPUT" "$OUTPUT"
+# 8G heap for safety. The repacker calls resetCachedArchives() every 500
+# blobs to keep RSS flat, but a few cache indexes (40, 47) have very large
+# individual archives and the heap can spike when reading those.
+java -Xmx8G -cp "bin:data/libs/*" com.rs.tools.CacheRepacker "$INPUT" "$OUTPUT"
