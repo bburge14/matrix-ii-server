@@ -2387,6 +2387,41 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "spawncitizen": {
+		// ::spawncitizen <count> [archetype]
+		// Spawns Citizen-tier (lightweight NPC-backed) bots near your tile.
+		// Archetype: skiller / combatant / socialite / minigamer / mixed
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::spawncitizen <count> [skiller|combatant|socialite|minigamer]");
+		    return true;
+		}
+		int count;
+		try { count = Integer.parseInt(cmd[1]); }
+		catch (NumberFormatException e) {
+		    player.getPackets().sendGameMessage("count must be a number");
+		    return true;
+		}
+		count = Math.max(1, Math.min(count, 200)); // cap at 200/call
+		String category = cmd.length >= 3 ? cmd[2].toLowerCase() : null;
+		java.util.List<com.rs.bot.ambient.AmbientBot> spawned =
+		    com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, player, 12);
+		player.getPackets().sendGameMessage("Spawned " + spawned.size()
+		    + " " + (category == null ? "mixed" : category) + " citizens"
+		    + " (live total: " + com.rs.bot.ambient.CitizenSpawner.liveCount() + ")");
+		return true;
+	    }
+
+	    case "clearcitizens": {
+		int removed = com.rs.bot.ambient.CitizenSpawner.clearAll();
+		player.getPackets().sendGameMessage("Cleared " + removed + " citizens.");
+		return true;
+	    }
+
+	    case "citizencount": {
+		player.getPackets().sendGameMessage("Live citizens: " + com.rs.bot.ambient.CitizenSpawner.liveCount());
+		return true;
+	    }
+
 	    case "botforce": {
 		if (cmd.length < 3) {
 		    player.getPackets().sendPanelBoxMessage("Use: ::botforce botName skill (skill = wc/mining/fishing/thieving/combat)");
