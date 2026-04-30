@@ -183,8 +183,14 @@ public final class CacheDiffUtility {
     }
 
     /**
-     * Find the directory that actually contains the .dat2/.idx files.
-     * Accepts: "/foo/" (flat) or "/foo" (with /cache/ subdir or /cache subdir).
+     * Find the directory that actually contains the .dat2 + .idx* files.
+     * Accepts: "/foo/" (flat) or "/foo" (with /cache/ subdir).
+     *
+     * Picks whichever candidate has the MOST .idx* files. The user's 876
+     * cache has main_file_cache.dat2 at root but only idx255 there - the
+     * real idx0..idx42 live inside /cache/. Counting .idx files catches
+     * that partial-extraction case automatically.
+     *
      * Returns the path Store should be given, or exits if nothing matches.
      */
     private static String resolveCachePath(String path, String label) {
@@ -193,20 +199,41 @@ public final class CacheDiffUtility {
             System.err.println("[CacheDiff] " + label + " path does not exist: " + path);
             System.exit(1);
         }
-        // Already pointing at the cache files directly?
-        if (new File(root, "main_file_cache.dat2").exists()) return appendSlash(path);
-        // Common nested layout: <path>/cache/main_file_cache.dat2
         File nested = new File(root, "cache");
-        if (new File(nested, "main_file_cache.dat2").exists()) {
-            String resolved = appendSlash(nested.getAbsolutePath());
-            System.out.println("[CacheDiff] " + label + " resolved to nested cache dir: " + resolved);
-            return resolved;
+        int rootIdx = countIdxFiles(root);
+        int nestedIdx = countIdxFiles(nested);
+        boolean rootHasDat = new File(root, "main_file_cache.dat2").exists();
+        boolean nestedHasDat = new File(nested, "main_file_cache.dat2").exists();
+
+        // Prefer whichever side has more .idx* files. Tie-breaker: the side
+        // that also has the .dat2. A typical full cache has 20+ idx files.
+        boolean useNested;
+        if (nestedHasDat && nestedIdx > rootIdx) useNested = true;
+        else if (rootHasDat && rootIdx >= nestedIdx) useNested = false;
+        else if (nestedHasDat) useNested = true;
+        else if (rootHasDat) useNested = false;
+        else {
+            System.err.println("[CacheDiff] " + label + " path has no main_file_cache.dat2: " + path);
+            System.err.println("  Looked for: " + new File(root, "main_file_cache.dat2"));
+            System.err.println("        and:  " + new File(nested, "main_file_cache.dat2"));
+            System.exit(1);
+            return null;
         }
-        System.err.println("[CacheDiff] " + label + " path has no main_file_cache.dat2: " + path);
-        System.err.println("  Looked for: " + path + "main_file_cache.dat2");
-        System.err.println("        and:  " + path + "cache/main_file_cache.dat2");
-        System.exit(1);
-        return null;
+
+        String resolved = appendSlash((useNested ? nested : root).getAbsolutePath());
+        int idxCount = useNested ? nestedIdx : rootIdx;
+        System.out.println("[CacheDiff] " + label + " -> " + resolved + " (" + idxCount + " idx files)");
+        if (idxCount < 5) {
+            System.out.println("[CacheDiff] WARN: " + label + " only has " + idxCount
+                + " idx files - cache may be incomplete.");
+        }
+        return resolved;
+    }
+
+    private static int countIdxFiles(File dir) {
+        if (dir == null || !dir.isDirectory()) return 0;
+        File[] files = dir.listFiles((d, n) -> n.startsWith("main_file_cache.idx"));
+        return files == null ? 0 : files.length;
     }
 
     private static String appendSlash(String p) {
