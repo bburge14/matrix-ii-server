@@ -30,7 +30,7 @@ import java.util.TreeMap;
  *
  * Optional args (positional):
  *   args[0] = primary path (default ~/matrix/876_cache/cache/)
- *   args[1] = dlc path     (default ~/caches/)
+ *   args[1] = second path     (default ~/caches/)
  *   args[2] = output file  (default data/dump/cache_comparison.txt)
  *
  * What it produces:
@@ -73,18 +73,18 @@ public final class CacheDiffUtility {
         //   ~/caches/           = 900+ DLC cache (when available)
         // Pass paths as args to override.
         String primaryPath = args.length > 0 ? args[0] : home + "/matrix/876_cache/";
-        String dlcPath     = args.length > 1 ? args[1] : home + "/caches/";
+        String secondPath     = args.length > 1 ? args[1] : home + "/caches/";
         String outPath     = args.length > 2 ? args[2] : "data/dump/cache_comparison.txt";
 
         System.out.println("[CacheDiff] primary = " + primaryPath);
-        System.out.println("[CacheDiff] dlc     = " + dlcPath);
+        System.out.println("[CacheDiff] second     = " + secondPath);
         System.out.println("[CacheDiff] output  = " + outPath);
 
         primaryPath = resolveCachePath(primaryPath, "primary");
-        dlcPath     = resolveCachePath(dlcPath, "dlc");
+        secondPath     = resolveCachePath(secondPath, "second");
 
         Store primary = new Store(primaryPath);
-        Store dlc     = new Store(dlcPath);
+        Store second     = new Store(secondPath);
 
         // Sanity-check the Store actually loaded indexes. If the .idx files
         // weren't where we pointed, getIndexes() comes back length 0 and the
@@ -94,63 +94,63 @@ public final class CacheDiffUtility {
             System.err.println("  Path must contain main_file_cache.dat2 + main_file_cache.idx* files directly.");
             System.exit(1);
         }
-        if (dlc.getIndexes() == null || dlc.getIndexes().length == 0) {
-            System.err.println("[CacheDiff] dlc store loaded 0 indexes from " + dlcPath);
+        if (second.getIndexes() == null || second.getIndexes().length == 0) {
+            System.err.println("[CacheDiff] second store loaded 0 indexes from " + secondPath);
             System.err.println("  Path must contain main_file_cache.dat2 + main_file_cache.idx* files directly.");
             System.exit(1);
         }
         System.out.println("[CacheDiff] primary indexes loaded: " + primary.getIndexes().length);
-        System.out.println("[CacheDiff] dlc     indexes loaded: " + dlc.getIndexes().length);
+        System.out.println("[CacheDiff] second     indexes loaded: " + second.getIndexes().length);
 
         // Build per-type ID lists by walking each store's index and collecting
         // every (archive, file) pair. This avoids guessing max IDs and is
         // robust against sparse archives.
         Set<Integer> itemIdsP   = collectItemIds(primary);
-        Set<Integer> itemIdsD   = collectItemIds(dlc);
+        Set<Integer> itemIdsS   = collectItemIds(second);
         Set<Integer> objectIdsP = collectObjectIds(primary);
-        Set<Integer> objectIdsD = collectObjectIds(dlc);
+        Set<Integer> objectIdsS = collectObjectIds(second);
         Set<Integer> npcIdsP    = collectNpcIds(primary);
-        Set<Integer> npcIdsD    = collectNpcIds(dlc);
+        Set<Integer> npcIdsS    = collectNpcIds(second);
 
-        System.out.println("[CacheDiff] items:   primary=" + itemIdsP.size() + " dlc=" + itemIdsD.size());
-        System.out.println("[CacheDiff] objects: primary=" + objectIdsP.size() + " dlc=" + objectIdsD.size());
-        System.out.println("[CacheDiff] npcs:    primary=" + npcIdsP.size() + " dlc=" + npcIdsD.size());
+        System.out.println("[CacheDiff] items:   primary=" + itemIdsP.size() + " second=" + itemIdsS.size());
+        System.out.println("[CacheDiff] objects: primary=" + objectIdsP.size() + " second=" + objectIdsS.size());
+        System.out.println("[CacheDiff] npcs:    primary=" + npcIdsP.size() + " second=" + npcIdsS.size());
 
         // Decode names for every ID in both stores. Returns id->name (or
         // sentinel "<incompatible>" / null for missing/broken).
         List<String> incompat = new ArrayList<>();
         Map<Integer, String> primaryItemNames = decodeAllItemNames(primary, itemIdsP, "primary", incompat);
-        Map<Integer, String> dlcItemNames     = decodeAllItemNames(dlc, itemIdsD, "dlc", incompat);
+        Map<Integer, String> secondItemNames     = decodeAllItemNames(second, itemIdsS, "second", incompat);
         Map<Integer, String> primaryObjNames  = decodeAllObjectNames(primary, objectIdsP, "primary", incompat);
-        Map<Integer, String> dlcObjNames      = decodeAllObjectNames(dlc, objectIdsD, "dlc", incompat);
+        Map<Integer, String> secondObjNames      = decodeAllObjectNames(second, objectIdsS, "second", incompat);
         Map<Integer, String> primaryNpcNames  = decodeAllNpcNames(primary, npcIdsP, "primary", incompat);
-        Map<Integer, String> dlcNpcNames      = decodeAllNpcNames(dlc, npcIdsD, "dlc", incompat);
+        Map<Integer, String> secondNpcNames      = decodeAllNpcNames(second, npcIdsS, "second", incompat);
 
         File out = new File(outPath);
         if (out.getParentFile() != null) out.getParentFile().mkdirs();
         try (PrintWriter pw = new PrintWriter(out)) {
             pw.println("# Cache Comparison Report");
             pw.println("# primary = " + primaryPath);
-            pw.println("# dlc     = " + dlcPath);
+            pw.println("# second     = " + secondPath);
             pw.println("# generated " + new java.util.Date());
             pw.println();
             pw.println("# Counts");
-            pw.println("items:   primary=" + primaryItemNames.size() + "  dlc=" + dlcItemNames.size());
-            pw.println("objects: primary=" + primaryObjNames.size()  + "  dlc=" + dlcObjNames.size());
-            pw.println("npcs:    primary=" + primaryNpcNames.size()  + "  dlc=" + dlcNpcNames.size());
+            pw.println("items:   primary=" + primaryItemNames.size() + "  second=" + secondItemNames.size());
+            pw.println("objects: primary=" + primaryObjNames.size()  + "  second=" + secondObjNames.size());
+            pw.println("npcs:    primary=" + primaryNpcNames.size()  + "  second=" + secondNpcNames.size());
             pw.println();
 
-            writeNewAssets(pw, "Items",   primaryItemNames, dlcItemNames);
-            writeNewAssets(pw, "Objects", primaryObjNames,  dlcObjNames);
-            writeNewAssets(pw, "NPCs",    primaryNpcNames,  dlcNpcNames);
+            writeNewAssets(pw, "Items",   primaryItemNames, secondItemNames);
+            writeNewAssets(pw, "Objects", primaryObjNames,  secondObjNames);
+            writeNewAssets(pw, "NPCs",    primaryNpcNames,  secondNpcNames);
 
-            writeIdShifts(pw, "Items",   primaryItemNames, dlcItemNames);
-            writeIdShifts(pw, "Objects", primaryObjNames,  dlcObjNames);
-            writeIdShifts(pw, "NPCs",    primaryNpcNames,  dlcNpcNames);
+            writeIdShifts(pw, "Items",   primaryItemNames, secondItemNames);
+            writeIdShifts(pw, "Objects", primaryObjNames,  secondObjNames);
+            writeIdShifts(pw, "NPCs",    primaryNpcNames,  secondNpcNames);
 
-            writeNameChanges(pw, "Items",   primaryItemNames, dlcItemNames);
-            writeNameChanges(pw, "Objects", primaryObjNames,  dlcObjNames);
-            writeNameChanges(pw, "NPCs",    primaryNpcNames,  dlcNpcNames);
+            writeNameChanges(pw, "Items",   primaryItemNames, secondItemNames);
+            writeNameChanges(pw, "Objects", primaryObjNames,  secondObjNames);
+            writeNameChanges(pw, "NPCs",    primaryNpcNames,  secondNpcNames);
 
             // Verification map: explicit search for the user's reference assets.
             pw.println("[Verification Map]");
@@ -158,15 +158,15 @@ public final class CacheDiffUtility {
             pw.println();
             pw.println("## War's Retreat objects");
             dumpMatching(pw, "primary", primaryObjNames, "war's retreat", "wars retreat", "war retreat");
-            dumpMatching(pw, "dlc    ", dlcObjNames,     "war's retreat", "wars retreat", "war retreat");
+            dumpMatching(pw, "second    ", secondObjNames,     "war's retreat", "wars retreat", "war retreat");
             pw.println();
             pw.println("## Master Cape items");
             dumpMatching(pw, "primary", primaryItemNames, "master cape", "master skillcape");
-            dumpMatching(pw, "dlc    ", dlcItemNames,     "master cape", "master skillcape");
+            dumpMatching(pw, "second    ", secondItemNames,     "master cape", "master skillcape");
             pw.println();
             pw.println("## Other useful 'master' items (sanity check tier shift)");
             dumpMatching(pw, "primary", primaryItemNames, "max cape", "completionist");
-            dumpMatching(pw, "dlc    ", dlcItemNames,     "max cape", "completionist");
+            dumpMatching(pw, "second    ", secondItemNames,     "max cape", "completionist");
             pw.println();
 
             pw.println("[Incompatible Opcodes]");
@@ -371,11 +371,11 @@ public final class CacheDiffUtility {
     // === Report sections ===
 
     private static void writeNewAssets(PrintWriter pw, String label,
-                                        Map<Integer, String> primary, Map<Integer, String> dlc) {
+                                        Map<Integer, String> primary, Map<Integer, String> second) {
         pw.println("[" + label + " - New Assets]");
         pw.println("# IDs that exist in DLC but are missing/empty in primary.");
         TreeMap<Integer, String> sorted = new TreeMap<>();
-        for (Map.Entry<Integer, String> e : dlc.entrySet()) {
+        for (Map.Entry<Integer, String> e : second.entrySet()) {
             if (!primary.containsKey(e.getKey())) sorted.put(e.getKey(), e.getValue());
         }
         for (Map.Entry<Integer, String> e : sorted.entrySet()) {
@@ -386,27 +386,27 @@ public final class CacheDiffUtility {
     }
 
     private static void writeIdShifts(PrintWriter pw, String label,
-                                       Map<Integer, String> primary, Map<Integer, String> dlc) {
+                                       Map<Integer, String> primary, Map<Integer, String> second) {
         pw.println("[" + label + " - ID Shifts]");
         pw.println("# Same name appears in both stores with a DIFFERENT id.");
         pw.println("# Format: 'name' | primary_ids -> dlc_ids");
 
         // Build name -> [ids] for each side
         Map<String, List<Integer>> byNameP = invert(primary);
-        Map<String, List<Integer>> byNameD = invert(dlc);
+        Map<String, List<Integer>> byNameS = invert(second);
 
         TreeMap<String, String> shifts = new TreeMap<>();
         for (Map.Entry<String, List<Integer>> e : byNameP.entrySet()) {
             String name = e.getKey();
             List<Integer> pIds = e.getValue();
-            List<Integer> dIds = byNameD.get(name);
-            if (dIds == null || dIds.isEmpty()) continue;
+            List<Integer> sIds = byNameS.get(name);
+            if (sIds == null || sIds.isEmpty()) continue;
             // Identify shifts: if no ID is shared between the two sides we treat
             // as a full shift. If the sets only overlap partially we still flag.
             Set<Integer> overlap = new HashSet<>(pIds);
-            overlap.retainAll(dIds);
-            if (overlap.size() == pIds.size() && overlap.size() == dIds.size()) continue; // identical
-            shifts.put(name, sortedJoin(pIds) + " -> " + sortedJoin(dIds));
+            overlap.retainAll(sIds);
+            if (overlap.size() == pIds.size() && overlap.size() == sIds.size()) continue; // identical
+            shifts.put(name, sortedJoin(pIds) + " -> " + sortedJoin(sIds));
         }
         for (Map.Entry<String, String> e : shifts.entrySet()) {
             pw.println("'" + e.getKey() + "' | " + e.getValue());
@@ -416,12 +416,12 @@ public final class CacheDiffUtility {
     }
 
     private static void writeNameChanges(PrintWriter pw, String label,
-                                          Map<Integer, String> primary, Map<Integer, String> dlc) {
+                                          Map<Integer, String> primary, Map<Integer, String> second) {
         pw.println("[" + label + " - Name Changes]");
         pw.println("# Same id, name differs between stores (rare but flags renames in place).");
         TreeMap<Integer, String> changes = new TreeMap<>();
         for (Map.Entry<Integer, String> e : primary.entrySet()) {
-            String d = dlc.get(e.getKey());
+            String d = second.get(e.getKey());
             if (d != null && !d.equalsIgnoreCase(e.getValue())) {
                 changes.put(e.getKey(), e.getValue() + " -> " + d);
             }

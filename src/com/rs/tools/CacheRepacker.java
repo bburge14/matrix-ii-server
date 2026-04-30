@@ -1,6 +1,9 @@
 package com.rs.tools;
 
+import com.alex.store.Archive;
+import com.alex.store.ArchiveReference;
 import com.alex.store.Index;
+import com.alex.store.ReferenceTable;
 import com.alex.store.Store;
 
 import java.io.File;
@@ -11,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.zip.CRC32;
 
 /**
  * Converts an OpenRS2 "loose-file" cache into the packed
@@ -157,10 +161,42 @@ public final class CacheRepacker {
                     boolean ok = targetIndex.getMainFile().putArchiveData(archiveId, bytes);
                     if (!ok) {
                         System.err.println("[CacheRepacker] putArchiveData FAILED idx=" + idx + " archive=" + archiveId);
-                    } else {
-                        written++;
-                        writtenArchives++;
+                        continue;
                     }
+
+                    // Register the archive in the index's reference table.
+                    // Without this, archiveExists() / getLastArchiveId() return
+                    // empty even though the bytes are in dat2. The table is the
+                    // source of truth for "which archives exist".
+                    try {
+                        ReferenceTable table = targetIndex.getTable();
+                        table.addEmptyArchiveReference(archiveId);
+                        ArchiveReference[] refs = table.getArchives();
+                        if (archiveId < refs.length && refs[archiveId] != null) {
+                            ArchiveReference ref = refs[archiveId];
+                            // CRC of the on-disk archive bytes - alex/store
+                            // validates this when reading.
+                            CRC32 crc = new CRC32();
+                            crc.update(bytes);
+                            ref.setCrc((int) crc.getValue());
+                            ref.setRevision(0);
+                            // Each archive can hold up to 256 files (item id
+                            // mod 256 = file id). Without file references the
+                            // Index returns null for getFile(archive, file).
+                            // We don't know the exact file count without
+                            // decompressing each blob, so register all 256
+                            // slots - extras are harmless, missing ones lose
+                            // data.
+                            for (int f = 0; f < 256; f++) {
+                                ref.addEmptyFileReference(f);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        System.err.println("[CacheRepacker] table update threw idx=" + idx + " archive=" + archiveId + ": " + t);
+                    }
+
+                    written++;
+                    writtenArchives++;
 
                     // Periodically drop the in-memory archive cache. Without
                     // this we'd hold every blob ever written and OOM at ~270k.
