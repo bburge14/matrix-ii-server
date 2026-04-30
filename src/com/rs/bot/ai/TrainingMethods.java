@@ -204,8 +204,10 @@ public final class TrainingMethods {
         ALL.add(b("Chop willow trees - Draynor", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(30, 45).at(3087, 3234).xp(40000).gp(15000)
             .tree(TreeDefinitions.WILLOW).build());
-        ALL.add(b("Chop willow trees - Lumbridge swamp", Kind.WOODCUTTING)
-            .skill(Skills.WOODCUTTING).lvl(30, 45).at(3160, 3251).xp(40000).gp(15000)
+        // Removed Lumbridge swamp willow @ (3160, 3251) - audit FAIL'd cleanly,
+        // no willows in 830 cache at that coord. Draynor willow still works.
+        ALL.add(b("Chop willow trees - Port Sarim", Kind.WOODCUTTING)
+            .skill(Skills.WOODCUTTING).lvl(30, 45).at(3058, 3251).xp(40000).gp(15000)
             .tree(TreeDefinitions.WILLOW).build());
         ALL.add(b("Chop maple trees - Seers'", Kind.WOODCUTTING)
             .skill(Skills.WOODCUTTING).lvl(45, 60).at(2728, 3503).xp(60000).gp(18000)

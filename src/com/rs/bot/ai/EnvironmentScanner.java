@@ -223,13 +223,20 @@ public final class EnvironmentScanner {
         }
         List<WorldObject> out = new java.util.ArrayList<WorldObject>();
         for (int id : regionIds) {
-            Region r = World.getRegion(id, false);
-            if (r == null) continue;
-            for (WorldObject o : r.getAllObjects()) {
-                if (o == null) continue;
-                if (o.getPlane() != from.getPlane()) continue;
-                if (!from.withinDistance(o, radius)) continue;
-                out.add(o);
+            try {
+                Region r = World.getRegion(id, false);
+                if (r == null) continue;
+                java.util.List<WorldObject> objs = r.getAllObjects();
+                if (objs == null) continue;
+                for (WorldObject o : objs) {
+                    if (o == null) continue;
+                    if (o.getPlane() != from.getPlane()) continue;
+                    if (!from.withinDistance(o, radius)) continue;
+                    out.add(o);
+                }
+            } catch (Throwable ignored) {
+                // Region not loaded / partially-initialized - skip silently.
+                // The audit reports 'no X in 24' which is correct semantics.
             }
         }
         return out;
