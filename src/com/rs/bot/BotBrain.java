@@ -987,6 +987,7 @@ public class BotBrain {
         // method. A bot switching from A to B decrements A and increments B.
         if (method != lastMethod) {
             com.rs.bot.ai.TrainingMethods.registerActive(method, lastMethod);
+            if (method != null) com.rs.bot.SuccessTracker.onMethodPicked(method.description);
         }
         this.lastMethod = method;
         // Walk-out phase - get to the training area first.
@@ -1350,7 +1351,10 @@ public class BotBrain {
             return false;
         }
         if (currentXp > stuckXpSnapshot) {
-            // Progress! Reset the timer.
+            // Progress! Reset the timer + count as success once.
+            if (stuckXpSnapshot > 0 && method != null) {
+                com.rs.bot.SuccessTracker.onMethodSuccess(method.description);
+            }
             stuckXpSnapshot = currentXp;
             stuckSinceMs = now;
             return false;
@@ -1358,6 +1362,7 @@ public class BotBrain {
         if (now - stuckSinceMs < STUCK_THRESHOLD_MS) return false;
         // Stuck for the full threshold - blacklist this method for the goal.
         goalBlacklist.add(method);
+        com.rs.bot.SuccessTracker.onMethodStuck(method.description);
         sayDebug("plan stuck (no xp 30s): " + method.description + " - trying alt");
         lastDiagnostic = "stuck on " + method.description + " for " + ((now - stuckSinceMs) / 1000) + "s, blacklisted";
         // Reset snapshot for the NEXT method we'll pick.

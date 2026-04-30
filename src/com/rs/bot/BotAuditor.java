@@ -156,9 +156,10 @@ public final class BotAuditor {
             public void run() {
                 try {
                     // Method-coord audit only every 10th pass (heavy-ish, 10min);
-                    // bot state every pass (light, useful for live debugging).
+                    // bot state + success tally every pass (light, useful for live debugging).
                     if (passCount % 10 == 0) runAudit();
                     dumpOnlineBots();
+                    SuccessTracker.dump();
                     passCount++;
                 } catch (Throwable t) {
                     java.io.StringWriter sw = new java.io.StringWriter();
