@@ -60,6 +60,41 @@ public final class Cache {
 	 * doesn't exist, has zero idx files, or the reader throws. Used by
 	 * init() to make the primary -> legacy fallback chain risk-free.
 	 */
+	/**
+	 * Smoke-test the freshly-loaded store by reading a few critical archives
+	 * the server boot path needs. A cache that loads structurally (right
+	 * number of idx files, valid dat2 sectors) but returns null on actual
+	 * reads is worse than no cache at all - the boot path NPEs with no
+	 * recovery path. Catching it here lets the fallback chain kick in.
+	 *
+	 * Currently tests Huffman (index 10, the chat-compression table read at
+	 * GameLauncher line 158). Returns false on any read failure.
+	 */
+	private static boolean canReadCriticalArchives(Store s, String label) {
+		try {
+			// Index 10 = Huffman (chat compression). Archive 1 file 0 is the
+			// classic location across 718-876. If THIS comes back null the
+			// cache is unusable for boot.
+			com.alex.store.Index ix10 = (s.getIndexes().length > 10) ? s.getIndexes()[10] : null;
+			if (ix10 == null) {
+				System.err.println("[Cache] " + label + " has no index 10 (Huffman)");
+				return false;
+			}
+			byte[] huff = ix10.getFile(1, 0);
+			if (huff == null) {
+				huff = ix10.getFile(0, 0); // fallback - some caches use archive 0
+			}
+			if (huff == null) {
+				System.err.println("[Cache] " + label + " loaded but Huffman read returned null - cache is incomplete");
+				return false;
+			}
+			return true;
+		} catch (Throwable t) {
+			System.err.println("[Cache] " + label + " smoke test threw: " + t);
+			return false;
+		}
+	}
+
 	private static Store tryLoadStore(String path, String label) {
 		if (path == null || path.isEmpty()) return null;
 		java.io.File dir = new java.io.File(path);
@@ -81,6 +116,14 @@ public final class Cache {
 			int idxCount = s.getIndexes() == null ? 0 : s.getIndexes().length;
 			if (idxCount == 0) {
 				System.err.println("[Cache] " + label + " loaded 0 indexes from " + path);
+				return null;
+			}
+			// Smoke test: try to actually READ a critical archive that the
+			// server will hit at boot (Huffman is in index 10). If the cache
+			// loaded structurally but reads return null - which is what an
+			// incompletely-packed cache does, see CacheRepacker - we fail
+			// the load here so the dual-cache fallback can kick in.
+			if (!canReadCriticalArchives(s, label)) {
 				return null;
 			}
 			System.out.println("[Cache] " + label + " store loaded from " + path

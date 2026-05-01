@@ -34,27 +34,21 @@ public final class Settings {
 	// PRIMARY takes over automatically with no code change.
 
 	/**
-	 * Primary cache path. The server's main game data. This is the path
-	 * Cache.STORE.getIndexes() reads from. Currently points at the working
-	 * 830 cache - flip this to your 876_packed/ when you've got a fully
-	 * functional 876 (with file references populated, not just blob bytes).
+	 * Primary cache path. The server's main game data. Cache.init() tries
+	 * this first; if the path is missing OR the cache loads structurally
+	 * but Huffman/other critical archives are unreadable (see
+	 * Cache.canReadCriticalArchives), it falls back to LEGACY.
 	 *
-	 * Why we default to 830: our CacheRepacker writes archive blobs to dat2
-	 * but the per-file-reference table population isn't complete. A 876
-	 * cache built that way LOADS (you'll see 'primary store loaded') but
-	 * subsequent file reads return null and Huffman.init / other boot
-	 * paths NPE. Pointing primary at the working 830 keeps the server
-	 * stable while we finish 876 packing.
-	 *
-	 * To flip: change this string to your 876 cache path. If the path is
-	 * invalid the dual-cache load chain falls back to LEGACY automatically.
+	 * Drop a properly-packed 876 cache at this path and reboot - the
+	 * smoke test will accept it and the server runs on 876. Until then,
+	 * legacy 830 keeps the server bootable.
 	 */
-	public static final String CACHE_PATH_PRIMARY = System.getProperty("user.home") + "/matrix/830_cache/";
+	public static final String CACHE_PATH_PRIMARY = System.getProperty("user.home") + "/matrix/876_packed/";
 
 	/**
-	 * Legacy fallback cache. Used if primary fails to load. Same value
-	 * as PRIMARY today since 876 isn't ready - kept separate so flipping
-	 * PRIMARY to 876 leaves a clean 830 fallback.
+	 * Legacy fallback cache. Used when primary fails (missing, empty, or
+	 * critical-archive smoke test fails). Should always point at a known-
+	 * working cache.
 	 */
 	public static final String CACHE_PATH_LEGACY = System.getProperty("user.home") + "/matrix/830_cache/";
 
