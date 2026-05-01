@@ -116,7 +116,7 @@ public final class CitizenSpawner {
         AmbientArchetype arch = AmbientArchetype.randomFor(category);
         int wanderRadius = 4 + Utils.random(8);
 
-        String name = nextName();
+        String name = com.rs.bot.BotNames.generate();
         // Use createOffline + hydrate pattern - same as BotPool.spawn() uses for
         // Legend bots. createOffline builds the AIPlayer WITHOUT calling
         // Player.init() (so not in world yet); hydrate() then runs init exactly

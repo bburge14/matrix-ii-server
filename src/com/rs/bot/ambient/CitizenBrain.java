@@ -159,16 +159,177 @@ public class CitizenBrain extends BotBrain {
 
     private void tickTraversing(AIPlayer bot) {
         if (bot.hasWalkSteps()) return;
-        WorldTile target = pickWanderTarget();
+        // Try to walk toward a real interaction target; fall back to random
+        // wander if there's nothing scannable in the home radius.
+        WorldTile target = findInteractionDestination(bot);
+        if (target == null) target = pickWanderTarget();
         bot.addWalkSteps(target.getX(), target.getY(), 8, true);
     }
 
     private void tickInteracting(AIPlayer bot) {
+        // Stand next to a real world object/NPC and animate. Refresh the
+        // target each interacting tick so a felled tree / dead npc / despawned
+        // fishing spot doesn't lock the citizen into an empty animation.
+        if (faceAndAnimateTarget(bot)) return;
+        // Fallback: if we can't find a target nearby, just play the anim
+        // in place. That's the old behaviour - looks like skill training in
+        // mid-air but at least keeps the citizen visually active.
         int anim = archetype.randomInteractAnimation();
         if (anim > 0) {
             try { bot.setNextAnimation(new Animation(anim)); }
             catch (Throwable ignored) {}
         }
+    }
+
+    /**
+     * Pick a real interaction destination based on archetype. Returns null if
+     * nothing's available in the home radius - caller falls back to random.
+     */
+    private WorldTile findInteractionDestination(AIPlayer bot) {
+        try {
+            int radius = Math.max(homeRadius, 12);
+            switch (archetype) {
+                case SKILLER_EFFICIENT:
+                case SKILLER_CASUAL:
+                case SKILLER_NOOB: {
+                    // Pick one of the gathering targets at random
+                    int pick = Utils.random(3);
+                    if (pick == 0) {
+                        com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
+                            com.rs.bot.ai.EnvironmentScanner.findNearestTree(homeAnchor, radius);
+                        if (tm != null && tm.object != null) return tileNextTo(tm.object);
+                    } else if (pick == 1) {
+                        com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
+                            com.rs.bot.ai.EnvironmentScanner.findNearestRock(homeAnchor, radius);
+                        if (rm != null && rm.object != null) return tileNextTo(rm.object);
+                    } else {
+                        com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
+                            com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(homeAnchor, radius);
+                        if (fm != null && fm.npc != null) return tileNextTo(fm.npc);
+                    }
+                    break;
+                }
+                case COMBATANT_PURE:
+                case COMBATANT_TANK:
+                case COMBATANT_HYBRID:
+                case MINIGAMER_RUSHER:
+                case MINIGAMER_DEFENDER: {
+                    // Walk toward any nearby non-aggressive NPC. We don't
+                    // actually engage combat - just stand near to look like
+                    // we're contemplating an attack.
+                    com.rs.game.npc.NPC n =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestNPC(homeAnchor, radius);
+                    if (n != null) return tileNextTo(n);
+                    break;
+                }
+                case SOCIALITE_BANKSTAND:
+                case SOCIALITE_GE_TRADER:
+                case SOCIALITE_GAMBLER: {
+                    // Bank booth / GE clerk. Generic name match against
+                    // common words.
+                    com.rs.game.WorldObject o =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+                            homeAnchor, radius, "bank booth", "grand exchange", "ge clerk");
+                    if (o != null) return tileNextTo(o);
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /**
+     * Find a real interaction target near the bot, face it, and play the
+     * archetype animation. Returns true if we found one, false otherwise.
+     */
+    private boolean faceAndAnimateTarget(AIPlayer bot) {
+        try {
+            int radius = 4; // close-range scan - bot should already be at the target
+            switch (archetype) {
+                case SKILLER_EFFICIENT:
+                case SKILLER_CASUAL:
+                case SKILLER_NOOB: {
+                    com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, radius);
+                    if (tm != null && tm.object != null) {
+                        try { bot.faceObject(tm.object); } catch (Throwable ignored) {}
+                        playAnim(bot);
+                        return true;
+                    }
+                    com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, radius);
+                    if (rm != null && rm.object != null) {
+                        try { bot.faceObject(rm.object); } catch (Throwable ignored) {}
+                        playAnim(bot);
+                        return true;
+                    }
+                    com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, radius);
+                    if (fm != null && fm.npc != null) {
+                        try { bot.setNextFaceEntity(fm.npc); } catch (Throwable ignored) {}
+                        playAnim(bot);
+                        return true;
+                    }
+                    break;
+                }
+                case COMBATANT_PURE:
+                case COMBATANT_TANK:
+                case COMBATANT_HYBRID:
+                case MINIGAMER_RUSHER:
+                case MINIGAMER_DEFENDER: {
+                    com.rs.game.npc.NPC n =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius);
+                    if (n != null) {
+                        try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
+                        playAnim(bot);
+                        return true;
+                    }
+                    break;
+                }
+                case SOCIALITE_BANKSTAND:
+                case SOCIALITE_GE_TRADER:
+                case SOCIALITE_GAMBLER: {
+                    com.rs.game.WorldObject o =
+                        com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+                            bot, radius, "bank booth", "grand exchange", "ge clerk");
+                    if (o != null) {
+                        try { bot.faceObject(o); } catch (Throwable ignored) {}
+                        playAnim(bot);
+                        return true;
+                    }
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    private void playAnim(AIPlayer bot) {
+        int anim = archetype.randomInteractAnimation();
+        if (anim > 0) {
+            try { bot.setNextAnimation(new Animation(anim)); }
+            catch (Throwable ignored) {}
+        }
+    }
+
+    /** Pick a tile cardinally adjacent to a world object (for skiller targets). */
+    private static WorldTile tileNextTo(com.rs.game.WorldObject o) {
+        if (o == null) return null;
+        // Prefer the south tile (most objects are interactable from the south);
+        // fall back to other cardinals if the world is weird.
+        int[][] offsets = {{0,-1},{0,1},{-1,0},{1,0}};
+        int idx = Utils.random(offsets.length);
+        int[] off = offsets[idx];
+        return new WorldTile(o.getX() + off[0], o.getY() + off[1], o.getPlane());
+    }
+
+    /** Pick a tile cardinally adjacent to an NPC (fishing spot, combat target). */
+    private static WorldTile tileNextTo(com.rs.game.npc.NPC n) {
+        if (n == null) return null;
+        int[][] offsets = {{0,-1},{0,1},{-1,0},{1,0}};
+        int idx = Utils.random(offsets.length);
+        int[] off = offsets[idx];
+        return new WorldTile(n.getX() + off[0], n.getY() + off[1], n.getPlane());
     }
 
     private void tickPanicking(AIPlayer bot) {
