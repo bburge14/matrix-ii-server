@@ -126,11 +126,9 @@ public final class CitizenBudget {
         load();
         int spawned = 0;
         java.util.Map<String, Integer> liveByArch = new java.util.HashMap<>();
-        for (com.rs.bot.AIPlayer bot : CitizenSpawner.getLive()) {
-            if (!(bot.getBrain() instanceof CitizenBrain)) continue;
-            CitizenBrain cb = (CitizenBrain) bot.getBrain();
-            if (cb.getArchetype() == null) continue;
-            String key = cb.getArchetype().name();
+        for (AmbientBot bot : CitizenSpawner.getLive()) {
+            if (bot.getArchetype() == null) continue;
+            String key = bot.getArchetype().name();
             liveByArch.merge(key, 1, Integer::sum);
         }
         for (Slot s : slots) {
@@ -146,7 +144,7 @@ public final class CitizenBudget {
                                 : arch.isSocialite() ? "socialite"
                                 : arch.isMinigamer() ? "minigamer"
                                 : null;
-                List<com.rs.bot.AIPlayer> batch = CitizenSpawner.spawnBatch(need, category, anchor, s.scatter);
+                java.util.List<AmbientBot> batch = CitizenSpawner.spawnBatch(need, category, anchor, s.scatter);
                 spawned += batch.size();
             } catch (Throwable t) {
                 System.err.println("[CitizenBudget] applyBudget slot failed: " + s.toJson() + " -> " + t);

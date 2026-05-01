@@ -1,76 +1,66 @@
 package com.rs.bot.ambient;
 
-import com.rs.bot.AIPlayer;
-import com.rs.bot.BotFactory;
+import com.rs.game.World;
 import com.rs.game.WorldTile;
 import com.rs.utils.Utils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Spawns and despawns Citizen-tier bots: AIPlayers with a CitizenBrain
- * (FSM) instead of the full BotBrain (goal-driven AI).
+ * Manages the Citizen population - spawns and despawns lightweight
+ * AmbientBots in batches, by archetype.
  *
- * Citizens vs Legends:
- *   - Both extend AIPlayer (= Player). Both render with full appearance.
- *   - Legends use BotBrain - full goals, training methods, memory, etc.
- *   - Citizens use CitizenBrain - FSM only, no save state.
- *   - Citizens are EPHEMERAL - not added to BotPool, no JSON on disk,
- *     they vanish on server restart.
+ * Why not just use World.spawnNPC directly: we want to track which NPCs
+ * are "ours" so admin commands like ::clearcitizens don't accidentally
+ * delete real game NPCs. We keep a Set of spawned indexes; clearAll()
+ * walks that set and despawns each.
  *
- * Naming: every Citizen gets a "Citizen-NNNN" name, distinguishable from
- * BotPool's themed Legend names. Detect a Citizen at runtime via:
- *   bot.getBrain() instanceof CitizenBrain
- * or via the live-set tracking maintained here.
+ * The "human-looking NPC" pool is the trick: Citizens render as ordinary
+ * man/woman/farmer NPCs so they blend in with the player population.
+ * Mixing real-NPC IDs in lets us reuse models without writing custom ones.
  */
 public final class CitizenSpawner {
 
     private CitizenSpawner() {}
 
-    /** Live-tracking. AIPlayers we spawned via this class. clearAll walks the set. */
-    private static final Set<AIPlayer> liveCitizens = Collections.synchronizedSet(new HashSet<>());
+    /** NPC IDs that look human-ish - hardcoded fallback when we don't have
+     *  archetype-specific picks. These are bog-standard generic NPCs from
+     *  the 718 codebase: man, woman, peasant, merchant, hero variants, etc.
+     *  The exact IDs don't matter for behaviour; visuals only. */
+    private static final int[] CITIZEN_NPC_POOL = {
+        1, 2, 3, 4, 5, 6, 7, 8,                  // man/woman variants
+        9, 10, 11, 12, 13, 14, 15,                // guards, knights, farmers
+        16, 17, 18, 19, 20, 21,                   // misc citizens
+        24, 25, 26, 27, 28, 29,                   // dwarves
+        296, 489, 490, 491, 492, 493              // tutorial-ish models
+    };
 
-    /** Monotonic counter so each spawn gets a unique-ish display name. */
-    private static final AtomicLong NAME_SEQ = new AtomicLong(System.currentTimeMillis() / 1000);
+    /** Track every Citizen we've spawned so clearAll() can walk them. */
+    private static final Set<AmbientBot> liveCitizens = Collections.synchronizedSet(new HashSet<>());
 
     /**
-     * Spawn N Citizens of the given archetype, scattered around an anchor.
+     * Spawn N Citizens of the given archetype, scattered around an anchor
+     * point. Each gets a small wander radius and Gaussian-jittered start
+     * tile so they don't clump on top of each other.
      *
-     * @param count       number to spawn (capped 1..500)
+     * @param count       how many to spawn
      * @param category    "skiller"/"combatant"/"socialite"/"minigamer"/null=mixed
      * @param anchor      world tile to scatter around
      * @param scatter     radius in tiles to spread the spawn over
      * @return list of newly-spawned bots
      */
-    /** Max spawns to attempt synchronously in one call. Larger batches get
-     *  scheduled across ticks via spawnBatchRateLimited to avoid blocking
-     *  the world tick (each hydrate() is heavy - 100 in a loop locked the
-     *  server for several seconds and dropped real-player sessions). */
-    private static final int SYNC_SPAWN_CAP = 10;
-
-    public static List<AIPlayer> spawnBatch(int count, String category,
-                                             WorldTile anchor, int scatter) {
+    public static List<AmbientBot> spawnBatch(int count, String category,
+                                              WorldTile anchor, int scatter) {
         if (count <= 0 || anchor == null) return Collections.emptyList();
-        count = Math.max(1, Math.min(count, 500));
         scatter = Math.max(2, scatter);
-
-        // Above the sync cap, queue the rest for the next ticks so we don't
-        // block the world thread.
-        if (count > SYNC_SPAWN_CAP) {
-            int now = SYNC_SPAWN_CAP;
-            int later = count - SYNC_SPAWN_CAP;
-            List<AIPlayer> immediate = spawnBatch(now, category, anchor, scatter);
-            scheduleRemaining(later, category, anchor, scatter);
-            return immediate;
-        }
-
-        List<AIPlayer> out = new ArrayList<>(count);
+        List<AmbientBot> out = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
+            // Gaussian scatter - clusters near the anchor with thin tails.
             int dx = gaussianOffset(scatter);
             int dy = gaussianOffset(scatter);
             WorldTile spawn = new WorldTile(
@@ -79,83 +69,29 @@ public final class CitizenSpawner {
                 anchor.getPlane()
             );
             AmbientArchetype arch = AmbientArchetype.randomFor(category);
-            int wanderRadius = 4 + Utils.random(8);
-
-            String name = nextName();
-            AIPlayer bot = BotFactory.create(name);
-            if (bot == null) {
-                System.err.println("[CitizenSpawner] BotFactory.create returned null for " + name);
-                continue;
-            }
+            int npcId = pickNpcIdFor(arch);
+            int wanderRadius = 4 + Utils.random(8); // 4-12 tile wander
             try {
-                // Hydrate puts the bot in the world via Player.init/World.addPlayer.
-                bot.hydrate(name);
-
-                // Place the bot at the spawn tile. (BotFactory's hydrate spawns
-                // at START_PLAYER_LOCATION; we re-position immediately.)
-                try {
-                    bot.setNextWorldTile(spawn);
-                } catch (Throwable t) {
-                    // Best-effort - if setNextWorldTile isn't available, the bot
-                    // will start at the default spawn and walk to the area.
-                }
-
-                // Stats + gear: each Citizen gets archetype-appropriate combat
-                // level + tier-appropriate loadout. A pure-skiller stays low
-                // combat in skiller gear, a combatant rolls 60-110 cb with
-                // mid-to-high tier melee gear, etc. Variety within the role
-                // keeps them visually distinct.
-                int targetCb = pickCombatLevel(arch);
-                applyArchetypeStats(bot, arch, targetCb);
-                try {
-                    com.rs.bot.BotEquipment.applyLoadout(bot,
-                        archetypeToLoadoutString(arch), targetCb);
-                } catch (Throwable t) {
-                    System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
-                }
-
-                bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
+                AmbientBot bot = new AmbientBot(npcId, spawn, arch, wanderRadius);
+                World.addNPC(bot);
                 liveCitizens.add(bot);
                 out.add(bot);
             } catch (Throwable t) {
-                System.err.println("[CitizenSpawner] failed to spawn " + name + " at " + spawn + ": " + t);
-                t.printStackTrace();
+                System.err.println("[CitizenSpawner] failed to spawn at " + spawn + ": " + t);
             }
         }
-        System.out.println("[CitizenSpawner] spawned " + out.size() + " "
-            + (category == null ? "mixed" : category) + " citizens at " + anchor
-            + " (live total: " + liveCitizens.size() + ")");
+        System.out.println("[CitizenSpawner] spawned " + out.size() + " " + category + " citizens at " + anchor);
         return out;
     }
 
-    /**
-     * Schedule the remaining spawns across future ticks so we don't lock the
-     * world thread on a single big batch. Each tick processes up to
-     * SYNC_SPAWN_CAP - bringing 100 citizens online takes ~10 ticks (~6s)
-     * instead of jamming all 100 into a single tick.
-     */
-    private static void scheduleRemaining(final int remaining, final String category,
-                                           final WorldTile anchor, final int scatter) {
-        com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
-            int left = remaining;
-            @Override public void run() {
-                int batch = Math.min(left, SYNC_SPAWN_CAP);
-                if (batch <= 0) { stop(); return; }
-                spawnBatch(batch, category, anchor, scatter);
-                left -= batch;
-                if (left <= 0) stop();
-            }
-        }, 1, 1); // start next tick, repeat every tick
-    }
-
-    /** Despawn every Citizen we've spawned. */
+    /** Remove every Citizen we've spawned. Called by ::clearcitizens. */
     public static int clearAll() {
         int removed = 0;
         synchronized (liveCitizens) {
-            for (AIPlayer bot : liveCitizens) {
+            for (AmbientBot bot : liveCitizens) {
                 try {
-                    bot.setBrain(null); // stop the FSM
-                    bot.finish();       // request finish
+                    World.removeNPC(bot);
+                    bot.finish();
                     removed++;
                 } catch (Throwable t) {
                     // ignore - we want to despawn as many as possible
@@ -167,157 +103,35 @@ public final class CitizenSpawner {
         return removed;
     }
 
-    /** Snapshot of the live citizen list. */
-    public static List<AIPlayer> getLive() {
+    /** Snapshot of the live citizen list (read-only). */
+    public static List<AmbientBot> getLive() {
         synchronized (liveCitizens) {
             return new ArrayList<>(liveCitizens);
         }
     }
 
     public static int liveCount() {
-        synchronized (liveCitizens) {
-            return liveCitizens.size();
-        }
+        return liveCitizens.size();
     }
 
-    /** Generate a unique-ish display name for a Citizen. */
-    private static String nextName() {
-        long n = NAME_SEQ.incrementAndGet();
-        // 6-char alphanumeric tail. "Citizen-AB12CD"
-        String tail = Long.toString(n, 36);
-        if (tail.length() > 6) tail = tail.substring(tail.length() - 6);
-        return "Citizen-" + tail.toUpperCase();
+    /** Per-archetype NPC ID picker. The pool here can be expanded as we
+     *  identify better-fitting models per archetype - e.g. combat citizens
+     *  could use guard/warrior NPC IDs, gamblers could use suspicious-looking
+     *  NPCs, etc. For now we use the generic pool and let chatter +
+     *  animations carry the personality. */
+    private static int pickNpcIdFor(AmbientArchetype arch) {
+        // Future: archetype-specific NPC lists. e.g.:
+        //   if (arch == COMBATANT_PURE) return GUARD_IDS[Utils.random(...)];
+        //   if (arch == SOCIALITE_GE_TRADER) return MERCHANT_IDS[...];
+        return CITIZEN_NPC_POOL[Utils.random(CITIZEN_NPC_POOL.length)];
     }
 
     /** Symmetric Gaussian offset clamped to [-radius, radius]. */
     private static int gaussianOffset(int radius) {
+        // Sum of three uniforms approximates a normal distribution.
         double v = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5 * radius;
         if (v < -radius) v = -radius;
         if (v > radius)  v = radius;
         return (int) v;
-    }
-
-    /**
-     * Pick a target combat level per archetype. Distribution is intentionally
-     * varied within each archetype so 50 combatants don't all show up at cb 80.
-     * Skillers stay low to match their non-combat focus.
-     */
-    private static int pickCombatLevel(AmbientArchetype arch) {
-        if (arch == null) return 3 + Utils.random(50);
-        if (arch.isSkiller()) {
-            // Skillers rarely train combat - a few up to 60, most 3-30.
-            return Utils.random(100) < 80 ? 3 + Utils.random(28) : 30 + Utils.random(30);
-        }
-        if (arch.isCombatant()) {
-            switch (arch) {
-                case COMBATANT_PURE:   return 40 + Utils.random(60);  // 40-99
-                case COMBATANT_TANK:   return 60 + Utils.random(50);  // 60-109
-                case COMBATANT_HYBRID: return 70 + Utils.random(50);  // 70-119
-                default: return 50 + Utils.random(60);
-            }
-        }
-        if (arch.isMinigamer()) return 70 + Utils.random(50);
-        if (arch.isSocialite()) {
-            // GE traders + bankstanders run the gamut; gamblers tend mid-high.
-            return arch == AmbientArchetype.SOCIALITE_GAMBLER
-                ? 80 + Utils.random(40)
-                : 30 + Utils.random(80);
-        }
-        return 30 + Utils.random(60);
-    }
-
-    /**
-     * Set the bot's skills to roughly match the target combat level. We can't
-     * just call Skills.set blindly - that might NPE if packets aren't fully
-     * wired - so we wrap each call in try/catch and skip on failure.
-     *
-     * Combat level formula approximation: sets attack/strength/defence/HP
-     * to a level appropriate for the target cb, with some scatter so two
-     * combatants at cb 80 have slightly different builds.
-     */
-    private static void applyArchetypeStats(AIPlayer bot, AmbientArchetype arch, int targetCb) {
-        if (arch == null) return;
-        try {
-            com.rs.game.player.Skills s = bot.getSkills();
-            // Combat skills: scale toward targetCb with archetype tilt
-            int meleeCore = clamp(targetCb - 5, 1, 99);
-            int rangeCore = clamp(targetCb - 5, 1, 99);
-            int magicCore = clamp(targetCb - 5, 1, 99);
-            int defCore   = clamp(targetCb - 10, 1, 99);
-            int hpCore    = clamp(targetCb - 5, 10, 99);
-
-            // Per-archetype tilt
-            if (arch == AmbientArchetype.COMBATANT_PURE) {
-                defCore = 1; // pures stay 1 def
-            } else if (arch == AmbientArchetype.COMBATANT_TANK) {
-                defCore = clamp(targetCb, 1, 99);
-            } else if (arch == AmbientArchetype.COMBATANT_HYBRID) {
-                rangeCore = clamp(targetCb - 3, 1, 99);
-                magicCore = clamp(targetCb - 3, 1, 99);
-            } else if (arch.isSkiller()) {
-                // skillers keep combat low, push gathering skills high
-                meleeCore = 1; rangeCore = 1; magicCore = 1; defCore = 1;
-                hpCore = 10;
-                int skillCap = arch == AmbientArchetype.SKILLER_EFFICIENT ? 99
-                             : arch == AmbientArchetype.SKILLER_CASUAL ? 85
-                             : 50;
-                trySet(s, com.rs.game.player.Skills.WOODCUTTING, 30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.MINING,      30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.FISHING,     30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.COOKING,     30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.CRAFTING,    20 + Utils.random(skillCap - 20));
-            }
-
-            trySet(s, com.rs.game.player.Skills.ATTACK,    meleeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.STRENGTH,  meleeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.DEFENCE,   defCore   + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.HITPOINTS, hpCore);
-            trySet(s, com.rs.game.player.Skills.RANGE,     rangeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.MAGIC,     magicCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.PRAYER,    clamp(targetCb / 2, 1, 95));
-        } catch (Throwable t) {
-            // best-effort - if Skills isn't fully wired, citizen just spawns at default
-        }
-    }
-
-    private static void trySet(com.rs.game.player.Skills s, int skill, int level) {
-        if (level < 1) level = 1;
-        if (level > 99) level = 99;
-        try { s.set(skill, level); } catch (Throwable ignored) {}
-        try { s.setXp(skill, levelToXp(level)); } catch (Throwable ignored) {}
-    }
-
-    private static int clamp(int v, int min, int max) {
-        return v < min ? min : (v > max ? max : v);
-    }
-
-    /** Approximate XP for a level (Jagex's exact formula for 1-99). */
-    private static int levelToXp(int level) {
-        if (level <= 1) return 0;
-        double sum = 0;
-        for (int l = 1; l < level; l++) {
-            sum += Math.floor(l + 300.0 * Math.pow(2.0, l / 7.0));
-        }
-        return (int) (sum / 4);
-    }
-
-    /**
-     * Map our internal AmbientArchetype to the string keys BotEquipment
-     * expects (archetype-aware loadout dispatch).
-     */
-    private static String archetypeToLoadoutString(AmbientArchetype arch) {
-        if (arch == null) return "main";
-        if (arch.isCombatant()) {
-            switch (arch) {
-                case COMBATANT_PURE:   return "pure";
-                case COMBATANT_TANK:   return "tank";
-                case COMBATANT_HYBRID: return "hybrid";
-                default: return "melee";
-            }
-        }
-        if (arch.isSkiller())   return "skiller";
-        if (arch.isMinigamer()) return "main"; // minigamers carry standard combat gear
-        if (arch.isSocialite()) return "main"; // socialites flash gear
-        return "main";
     }
 }
