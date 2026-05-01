@@ -84,6 +84,20 @@ public final class CitizenSpawner {
                     // will start at the default spawn and walk to the area.
                 }
 
+                // Stats + gear: each Citizen gets archetype-appropriate combat
+                // level + tier-appropriate loadout. A pure-skiller stays low
+                // combat in skiller gear, a combatant rolls 60-110 cb with
+                // mid-to-high tier melee gear, etc. Variety within the role
+                // keeps them visually distinct.
+                int targetCb = pickCombatLevel(arch);
+                applyArchetypeStats(bot, arch, targetCb);
+                try {
+                    com.rs.bot.BotEquipment.applyLoadout(bot,
+                        archetypeToLoadoutString(arch), targetCb);
+                } catch (Throwable t) {
+                    System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
+                }
+
                 bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
                 liveCitizens.add(bot);
                 out.add(bot);
@@ -145,5 +159,129 @@ public final class CitizenSpawner {
         if (v < -radius) v = -radius;
         if (v > radius)  v = radius;
         return (int) v;
+    }
+
+    /**
+     * Pick a target combat level per archetype. Distribution is intentionally
+     * varied within each archetype so 50 combatants don't all show up at cb 80.
+     * Skillers stay low to match their non-combat focus.
+     */
+    private static int pickCombatLevel(AmbientArchetype arch) {
+        if (arch == null) return 3 + Utils.random(50);
+        if (arch.isSkiller()) {
+            // Skillers rarely train combat - a few up to 60, most 3-30.
+            return Utils.random(100) < 80 ? 3 + Utils.random(28) : 30 + Utils.random(30);
+        }
+        if (arch.isCombatant()) {
+            switch (arch) {
+                case COMBATANT_PURE:   return 40 + Utils.random(60);  // 40-99
+                case COMBATANT_TANK:   return 60 + Utils.random(50);  // 60-109
+                case COMBATANT_HYBRID: return 70 + Utils.random(50);  // 70-119
+                default: return 50 + Utils.random(60);
+            }
+        }
+        if (arch.isMinigamer()) return 70 + Utils.random(50);
+        if (arch.isSocialite()) {
+            // GE traders + bankstanders run the gamut; gamblers tend mid-high.
+            return arch == AmbientArchetype.SOCIALITE_GAMBLER
+                ? 80 + Utils.random(40)
+                : 30 + Utils.random(80);
+        }
+        return 30 + Utils.random(60);
+    }
+
+    /**
+     * Set the bot's skills to roughly match the target combat level. We can't
+     * just call Skills.set blindly - that might NPE if packets aren't fully
+     * wired - so we wrap each call in try/catch and skip on failure.
+     *
+     * Combat level formula approximation: sets attack/strength/defence/HP
+     * to a level appropriate for the target cb, with some scatter so two
+     * combatants at cb 80 have slightly different builds.
+     */
+    private static void applyArchetypeStats(AIPlayer bot, AmbientArchetype arch, int targetCb) {
+        if (arch == null) return;
+        try {
+            com.rs.game.player.Skills s = bot.getSkills();
+            // Combat skills: scale toward targetCb with archetype tilt
+            int meleeCore = clamp(targetCb - 5, 1, 99);
+            int rangeCore = clamp(targetCb - 5, 1, 99);
+            int magicCore = clamp(targetCb - 5, 1, 99);
+            int defCore   = clamp(targetCb - 10, 1, 99);
+            int hpCore    = clamp(targetCb - 5, 10, 99);
+
+            // Per-archetype tilt
+            if (arch == AmbientArchetype.COMBATANT_PURE) {
+                defCore = 1; // pures stay 1 def
+            } else if (arch == AmbientArchetype.COMBATANT_TANK) {
+                defCore = clamp(targetCb, 1, 99);
+            } else if (arch == AmbientArchetype.COMBATANT_HYBRID) {
+                rangeCore = clamp(targetCb - 3, 1, 99);
+                magicCore = clamp(targetCb - 3, 1, 99);
+            } else if (arch.isSkiller()) {
+                // skillers keep combat low, push gathering skills high
+                meleeCore = 1; rangeCore = 1; magicCore = 1; defCore = 1;
+                hpCore = 10;
+                int skillCap = arch == AmbientArchetype.SKILLER_EFFICIENT ? 99
+                             : arch == AmbientArchetype.SKILLER_CASUAL ? 85
+                             : 50;
+                trySet(s, com.rs.game.player.Skills.WOODCUTTING, 30 + Utils.random(skillCap - 30));
+                trySet(s, com.rs.game.player.Skills.MINING,      30 + Utils.random(skillCap - 30));
+                trySet(s, com.rs.game.player.Skills.FISHING,     30 + Utils.random(skillCap - 30));
+                trySet(s, com.rs.game.player.Skills.COOKING,     30 + Utils.random(skillCap - 30));
+                trySet(s, com.rs.game.player.Skills.CRAFTING,    20 + Utils.random(skillCap - 20));
+            }
+
+            trySet(s, com.rs.game.player.Skills.ATTACK,    meleeCore + Utils.random(6) - 3);
+            trySet(s, com.rs.game.player.Skills.STRENGTH,  meleeCore + Utils.random(6) - 3);
+            trySet(s, com.rs.game.player.Skills.DEFENCE,   defCore   + Utils.random(6) - 3);
+            trySet(s, com.rs.game.player.Skills.HITPOINTS, hpCore);
+            trySet(s, com.rs.game.player.Skills.RANGE,     rangeCore + Utils.random(6) - 3);
+            trySet(s, com.rs.game.player.Skills.MAGIC,     magicCore + Utils.random(6) - 3);
+            trySet(s, com.rs.game.player.Skills.PRAYER,    clamp(targetCb / 2, 1, 95));
+        } catch (Throwable t) {
+            // best-effort - if Skills isn't fully wired, citizen just spawns at default
+        }
+    }
+
+    private static void trySet(com.rs.game.player.Skills s, int skill, int level) {
+        if (level < 1) level = 1;
+        if (level > 99) level = 99;
+        try { s.set(skill, level); } catch (Throwable ignored) {}
+        try { s.setXp(skill, levelToXp(level)); } catch (Throwable ignored) {}
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    /** Approximate XP for a level (Jagex's exact formula for 1-99). */
+    private static int levelToXp(int level) {
+        if (level <= 1) return 0;
+        double sum = 0;
+        for (int l = 1; l < level; l++) {
+            sum += Math.floor(l + 300.0 * Math.pow(2.0, l / 7.0));
+        }
+        return (int) (sum / 4);
+    }
+
+    /**
+     * Map our internal AmbientArchetype to the string keys BotEquipment
+     * expects (archetype-aware loadout dispatch).
+     */
+    private static String archetypeToLoadoutString(AmbientArchetype arch) {
+        if (arch == null) return "main";
+        if (arch.isCombatant()) {
+            switch (arch) {
+                case COMBATANT_PURE:   return "pure";
+                case COMBATANT_TANK:   return "tank";
+                case COMBATANT_HYBRID: return "hybrid";
+                default: return "melee";
+            }
+        }
+        if (arch.isSkiller())   return "skiller";
+        if (arch.isMinigamer()) return "main"; // minigamers carry standard combat gear
+        if (arch.isSocialite()) return "main"; // socialites flash gear
+        return "main";
     }
 }
