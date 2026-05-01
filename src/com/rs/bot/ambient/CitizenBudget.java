@@ -126,10 +126,11 @@ public final class CitizenBudget {
         load();
         int spawned = 0;
         java.util.Map<String, Integer> liveByArch = new java.util.HashMap<>();
-        for (AmbientBot bot : CitizenSpawner.getLive()) {
-            if (bot.getArchetype() == null) continue;
-            String key = bot.getArchetype().name();
-            liveByArch.merge(key, 1, Integer::sum);
+        for (com.rs.bot.AIPlayer bot : CitizenSpawner.getLive()) {
+            if (!(bot.getBrain() instanceof CitizenBrain)) continue;
+            CitizenBrain cb = (CitizenBrain) bot.getBrain();
+            if (cb.getArchetype() == null) continue;
+            liveByArch.merge(cb.getArchetype().name(), 1, Integer::sum);
         }
         for (Slot s : slots) {
             if (!s.autospawn && !includeManual) continue;
@@ -144,8 +145,11 @@ public final class CitizenBudget {
                                 : arch.isSocialite() ? "socialite"
                                 : arch.isMinigamer() ? "minigamer"
                                 : null;
-                java.util.List<AmbientBot> batch = CitizenSpawner.spawnBatch(need, category, anchor, s.scatter);
-                spawned += batch.size();
+                java.util.List<com.rs.bot.AIPlayer> batch =
+                    CitizenSpawner.spawnBatch(need, category, anchor, s.scatter);
+                // batch.size() is just the FIRST sync spawn; the rest are
+                // queued. We count what we requested as "spawned planned".
+                spawned += need;
             } catch (Throwable t) {
                 System.err.println("[CitizenBudget] applyBudget slot failed: " + s.toJson() + " -> " + t);
             }

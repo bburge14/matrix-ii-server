@@ -1210,15 +1210,17 @@ public final class AdminHttpServer {
         @Override public void handle(HttpExchange ex) throws IOException {
             try {
                 int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
-                java.util.List<com.rs.bot.ambient.AmbientBot> live =
+                java.util.List<com.rs.bot.AIPlayer> live =
                     com.rs.bot.ambient.CitizenSpawner.getLive();
                 // Per-archetype + per-state tally
                 java.util.Map<String, Integer> byArch = new java.util.TreeMap<>();
                 java.util.Map<String, Integer> byState = new java.util.TreeMap<>();
-                for (com.rs.bot.ambient.AmbientBot b : live) {
-                    String a = b.getArchetype() == null ? "?" : b.getArchetype().name();
+                for (com.rs.bot.AIPlayer b : live) {
+                    if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
+                    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
+                    String a = cb.getArchetype() == null ? "?" : cb.getArchetype().name();
                     byArch.merge(a, 1, Integer::sum);
-                    String s = b.getState() == null ? "?" : b.getState().name();
+                    String s = cb.getState() == null ? "?" : cb.getState().name();
                     byState.merge(s, 1, Integer::sum);
                 }
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total);
@@ -1263,7 +1265,7 @@ public final class AdminHttpServer {
             catch (NumberFormatException e) { scatter = 12; }
             try {
                 com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(x, y, plane);
-                java.util.List<com.rs.bot.ambient.AmbientBot> spawned =
+                java.util.List<com.rs.bot.AIPlayer> spawned =
                     com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, anchor, scatter);
                 int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
                 sendText(ex, 200, "{\"ok\":true,\"spawned\":" + spawned.size()
