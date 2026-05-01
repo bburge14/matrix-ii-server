@@ -37,9 +37,26 @@ public class FlatDiskPackCommand : CliktCommand(name = "pack") {
                 DiskStore.create(output, alloc = alloc).use { dst ->
                     val archives = src.list()
                     var copied = 0L
+                    var skipped = 0L
                     var archIdx = 0
                     for (archive in archives) {
                         archIdx++
+
+                        // Skip music indexes - they normally route to a
+                        // separate main_file_cache.dat2m file but DiskStore.create
+                        // doesn't initialize that, and combining everything into
+                        // the main dat2 hits the 8.7GB MAX_BLOCK ceiling
+                        // (cache 876 won't fit otherwise). Bots/players don't
+                        // strictly need music to function.
+                        //   14 = sound effects (SOUNDS index)
+                        //   40 = music tracks (MUSIC index)
+                        if (archive == 14 || archive == 40) {
+                            val groups = src.list(archive)
+                            skipped += groups.size
+                            System.err.println("[pack] SKIP archive $archive (music) - ${groups.size} groups")
+                            continue
+                        }
+
                         dst.create(archive)
                         val groups = src.list(archive)
                         for (group in groups) {
@@ -55,7 +72,7 @@ public class FlatDiskPackCommand : CliktCommand(name = "pack") {
                             }
                         }
                     }
-                    System.err.println("[pack] DONE - $copied groups across $archIdx indexes")
+                    System.err.println("[pack] DONE - $copied groups copied, $skipped music groups skipped, $archIdx indexes touched")
                 }
             }
         }
