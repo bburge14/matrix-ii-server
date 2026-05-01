@@ -117,13 +117,21 @@ public final class CitizenSpawner {
         int wanderRadius = 4 + Utils.random(8);
 
         String name = nextName();
-        AIPlayer bot = BotFactory.create(name);
+        // Use createOffline + hydrate pattern - same as BotPool.spawn() uses for
+        // Legend bots. createOffline builds the AIPlayer WITHOUT calling
+        // Player.init() (so not in world yet); hydrate() then runs init exactly
+        // once. The previous bug was BotFactory.create() + hydrate() which
+        // called init() TWICE, double-registering the player and crashing
+        // session packet streams.
+        AIPlayer bot = BotFactory.createOffline(name);
         if (bot == null) {
-            System.err.println("[CitizenSpawner] BotFactory.create returned null for " + name);
+            System.err.println("[CitizenSpawner] BotFactory.createOffline returned null for " + name);
             return null;
         }
         try {
-            bot.hydrate(name); // real-player-equivalent login, expensive
+            // Match BotPool.spawn() order exactly: hydrate -> start -> setBrain.
+            bot.hydrate(name); // single init() - same path Legends use
+            bot.start();       // bot.start() finalizes the entry into world
             try {
                 bot.setNextWorldTile(spawn);
             } catch (Throwable ignore) {}
