@@ -116,6 +116,23 @@ class MatrixAPI:
     def server_reload(self):         return self._post("/admin/server/reload")
     def snapshot_take(self):         return self._post("/admin/snapshots/take")
 
+    # Citizens (AmbientBot/FSM lightweight bots)
+    def citizens(self):              return self._get("/admin/citizens")
+    def citizens_spawn(self, count, category=None, x=3222, y=3218, plane=0, scatter=12):
+        body = {"count": count, "x": x, "y": y, "plane": plane, "scatter": scatter}
+        if category and category != "mixed":
+            body["category"] = category
+        return self._post("/admin/citizens/spawn", body)
+    def citizens_clear(self):        return self._post("/admin/citizens/clear")
+
+    # World tick profiler
+    def profiler_start(self):        return self._post("/admin/profiler/start")
+    def profiler_stop(self):         return self._post("/admin/profiler/stop")
+    def profiler_dump(self):         return self._post("/admin/profiler/dump")
+
+    # Cache status (PRIMARY/LEGACY/DLC)
+    def cache_status(self):          return self._get("/admin/cache/status")
+
 
 # ----- UI helpers -----
 

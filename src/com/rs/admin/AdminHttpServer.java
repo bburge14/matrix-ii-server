@@ -91,6 +91,19 @@ public final class AdminHttpServer {
             server.createContext("/admin/server/reload",   auth(postOnly(new ServerReloadHandler())));
             server.createContext("/admin/snapshots/take",  auth(postOnly(new SnapshotsTakeHandler())));
 
+            // Citizen (AmbientBot/FSM) management
+            server.createContext("/admin/citizens",         auth(new CitizensListHandler()));
+            server.createContext("/admin/citizens/spawn",   auth(postOnly(new CitizensSpawnHandler())));
+            server.createContext("/admin/citizens/clear",   auth(postOnly(new CitizensClearHandler())));
+
+            // World tick profiler (Phase 1.C step 1)
+            server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
+            server.createContext("/admin/profiler/stop",    auth(postOnly(new ProfilerStopHandler())));
+            server.createContext("/admin/profiler/dump",    auth(postOnly(new ProfilerDumpHandler())));
+
+            // Cache status - which store loaded, which path
+            server.createContext("/admin/cache/status",     auth(new CacheStatusHandler()));
+
             server.start();
             System.out.println("[AdminHttpServer] Listening on :" + PORT + " - token written to " + TOKEN_FILE);
         } catch (Throwable t) {
@@ -1185,5 +1198,131 @@ public final class AdminHttpServer {
             }
         }
         return sb.toString();
+    }
+
+    // ===== Citizen handlers =====
+
+    private static class CitizensListHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                java.util.List<com.rs.bot.ambient.AmbientBot> live =
+                    com.rs.bot.ambient.CitizenSpawner.getLive();
+                // Per-archetype tally
+                java.util.Map<String, Integer> byArch = new java.util.TreeMap<>();
+                java.util.Map<String, Integer> byState = new java.util.TreeMap<>();
+                for (com.rs.bot.ambient.AmbientBot b : live) {
+                    String a = b.getArchetype() == null ? "?" : b.getArchetype().name();
+                    byArch.merge(a, 1, Integer::sum);
+                    String s = b.getState() == null ? "?" : b.getState().name();
+                    byState.merge(s, 1, Integer::sum);
+                }
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total);
+                sb.append(",\"byArchetype\":{");
+                boolean first = true;
+                for (java.util.Map.Entry<String,Integer> e : byArch.entrySet()) {
+                    if (!first) sb.append(","); first = false;
+                    sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
+                }
+                sb.append("},\"byState\":{");
+                first = true;
+                for (java.util.Map.Entry<String,Integer> e : byState.entrySet()) {
+                    if (!first) sb.append(","); first = false;
+                    sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
+                }
+                sb.append("}}");
+                sendText(ex, 200, sb.toString());
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    private static class CitizensSpawnHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            int count;
+            try { count = Integer.parseInt(body.getOrDefault("count", "10")); }
+            catch (NumberFormatException e) { sendText(ex, 400, "{\"ok\":false,\"error\":\"bad count\"}"); return; }
+            count = Math.max(1, Math.min(count, 500)); // cap
+            String category = body.get("category");
+            int x, y, plane;
+            try {
+                x = Integer.parseInt(body.getOrDefault("x", "3222"));
+                y = Integer.parseInt(body.getOrDefault("y", "3218"));
+                plane = Integer.parseInt(body.getOrDefault("plane", "0"));
+            } catch (NumberFormatException e) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"bad coords\"}"); return;
+            }
+            int scatter;
+            try { scatter = Integer.parseInt(body.getOrDefault("scatter", "12")); }
+            catch (NumberFormatException e) { scatter = 12; }
+            try {
+                com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(x, y, plane);
+                java.util.List<com.rs.bot.ambient.AmbientBot> spawned =
+                    com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, anchor, scatter);
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                sendText(ex, 200, "{\"ok\":true,\"spawned\":" + spawned.size()
+                    + ",\"total\":" + total + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    private static class CitizensClearHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            int removed = com.rs.bot.ambient.CitizenSpawner.clearAll();
+            sendText(ex, 200, "{\"ok\":true,\"removed\":" + removed + "}");
+        }
+    }
+
+    // ===== Profiler handlers =====
+
+    private static class ProfilerStartHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.enable();
+            sendText(ex, 200, "{\"ok\":true,\"enabled\":true}");
+        }
+    }
+
+    private static class ProfilerStopHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.disable();
+            sendText(ex, 200, "{\"ok\":true,\"enabled\":false}");
+        }
+    }
+
+    private static class ProfilerDumpHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.dump();
+            sendText(ex, 200, "{\"ok\":true,\"dumped\":true}");
+        }
+    }
+
+    // ===== Cache status handler =====
+
+    private static class CacheStatusHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int primaryIdx = (com.rs.cache.Cache.STORE != null && com.rs.cache.Cache.STORE.getIndexes() != null)
+                    ? com.rs.cache.Cache.STORE.getIndexes().length : 0;
+                int dlcIdx = (com.rs.cache.Cache.STORE_DLC != null && com.rs.cache.Cache.STORE_DLC.getIndexes() != null)
+                    ? com.rs.cache.Cache.STORE_DLC.getIndexes().length : 0;
+                StringBuilder sb = new StringBuilder("{\"ok\":true");
+                sb.append(",\"primaryPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_PRIMARY == null ? "" : com.rs.Settings.CACHE_PATH_PRIMARY)).append("\"");
+                sb.append(",\"primaryLoaded\":").append(primaryIdx > 0);
+                sb.append(",\"primaryIndexes\":").append(primaryIdx);
+                sb.append(",\"legacyPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_LEGACY == null ? "" : com.rs.Settings.CACHE_PATH_LEGACY)).append("\"");
+                sb.append(",\"dlcPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_DLC == null ? "" : com.rs.Settings.CACHE_PATH_DLC)).append("\"");
+                sb.append(",\"dlcLoaded\":").append(dlcIdx > 0);
+                sb.append(",\"dlcIndexes\":").append(dlcIdx);
+                sb.append(",\"dlcEnabled\":").append(com.rs.Settings.DLC_FALLBACK_ENABLED);
+                sb.append("}");
+                sendText(ex, 200, sb.toString());
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
     }
 }
