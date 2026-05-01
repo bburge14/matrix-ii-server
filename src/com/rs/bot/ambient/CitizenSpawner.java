@@ -117,13 +117,26 @@ public final class CitizenSpawner {
         int wanderRadius = 4 + Utils.random(8);
 
         String name = com.rs.bot.BotNames.generate();
-        // Use createOffline + hydrate pattern - same as BotPool.spawn() uses for
-        // Legend bots. createOffline builds the AIPlayer WITHOUT calling
-        // Player.init() (so not in world yet); hydrate() then runs init exactly
-        // once. The previous bug was BotFactory.create() + hydrate() which
-        // called init() TWICE, double-registering the player and crashing
-        // session packet streams.
-        AIPlayer bot = BotFactory.createOffline(name);
+        // === SAME PIPELINE AS LEGENDS ===
+        // BotPool.generate() does:
+        //   profile = BotSkillProfile.build(mode, targetCb, archetype)
+        //   bot     = BotFactory.createOffline(name, profile, archetype)
+        //   ... save to disk ...
+        //   bot.hydrate(name); bot.start(); bot.setBrain(...);
+        // We mirror exactly. Stats baked in BEFORE hydrate so:
+        //   - the saved-on-disk shape matches Legends (ephemeral but identical)
+        //   - applyLoadout can read true levels and gate gear correctly
+        //   - skill checks (Mining/Fishing/etc level requirements) pass
+        int targetCb = pickCombatLevel(arch);
+        String archetypeStr = archetypeToLoadoutString(arch);
+        int[] profile;
+        try {
+            profile = com.rs.bot.BotSkillProfile.build("default", targetCb, archetypeStr);
+        } catch (Throwable t) {
+            System.err.println("[CitizenSpawner] BotSkillProfile.build failed: " + t);
+            profile = null;
+        }
+        AIPlayer bot = BotFactory.createOffline(name, profile, archetypeStr);
         if (bot == null) {
             System.err.println("[CitizenSpawner] BotFactory.createOffline returned null for " + name);
             return null;
@@ -136,10 +149,12 @@ public final class CitizenSpawner {
                 bot.setNextWorldTile(spawn);
             } catch (Throwable ignore) {}
 
-            int targetCb = pickCombatLevel(arch);
-            applyArchetypeStats(bot, arch, targetCb);
+            // Apply gear loadout. BotEquipment.applyLoadout reads the skill
+            // levels we just baked in via BotSkillProfile.build, so gear is
+            // already correctly gated (no rune armor on a cb-3 bot, no
+            // dragon dagger without 60 attack).
             try {
-                com.rs.bot.BotEquipment.applyLoadout(bot, archetypeToLoadoutString(arch), targetCb);
+                com.rs.bot.BotEquipment.applyLoadout(bot, archetypeStr, targetCb);
             } catch (Throwable t) {
                 System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
             }
@@ -147,7 +162,8 @@ public final class CitizenSpawner {
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
             System.out.println("[CitizenSpawner] spawned " + name + " (" + arch.name()
-                + ") at " + spawn + " (live=" + liveCitizens.size() + ")");
+                + ", cb=" + targetCb + ", as=" + archetypeStr + ") at " + spawn
+                + " (live=" + liveCitizens.size() + ")");
             return bot;
         } catch (Throwable t) {
             System.err.println("[CitizenSpawner] failed to spawn " + name + " at " + spawn + ": " + t);
@@ -232,81 +248,6 @@ public final class CitizenSpawner {
                 : 30 + Utils.random(80);
         }
         return 30 + Utils.random(60);
-    }
-
-    /**
-     * Set the bot's skills to roughly match the target combat level. We can't
-     * just call Skills.set blindly - that might NPE if packets aren't fully
-     * wired - so we wrap each call in try/catch and skip on failure.
-     *
-     * Combat level formula approximation: sets attack/strength/defence/HP
-     * to a level appropriate for the target cb, with some scatter so two
-     * combatants at cb 80 have slightly different builds.
-     */
-    private static void applyArchetypeStats(AIPlayer bot, AmbientArchetype arch, int targetCb) {
-        if (arch == null) return;
-        try {
-            com.rs.game.player.Skills s = bot.getSkills();
-            // Combat skills: scale toward targetCb with archetype tilt
-            int meleeCore = clamp(targetCb - 5, 1, 99);
-            int rangeCore = clamp(targetCb - 5, 1, 99);
-            int magicCore = clamp(targetCb - 5, 1, 99);
-            int defCore   = clamp(targetCb - 10, 1, 99);
-            int hpCore    = clamp(targetCb - 5, 10, 99);
-
-            // Per-archetype tilt
-            if (arch == AmbientArchetype.COMBATANT_PURE) {
-                defCore = 1; // pures stay 1 def
-            } else if (arch == AmbientArchetype.COMBATANT_TANK) {
-                defCore = clamp(targetCb, 1, 99);
-            } else if (arch == AmbientArchetype.COMBATANT_HYBRID) {
-                rangeCore = clamp(targetCb - 3, 1, 99);
-                magicCore = clamp(targetCb - 3, 1, 99);
-            } else if (arch.isSkiller()) {
-                // skillers keep combat low, push gathering skills high
-                meleeCore = 1; rangeCore = 1; magicCore = 1; defCore = 1;
-                hpCore = 10;
-                int skillCap = arch == AmbientArchetype.SKILLER_EFFICIENT ? 99
-                             : arch == AmbientArchetype.SKILLER_CASUAL ? 85
-                             : 50;
-                trySet(s, com.rs.game.player.Skills.WOODCUTTING, 30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.MINING,      30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.FISHING,     30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.COOKING,     30 + Utils.random(skillCap - 30));
-                trySet(s, com.rs.game.player.Skills.CRAFTING,    20 + Utils.random(skillCap - 20));
-            }
-
-            trySet(s, com.rs.game.player.Skills.ATTACK,    meleeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.STRENGTH,  meleeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.DEFENCE,   defCore   + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.HITPOINTS, hpCore);
-            trySet(s, com.rs.game.player.Skills.RANGE,     rangeCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.MAGIC,     magicCore + Utils.random(6) - 3);
-            trySet(s, com.rs.game.player.Skills.PRAYER,    clamp(targetCb / 2, 1, 95));
-        } catch (Throwable t) {
-            // best-effort - if Skills isn't fully wired, citizen just spawns at default
-        }
-    }
-
-    private static void trySet(com.rs.game.player.Skills s, int skill, int level) {
-        if (level < 1) level = 1;
-        if (level > 99) level = 99;
-        try { s.set(skill, level); } catch (Throwable ignored) {}
-        try { s.setXp(skill, levelToXp(level)); } catch (Throwable ignored) {}
-    }
-
-    private static int clamp(int v, int min, int max) {
-        return v < min ? min : (v > max ? max : v);
-    }
-
-    /** Approximate XP for a level (Jagex's exact formula for 1-99). */
-    private static int levelToXp(int level) {
-        if (level <= 1) return 0;
-        double sum = 0;
-        for (int l = 1; l < level; l++) {
-            sum += Math.floor(l + 300.0 * Math.pow(2.0, l / 7.0));
-        }
-        return (int) (sum / 4);
     }
 
     /**
