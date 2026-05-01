@@ -34,17 +34,29 @@ public final class Settings {
 	// PRIMARY takes over automatically with no code change.
 
 	/**
-	 * Primary cache path. The server's main game data. Currently 876.
-	 * Falls through to CACHE_PATH_LEGACY if it can't load.
+	 * Primary cache path. The server's main game data. This is the path
+	 * Cache.STORE.getIndexes() reads from. Currently points at the working
+	 * 830 cache - flip this to your 876_packed/ when you've got a fully
+	 * functional 876 (with file references populated, not just blob bytes).
+	 *
+	 * Why we default to 830: our CacheRepacker writes archive blobs to dat2
+	 * but the per-file-reference table population isn't complete. A 876
+	 * cache built that way LOADS (you'll see 'primary store loaded') but
+	 * subsequent file reads return null and Huffman.init / other boot
+	 * paths NPE. Pointing primary at the working 830 keeps the server
+	 * stable while we finish 876 packing.
+	 *
+	 * To flip: change this string to your 876 cache path. If the path is
+	 * invalid the dual-cache load chain falls back to LEGACY automatically.
 	 */
-	public static final String CACHE_PATH_PRIMARY = System.getProperty("user.home") + "/matrix/876_packed/";
+	public static final String CACHE_PATH_PRIMARY = System.getProperty("user.home") + "/matrix/830_cache/";
 
 	/**
-	 * Legacy fallback cache. Used if primary fails to load. Currently 830.
-	 * Keeps the server bootable during the migration. Once 876 is solid
-	 * for an extended period, this can be removed.
+	 * Legacy fallback cache. Used if primary fails to load. Same value
+	 * as PRIMARY today since 876 isn't ready - kept separate so flipping
+	 * PRIMARY to 876 leaves a clean 830 fallback.
 	 */
-	public static final String CACHE_PATH_LEGACY = System.getProperty("user.home") + "/830_cache/";
+	public static final String CACHE_PATH_LEGACY = System.getProperty("user.home") + "/matrix/830_cache/";
 
 	/**
 	 * Secondary "DLC" cache path. Read-only parts-bin for newer assets
