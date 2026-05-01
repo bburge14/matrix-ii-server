@@ -30,7 +30,16 @@ import java.util.Map;
 public final class TrainingMethods {
 
     /** What kind of action a method maps to. */
-    public enum Kind { WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING, CRAFTING, PRAYER }
+    public enum Kind {
+        WOODCUTTING, MINING, FISHING, COMBAT, THIEVING, FIREMAKING, COOKING, SMELTING,
+        CRAFTING, PRAYER,
+        // Locations now wired; per-Kind action wiring lands skill-by-skill.
+        // Until wired, bots walk to the right tile and stall - SuccessTracker
+        // shows "method picked, 0 success" in audit.log so you can verify
+        // locations before wiring.
+        HERBLORE, AGILITY, RUNECRAFTING, HUNTER, SUMMONING, FARMING, CONSTRUCTION,
+        FLETCHING, DIVINATION, DUNGEONEERING, SMITHING_ANVIL
+    }
 
     public static final class Method {
         public final String description;
@@ -482,6 +491,287 @@ public final class TrainingMethods {
             .skill(Skills.ATTACK).lvl(70, 99).at(2926, 5333).xp(75000).cb(110)
             .gp(1700000)
             .npcs(6203).dangerous().build());
+
+        // ---- Thieving (canonical RS world spreads, alongside the existing
+        // Burthorpe-DZ entries above. Same NPC IDs as Burthorpe block; if
+        // those NPCs are also spawned at canonical spots from vanilla cache
+        // spawns, bots will scatter naturally. If a canonical spot has no
+        // spawn, SuccessTracker will mark it stuck and bots fall back to
+        // the Burthorpe entries.)
+        ALL.add(b("Pickpocket man - Lumbridge", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(1, 9).at(3225, 3220).xp(8000).gp(2000)
+            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170, 3205).build());
+        ALL.add(b("Pickpocket man - Varrock west", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(1, 9).at(3187, 3437).xp(8000).gp(2000)
+            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170, 3205).build());
+        ALL.add(b("Pickpocket man - Edgeville", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(1, 9).at(3079, 3490).xp(8000).gp(2000)
+            .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170, 3205).build());
+        ALL.add(b("Pickpocket farmer - Draynor wheat field", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(10, 24).at(3079, 3290).xp(14500).gp(5000)
+            .npcs(7, 1757, 1758, 1760).build());
+        ALL.add(b("Pickpocket warrior - Ardougne south", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(25, 31).at(2658, 3300).xp(26000).gp(8000)
+            .npcs(15).build());
+        ALL.add(b("Pickpocket rogue - Wilderness rogue camp", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(32, 37).at(3024, 3700).xp(35500).gp(15000)
+            .npcs(187, 2267, 2268, 2269, 8122).dangerous().build());
+        ALL.add(b("Pickpocket master farmer - Draynor", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(38, 39).at(3079, 3257).xp(43000).gp(20000)
+            .npcs(2234, 2235).build());
+        ALL.add(b("Pickpocket master farmer - Ardougne market", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(38, 39).at(2659, 3380).xp(43000).gp(20000)
+            .npcs(2234, 2235).build());
+        ALL.add(b("Pickpocket guard - Varrock east", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(40, 54).at(3215, 3429).xp(46500).gp(30000)
+            .npcs(9, 32, 33, 34).build());
+        ALL.add(b("Pickpocket guard - Falador east", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(40, 54).at(3019, 3357).xp(46500).gp(30000)
+            .npcs(9, 32, 33, 34).build());
+        ALL.add(b("Pickpocket Ardougne knight - Ardougne castle", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(55, 64).at(2657, 3296).xp(84300).gp(50000)
+            .npcs(23, 26).build());
+        ALL.add(b("Pickpocket Menaphite thug - Pollnivneach", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(65, 69).at(3354, 2974).xp(137500).gp(60000)
+            .npcs(1905).build());
+        ALL.add(b("Pickpocket paladin - Ardougne castle", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(70, 79).at(2655, 3308).xp(151750).gp(80000)
+            .npcs(20, 2256).build());
+        ALL.add(b("Pickpocket hero - Ardougne", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(80, 89).at(2657, 3299).xp(275000).gp(200000)
+            .npcs(21).build());
+        ALL.add(b("Pickpocket Dwarf trader - Keldagrim", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(90, 99).at(2902, 10193).xp(556500).gp(400000)
+            .npcs(2109).build());
+
+        // ---- Herblore (clean herbs at major banks - bots walk between)
+        ALL.add(b("Clean guam - Edgeville bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(1, 4).at(3094, 3491).xp(2200).gp(0).build());
+        ALL.add(b("Clean marrentill - Lumbridge bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(5, 10).at(3208, 3220).xp(3800).gp(0).build());
+        ALL.add(b("Clean tarromin - Varrock east bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(11, 19).at(3253, 3420).xp(5000).gp(0).build());
+        ALL.add(b("Clean harralander - Falador east bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(20, 24).at(3013, 3355).xp(6500).gp(0).build());
+        ALL.add(b("Clean ranarr - Grand Exchange", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(25, 39).at(3164, 3489).xp(8500).gp(0).build());
+        ALL.add(b("Clean kwuarm - Catherby bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(40, 47).at(2810, 3441).xp(10500).gp(0).build());
+        ALL.add(b("Clean cadantine - Ardougne bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(48, 53).at(2616, 3332).xp(13000).gp(0).build());
+        ALL.add(b("Clean lantadyme - Yanille bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(54, 58).at(2613, 3092).xp(15500).gp(0).build());
+        ALL.add(b("Clean dwarf weed - Edgeville bank", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(59, 74).at(3094, 3491).xp(18000).gp(0).build());
+        ALL.add(b("Clean torstol - Grand Exchange", Kind.HERBLORE)
+            .skill(Skills.HERBLORE).lvl(75, 99).at(3164, 3489).xp(22500).gp(0).build());
+
+        // ---- Agility (course rotation by level - canonical RS rooftops)
+        ALL.add(b("Gnome agility course - Tree Gnome Stronghold", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(1, 9).at(2476, 3438).xp(8000).gp(0).build());
+        ALL.add(b("Draynor rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(10, 19).at(3103, 3279).xp(10500).gp(0).build());
+        ALL.add(b("Al-Kharid rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(20, 29).at(3273, 3193).xp(13500).gp(0).build());
+        ALL.add(b("Varrock rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(30, 39).at(3221, 3414).xp(16500).gp(0).build());
+        ALL.add(b("Canifis rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(40, 49).at(3506, 3489).xp(20000).gp(0).build());
+        ALL.add(b("Falador rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(50, 59).at(3036, 3341).xp(24000).gp(0).build());
+        ALL.add(b("Wilderness agility course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(52, 99).at(3004, 3937).xp(45000).gp(0).dangerous().build());
+        ALL.add(b("Werewolf agility course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(60, 99).at(3543, 9852).xp(31000).gp(0).build());
+        ALL.add(b("Seers' rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(60, 69).at(2729, 3489).xp(28000).gp(0).build());
+        ALL.add(b("Pollnivneach rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(70, 79).at(3358, 2997).xp(33000).gp(0).build());
+        ALL.add(b("Rellekka rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(80, 89).at(2625, 3677).xp(38000).gp(0).build());
+        ALL.add(b("Ardougne rooftop course", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(90, 99).at(2673, 3296).xp(45000).gp(0).build());
+
+        // ---- Runecrafting (altar ruins; bot needs essence in inv. Coords
+        // are the OUTSIDE ruin tiles, not the altar interior - bot walks to
+        // ruin and clicks to enter, then crafts.)
+        ALL.add(b("Air rune altar - Falador", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(1, 4).at(2986, 3293).xp(6000).gp(3000).build());
+        ALL.add(b("Mind rune altar - north Goblin Village", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(2, 4).at(2980, 3514).xp(6500).gp(3500).build());
+        ALL.add(b("Water rune altar - Lumbridge swamp", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(5, 8).at(3185, 3165).xp(7000).gp(4000).build());
+        ALL.add(b("Earth rune altar - east Varrock", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(9, 13).at(3304, 3475).xp(7500).gp(4500).build());
+        ALL.add(b("Fire rune altar - east Al-Kharid", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(14, 19).at(3315, 3255).xp(8000).gp(5000).build());
+        ALL.add(b("Body rune altar - west Edgeville", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(20, 26).at(3055, 3445).xp(8500).gp(5500).build());
+        ALL.add(b("Cosmic rune altar - Zanaris", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(27, 34).at(2406, 4380).xp(11000).gp(8000).build());
+        ALL.add(b("Chaos rune altar - Wilderness", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(35, 43).at(3060, 3590).xp(13000).gp(10000).dangerous().build());
+        ALL.add(b("Nature rune altar - Karamja", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(44, 53).at(2868, 3015).xp(15000).gp(20000).build());
+        ALL.add(b("Law rune altar - Entrana", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(54, 64).at(2858, 3380).xp(17000).gp(15000).build());
+        ALL.add(b("Death rune altar - Death Plateau", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(65, 76).at(1860, 4639).xp(19000).gp(20000).build());
+        ALL.add(b("Blood rune altar - Meiyerditch", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(77, 89).at(3559, 9778).xp(22000).gp(40000).build());
+        ALL.add(b("Soul rune altar - Soul Wars", Kind.RUNECRAFTING)
+            .skill(Skills.RUNECRAFTING).lvl(90, 99).at(1815, 3855).xp(25000).gp(50000).build());
+
+        // ---- Hunter (canonical trap and falconry locations)
+        ALL.add(b("Trap crimson swift - Feldip Hills", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(1, 4).at(2548, 2920).xp(7000).gp(0).build());
+        ALL.add(b("Trap polar kebbit - Rellekka hunter area", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(5, 10).at(2839, 3743).xp(9500).gp(0).build());
+        ALL.add(b("Trap common kebbit - Piscatoris hunter area", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(11, 16).at(2330, 3580).xp(12000).gp(0).build());
+        ALL.add(b("Trap feldip weasel - Feldip Hills", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(17, 22).at(2540, 2960).xp(14500).gp(0).build());
+        ALL.add(b("Trap wild kebbit - Piscatoris", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(23, 26).at(2350, 3590).xp(17000).gp(0).build());
+        ALL.add(b("Trap spined larupia - Feldip Hills", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(27, 32).at(2548, 2925).xp(20000).gp(0).build());
+        ALL.add(b("Trap black warlock - Piscatoris", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(33, 42).at(2370, 3596).xp(24500).gp(0).build());
+        ALL.add(b("Falconry - Piscatoris hunter area", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(43, 52).at(2371, 3604).xp(35000).gp(0).build());
+        ALL.add(b("Trap carnivorous chinchompa - Feldip", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(53, 59).at(2554, 2912).xp(45000).gp(20000).build());
+        ALL.add(b("Box-trap chinchompa - Feldip", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(60, 72).at(2556, 2916).xp(60000).gp(40000).build());
+        ALL.add(b("Trap red chinchompa - Feldip far east", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(73, 79).at(2566, 2920).xp(80000).gp(60000).build());
+        ALL.add(b("Trap black chinchompa - Wilderness", Kind.HUNTER)
+            .skill(Skills.HUNTER).lvl(80, 99).at(3140, 3782).xp(120000).gp(120000).dangerous().build());
+
+        // ---- Summoning (Pikkupstix Taverley + bank loop)
+        ALL.add(b("Infuse pouches - Pikkupstix Taverley", Kind.SUMMONING)
+            .skill(Skills.SUMMONING).lvl(1, 50).at(2933, 3433).xp(15000).gp(0).build());
+        ALL.add(b("Infuse high pouches - Pikkupstix Taverley", Kind.SUMMONING)
+            .skill(Skills.SUMMONING).lvl(51, 99).at(2933, 3433).xp(35000).gp(0).build());
+
+        // ---- Farming (allotment, herb, tree, fruit-tree patches across regions)
+        ALL.add(b("Farm allotments - Falador patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(1, 99).at(3052, 3308).xp(8000).gp(2000).build());
+        ALL.add(b("Farm allotments - Catherby patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(1, 99).at(2807, 3464).xp(8500).gp(2500).build());
+        ALL.add(b("Farm allotments - Ardougne patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(1, 99).at(2671, 3375).xp(8000).gp(2000).build());
+        ALL.add(b("Farm allotments - Canifis patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(1, 99).at(3603, 3531).xp(8500).gp(2500).build());
+        ALL.add(b("Farm herbs - Falador patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(9, 99).at(3056, 3308).xp(15000).gp(15000).build());
+        ALL.add(b("Farm herbs - Catherby patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(9, 99).at(2813, 3463).xp(15000).gp(15000).build());
+        ALL.add(b("Farm tree - Falador park patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(15, 99).at(3004, 3372).xp(20000).gp(0).build());
+        ALL.add(b("Farm tree - Lumbridge swamp patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(15, 99).at(3193, 3231).xp(20000).gp(0).build());
+        ALL.add(b("Farm tree - Varrock castle patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(15, 99).at(3228, 3458).xp(20000).gp(0).build());
+        ALL.add(b("Farm tree - Taverley patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(15, 99).at(2937, 3437).xp(20000).gp(0).build());
+        ALL.add(b("Farm fruit tree - Catherby patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(27, 99).at(2860, 3431).xp(28000).gp(8000).build());
+        ALL.add(b("Farm fruit tree - Tree Gnome Stronghold patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(27, 99).at(2475, 3445).xp(28000).gp(8000).build());
+        ALL.add(b("Farm fruit tree - Brimhaven patch", Kind.FARMING)
+            .skill(Skills.FARMING).lvl(27, 99).at(2762, 3211).xp(28000).gp(8000).build());
+
+        // ---- Construction (POH portals)
+        ALL.add(b("Construction - Rimmington POH portal", Kind.CONSTRUCTION)
+            .skill(Skills.CONSTRUCTION).lvl(1, 99).at(2954, 3224).xp(60000).gp(0).build());
+        ALL.add(b("Construction - Yanille POH portal", Kind.CONSTRUCTION)
+            .skill(Skills.CONSTRUCTION).lvl(50, 99).at(2543, 3097).xp(80000).gp(0).build());
+        ALL.add(b("Construction - Pollnivneach POH portal", Kind.CONSTRUCTION)
+            .skill(Skills.CONSTRUCTION).lvl(70, 99).at(3340, 3001).xp(100000).gp(0).build());
+
+        // ---- Fletching (bank loop, knife in inventory)
+        ALL.add(b("Fletch arrow shafts - Edgeville bank", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(1, 4).at(3094, 3491).xp(5000).gp(2000).build());
+        ALL.add(b("Fletch shortbow - Grand Exchange", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(5, 14).at(3164, 3489).xp(10000).gp(3000).build());
+        ALL.add(b("Fletch oak bow - Varrock west bank", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(15, 24).at(3185, 3437).xp(20000).gp(5000).build());
+        ALL.add(b("Fletch willow bow - Draynor bank", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(25, 39).at(3092, 3245).xp(35000).gp(8000).build());
+        ALL.add(b("Fletch maple bow - Seers' bank", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(40, 54).at(2725, 3493).xp(60000).gp(15000).build());
+        ALL.add(b("Fletch yew bow - Edgeville bank", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(55, 69).at(3094, 3491).xp(95000).gp(30000).build());
+        ALL.add(b("Fletch magic bow - Grand Exchange", Kind.FLETCHING)
+            .skill(Skills.FLETCHING).lvl(70, 99).at(3164, 3489).xp(160000).gp(80000).build());
+
+        // ---- Divination (wisp colonies; coords are guess based on canonical
+        // RS - verify actual spawn coords on this server during audit)
+        ALL.add(b("Harvest pale wisps - Falador", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(1, 9).at(2998, 3398).xp(7000).gp(2000).build());
+        ALL.add(b("Harvest flickering wisps - Tirannwn", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(10, 19).at(2300, 3140).xp(11500).gp(3000).build());
+        ALL.add(b("Harvest bright wisps - Mort Myre swamp", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(20, 29).at(3450, 3450).xp(16000).gp(4000).build());
+        ALL.add(b("Harvest glowing wisps - Karamja", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(30, 39).at(2858, 3128).xp(21000).gp(5500).build());
+        ALL.add(b("Harvest vibrant wisps - Asgarnia", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(40, 49).at(3015, 3338).xp(27000).gp(7500).build());
+        ALL.add(b("Harvest sparkling wisps - Wilderness", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(50, 59).at(3170, 3645).xp(34000).gp(10000).dangerous().build());
+        ALL.add(b("Harvest gleaming wisps - Tirannwn", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(60, 69).at(2310, 3160).xp(42000).gp(13000).build());
+        ALL.add(b("Harvest vivid wisps - Mort Myre", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(70, 79).at(3475, 3470).xp(51000).gp(17000).build());
+        ALL.add(b("Harvest lustrous wisps - Karamja", Kind.DIVINATION)
+            .skill(Skills.DIVINATION).lvl(80, 99).at(2870, 3140).xp(62000).gp(22000).build());
+
+        // ---- Dungeoneering (Daemonheim entrance)
+        ALL.add(b("Dungeoneering - Daemonheim", Kind.DUNGEONEERING)
+            .skill(Skills.DUNGEONEERING).lvl(1, 99).at(3460, 3717).xp(40000).gp(0).build());
+
+        // ---- Smithing-anvil (smith items from bars; SMELTING above covers
+        // ore -> bar at furnaces. Both train Skills.SMITHING but use
+        // different actions.)
+        ALL.add(b("Smith bronze items - Lumbridge anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(1, 14).at(3225, 3220).xp(5000).gp(2000).build());
+        ALL.add(b("Smith iron items - Varrock west anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(15, 29).at(3186, 3424).xp(10000).gp(4000).build());
+        ALL.add(b("Smith steel items - Varrock west anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(30, 49).at(3186, 3424).xp(20000).gp(8000).build());
+        ALL.add(b("Smith mithril items - Edgeville anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(50, 69).at(3084, 3492).xp(35000).gp(20000).build());
+        ALL.add(b("Smith adamant items - Varrock west anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(70, 84).at(3186, 3424).xp(55000).gp(40000).build());
+        ALL.add(b("Smith rune items - Varrock west anvil", Kind.SMITHING_ANVIL)
+            .skill(Skills.SMITHING).lvl(85, 99).at(3186, 3424).xp(80000).gp(80000).build());
+
+        // ---- Slayer-monster combat spots (treated as COMBAT methods - bots
+        // pick these via their COMBAT goals. Legend bots may also receive
+        // slayer tasks elsewhere; these locations also serve task-bound
+        // kills.)
+        ALL.add(b("Slayer - Cave bugs Lumbridge swamp cave", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(7, 30).at(3164, 9568).xp(8000).cb(20)
+            .npcs(1832, 1833).build());
+        ALL.add(b("Slayer - Rockslugs Fremennik dungeon", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(20, 50).at(2792, 10001).xp(20000).cb(30)
+            .npcs(1631, 1632).build());
+        ALL.add(b("Slayer - Pyrefiends Fremennik dungeon", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(30, 60).at(2780, 10000).xp(35000).cb(45)
+            .npcs(1633, 1634, 1635).build());
+        ALL.add(b("Slayer - Bloodvelds Slayer Tower", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(50, 75).at(3422, 3554).xp(60000).cb(70)
+            .npcs(1618, 1619).build());
+        ALL.add(b("Slayer - Aberrant spectres Slayer Tower", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565).xp(75000).cb(80)
+            .npcs(1604, 1605).build());
+        ALL.add(b("Slayer - Dark beasts Mourner tunnels", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(75, 99).at(2014, 4641).xp(140000).cb(100)
+            .npcs(2783).build());
+        ALL.add(b("Slayer - TzHaar Fight Cave Jad", Kind.COMBAT)
+            .skill(Skills.SLAYER).lvl(85, 99).at(2438, 5168).xp(180000).cb(110)
+            .npcs(2745).dangerous().build());
     }
 
     private static Builder b(String d, Kind k) { return new Builder(d, k); }

@@ -1023,16 +1023,30 @@ public class BotBrain {
         // bots are doing instead of generic goal descriptions.
         announceMethodStart(method);
         switch (method.kind) {
-            case WOODCUTTING: tryStartWoodcutting(method); break;
-            case MINING:      tryStartMining(method); break;
-            case FISHING:     tryStartFishing(method); break;
-            case COMBAT:      tryStartCombat(method); break;
-            case THIEVING:    tryStartThieving(method); break;
-            case FIREMAKING:  tryStartFiremaking(method); break;
-            case COOKING:     tryStartCooking(method); break;
-            case SMELTING:    tryStartSmelting(method); break;
-            case CRAFTING:    tryStartCrafting(method); break;
-            case PRAYER:      tryStartPrayer(method); break;
+            case WOODCUTTING:    tryStartWoodcutting(method); break;
+            case MINING:         tryStartMining(method); break;
+            case FISHING:        tryStartFishing(method); break;
+            case COMBAT:         tryStartCombat(method); break;
+            case THIEVING:       tryStartThieving(method); break;
+            case FIREMAKING:     tryStartFiremaking(method); break;
+            case COOKING:        tryStartCooking(method); break;
+            case SMELTING:       tryStartSmelting(method); break;
+            case CRAFTING:       tryStartCrafting(method); break;
+            case PRAYER:         tryStartPrayer(method); break;
+            // New skills - locations are wired, action implementations land
+            // skill-by-skill in pass B. Bots walk to the right tile and the
+            // stub logs "(action coming)" so audit shows it but doesn't crash.
+            case HERBLORE:       tryStartHerblore(method); break;
+            case AGILITY:        tryStartAgility(method); break;
+            case RUNECRAFTING:   tryStartRunecrafting(method); break;
+            case HUNTER:         tryStartHunter(method); break;
+            case SUMMONING:      tryStartSummoning(method); break;
+            case FARMING:        tryStartFarming(method); break;
+            case CONSTRUCTION:   tryStartConstruction(method); break;
+            case FLETCHING:      tryStartFletching(method); break;
+            case DIVINATION:     tryStartDivination(method); break;
+            case DUNGEONEERING:  tryStartDungeoneering(method); break;
+            case SMITHING_ANVIL: tryStartSmithingAnvil(method); break;
         }
     }
 
@@ -1377,11 +1391,27 @@ public class BotBrain {
         Goal g = goalStack.getCurrentGoal();
         if (g != null) sayGoal(g.getDescription());
         switch (method.kind) {
-            case WOODCUTTING: sayStep("chopping " + treeKindLabel(method)); break;
-            case MINING:      sayStep("mining " + rockKindLabel(method)); break;
-            case FISHING:     sayStep("fishing " + fishKindLabel(method)); break;
-            case THIEVING:    sayStep("pickpocketing " + method.description.replace("Pickpocket ", "").replace(" - Burthorpe", "")); break;
-            case COMBAT:      sayStep("combat training"); break;
+            case WOODCUTTING:    sayStep("chopping " + treeKindLabel(method)); break;
+            case MINING:         sayStep("mining " + rockKindLabel(method)); break;
+            case FISHING:        sayStep("fishing " + fishKindLabel(method)); break;
+            case THIEVING:       sayStep("pickpocketing " + method.description.replace("Pickpocket ", "")); break;
+            case COMBAT:         sayStep("combat training"); break;
+            case FIREMAKING:     sayStep("firemaking"); break;
+            case COOKING:        sayStep("cooking"); break;
+            case SMELTING:       sayStep("smelting bars"); break;
+            case CRAFTING:       sayStep("crafting"); break;
+            case PRAYER:         sayStep("training prayer"); break;
+            case HERBLORE:       sayStep("herblore"); break;
+            case AGILITY:        sayStep("running agility course"); break;
+            case RUNECRAFTING:   sayStep("crafting runes"); break;
+            case HUNTER:         sayStep("hunting"); break;
+            case SUMMONING:      sayStep("summoning"); break;
+            case FARMING:        sayStep("farming"); break;
+            case CONSTRUCTION:   sayStep("constructing"); break;
+            case FLETCHING:      sayStep("fletching"); break;
+            case DIVINATION:     sayStep("harvesting wisps"); break;
+            case DUNGEONEERING:  sayStep("dungeoneering"); break;
+            case SMITHING_ANVIL: sayStep("smithing at anvil"); break;
         }
     }
 
@@ -1594,6 +1624,67 @@ public class BotBrain {
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
         lastDiagnostic = "fishing: " + match.definition;
         if (Utils.random(100) < 30) say(fishingChatter());
+    }
+
+    /**
+     * Stubs for skills whose locations are wired in TrainingMethods but whose
+     * Action implementations land skill-by-skill. Each walks the bot to the
+     * method's tile then logs the "(action coming)" diagnostic. Audit log
+     * picks this up via SuccessTracker so we can verify the location is
+     * reachable before doing the harder action wiring.
+     */
+    private void walkOrStallAtMethod(com.rs.bot.ai.TrainingMethods.Method method,
+                                     int skillId, String label) {
+        try {
+            int lvl = bot.getSkills().getLevel(skillId);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = label + ": my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy > 16) {
+            BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+            lastDiagnostic = label + ": walking to " + method.description;
+            return;
+        }
+        lastDiagnostic = label + ": at location, action not yet wired";
+        if (Utils.random(100) < 5) sayDebug(label + " action coming");
+    }
+
+    protected void tryStartHerblore(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.HERBLORE, "herblore");
+    }
+    protected void tryStartAgility(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.AGILITY, "agility");
+    }
+    protected void tryStartRunecrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.RUNECRAFTING, "rc");
+    }
+    protected void tryStartHunter(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.HUNTER, "hunter");
+    }
+    protected void tryStartSummoning(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.SUMMONING, "summoning");
+    }
+    protected void tryStartFarming(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.FARMING, "farming");
+    }
+    protected void tryStartConstruction(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.CONSTRUCTION, "construction");
+    }
+    protected void tryStartFletching(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.FLETCHING, "fletching");
+    }
+    protected void tryStartDivination(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.DIVINATION, "divination");
+    }
+    protected void tryStartDungeoneering(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.DUNGEONEERING, "dungeoneering");
+    }
+    protected void tryStartSmithingAnvil(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.SMITHING, "smith-anvil");
     }
 
     protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
