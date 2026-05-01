@@ -2403,7 +2403,7 @@ public final class Commands {
 		}
 		count = Math.max(1, Math.min(count, 200)); // cap at 200/call
 		String category = cmd.length >= 3 ? cmd[2].toLowerCase() : null;
-		java.util.List<com.rs.bot.ambient.AmbientBot> spawned =
+		java.util.List<com.rs.bot.AIPlayer> spawned =
 		    com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, player, 12);
 		player.getPackets().sendGameMessage("Spawned " + spawned.size()
 		    + " " + (category == null ? "mixed" : category) + " citizens"
