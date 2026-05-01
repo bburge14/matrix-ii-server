@@ -6,20 +6,23 @@ import com.github.ajalt.clikt.parameters.types.path
 import com.google.inject.Guice
 import io.netty.buffer.ByteBufAllocator
 import org.openrs2.cache.CacheModule
+import org.openrs2.cache.DiskStore
 import org.openrs2.cache.FlatFileStore
-import org.openrs2.cache.Store
 import org.openrs2.inject.CloseableInjector
 import java.nio.file.Files
 
 /**
  * Convert OpenRS2 flat-file format (loose <archive>.dat blobs in numbered
  * subdirs, one dir per index) to JS5 disk format (main_file_cache.dat2 +
- * main_file_cache.idx*). Inverse of OpenNxtStore.unpack-equivalent.
+ * main_file_cache.idx*).
  *
  * Usage:
  *   archive cache pack <flat-input-dir> <disk-output-dir>
  *
- * Both directories must exist; the output is created if missing.
+ * IMPORTANT: source uses FlatFileStore.open (auto-detect would also pick
+ * FlatFileStore here). DESTINATION uses DiskStore.create explicitly -
+ * Store.open() on an empty output dir defaults to FlatFileStore which
+ * means we'd write loose files INTO the output instead of dat2/idx.
  */
 public class FlatDiskPackCommand : CliktCommand(name = "pack") {
     private val input by argument().path(mustExist = true, canBeFile = false, mustBeReadable = true)
@@ -31,7 +34,7 @@ public class FlatDiskPackCommand : CliktCommand(name = "pack") {
             Files.createDirectories(output)
 
             FlatFileStore.open(input, alloc).use { src ->
-                Store.open(output, alloc).use { dst ->
+                DiskStore.create(output, alloc = alloc).use { dst ->
                     val archives = src.list()
                     var copied = 0L
                     var archIdx = 0
@@ -40,9 +43,6 @@ public class FlatDiskPackCommand : CliktCommand(name = "pack") {
                         dst.create(archive)
                         val groups = src.list(archive)
                         for (group in groups) {
-                            // Manual ref-counted release - cache-cli doesn't have
-                            // org.openrs2.buffer.use on its classpath, so use Netty's
-                            // standard try/finally + release() pattern instead.
                             val buf = src.read(archive, group)
                             try {
                                 dst.write(archive, group, buf)

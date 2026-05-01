@@ -80,6 +80,12 @@ fi
 # 4) Run the pack
 echo
 echo "[pack] Running: $CLI_BIN pack $INPUT $OUTPUT"
+# Wipe output first - DiskStore.create() expects a fresh/empty dir,
+# and a previous failed run may have left flat-format leftovers behind.
+if [ -d "$OUTPUT" ]; then
+    echo "[pack] Wiping previous output at $OUTPUT"
+    rm -rf "$OUTPUT"
+fi
 mkdir -p "$OUTPUT"
 "$CLI_BIN" pack "$INPUT" "$OUTPUT"
 
