@@ -763,7 +763,10 @@ public class BotBrain {
             moveTowards(treeX, treeY, currentX, currentY);
         } else {
             goalStack.updateCurrentGoal("chopping trees", 0.002);
-            if (Utils.random(100) < 20) bot.setNextAnimation(new Animation(879));
+            // No fake chopping anim - the real Woodcutting Action plays its
+            // own animation when adjacent to a tree. This branch only fires
+            // for the stale legacy goal-desc fallback above; bot just stands
+            // there until the real action picks up.
         }
     }
 

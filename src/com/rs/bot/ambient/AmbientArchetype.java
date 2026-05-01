@@ -17,63 +17,70 @@ import com.rs.utils.Utils;
  */
 public enum AmbientArchetype {
 
+    // Animation IDs below are only the player emote-tab cosmetics
+    // (yes=855, no=856, think=857, bow=858, angry=859, cry=860, laugh=861,
+    //  cheer=862, wave=863, beckon=864, clap=865, dance=866). Skiller and
+    // combatant archetypes use empty arrays - their REAL action (Mining,
+    // Combat, etc) fires its own animation, so a fake overlay would either
+    // double up or replace the real one with an inappropriate gesture.
+
     // === Skiller variants ===
     SKILLER_EFFICIENT("efficient skiller",
-        new int[] {867, 875, 6702, 11067, 832},          // wc/mining/fish/cook/fletch anims
+        new int[] {},
         new String[] {"99 mining incoming", "this xp/hr though", "let's gooo",
                       "almost 99", "another lvl"}),
 
     SKILLER_CASUAL("casual skiller",
-        new int[] {867, 875, 6702, 832},
+        new int[] {},
         new String[] {"chill skill day", "just vibing", "no rush", "skilling > pking",
                       "anyone here for the same", "got my podcast going"}),
 
     SKILLER_NOOB("noob skiller",
-        new int[] {867, 875, 832},
+        new int[] {},
         new String[] {"how do i level fast?", "wait this xp is slow",
                       "is this still a thing", "what should i train next?",
                       "lol noob here", "first time playing"}),
 
     // === Combatant variants ===
     COMBATANT_PURE("pure",
-        new int[] {422, 423, 451, 7045, 7041},           // basic + ability anims
+        new int[] {},
         new String[] {"any 1v1?", "no def pure here", "pking time",
                       "looking for fights", "wildy soon"}),
 
     COMBATANT_TANK("tank",
-        new int[] {422, 423, 14393, 14418},               // melee + defensive
+        new int[] {},
         new String[] {"high def life", "tank build", "barely takes damage",
                       "shield > 2h", "def pots stacked"}),
 
     COMBATANT_HYBRID("hybrid",
-        new int[] {422, 423, 18177, 14393},               // melee + range + magic
+        new int[] {},
         new String[] {"hybrid clan", "looking for a tribrid team",
                       "switching styles", "ranger here", "mage build"}),
 
     // === Socialite variants ===
     SOCIALITE_GAMBLER("gambler",
-        new int[] {862, 9810},                            // throw + idle
+        new int[] {862, 866, 865, 861},                   // cheer/dance/clap/laugh
         new String[] {"55x2 dicing", "host 65x2", "trusted host", "hot dice",
                       "dicing here", "flower poker"}),
 
     SOCIALITE_GE_TRADER("ge trader",
-        new int[] {832, 6702},                            // talking-ish
+        new int[] {863, 864, 857, 855},                   // wave/beckon/think/yes
         new String[] {"buying logs 200ea", "selling sharks 950 each",
                       "pst me", "wts whip", "wtb dragon claws", "ge prices going up"}),
 
     SOCIALITE_BANKSTAND("bankstander",
-        new int[] {862, 9810, 1832},                      // wave/cheer/dance
+        new int[] {863, 862, 866, 858},                   // wave/cheer/dance/bow
         new String[] {"hi", "hello there", "anyone need help?", "cool gear",
                       "where do you train?", "nice cape"}),
 
     // === Minigamer variants ===
     MINIGAMER_RUSHER("rusher",
-        new int[] {422, 7045},
+        new int[] {862, 855, 865},                        // cheer/yes/clap
         new String[] {"castle wars rusher here", "let's flag", "saradomin team",
                       "soul wars next", "in the mood for a minigame"}),
 
     MINIGAMER_DEFENDER("defender",
-        new int[] {422, 14393},
+        new int[] {857, 856, 862},                        // think/no/cheer
         new String[] {"defending", "watch the flag", "zammy team",
                       "anyone with food?", "pots running low"});
 
