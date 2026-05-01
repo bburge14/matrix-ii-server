@@ -5,7 +5,6 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.types.path
 import com.google.inject.Guice
 import io.netty.buffer.ByteBufAllocator
-import org.openrs2.buffer.use
 import org.openrs2.cache.CacheModule
 import org.openrs2.cache.FlatFileStore
 import org.openrs2.cache.Store
@@ -41,12 +40,18 @@ public class FlatDiskPackCommand : CliktCommand(name = "pack") {
                         dst.create(archive)
                         val groups = src.list(archive)
                         for (group in groups) {
-                            src.read(archive, group).use { buf ->
+                            // Manual ref-counted release - cache-cli doesn't have
+                            // org.openrs2.buffer.use on its classpath, so use Netty's
+                            // standard try/finally + release() pattern instead.
+                            val buf = src.read(archive, group)
+                            try {
                                 dst.write(archive, group, buf)
                                 copied++
                                 if (copied % 5000 == 0L) {
                                     System.err.println("[pack] $copied groups (idx $archIdx/${archives.size}, archive $archive)")
                                 }
+                            } finally {
+                                buf.release()
                             }
                         }
                     }
