@@ -124,6 +124,13 @@ class MatrixAPI:
             body["category"] = category
         return self._post("/admin/citizens/spawn", body)
     def citizens_clear(self):        return self._post("/admin/citizens/clear")
+    def citizens_archetypes(self):   return self._get("/admin/citizens/archetypes")
+    def citizens_budget_get(self):   return self._get("/admin/citizens/budget")
+    def citizens_budget_set(self, slots):
+        return self._post("/admin/citizens/budget", {"slots": slots})
+    def citizens_budget_apply(self, include_manual=True):
+        return self._post("/admin/citizens/budget/apply",
+                          {"includeManual": "true" if include_manual else "false"})
 
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
@@ -186,7 +193,7 @@ class App(ctk.CTk):
                      font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
 
         self.tabs = {}
-        for name in ("Dashboard", "Bots", "Bot AI", "Players", "Server", "Backups", "Log", "Settings"):
+        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Players", "Server", "Backups", "Log", "Settings"):
             btn = ctk.CTkButton(self.sidebar, text=name, height=36,
                                 command=lambda n=name: self.show(n))
             btn.pack(fill="x", padx=10, pady=4)
@@ -204,6 +211,7 @@ class App(ctk.CTk):
         self.tabs["Dashboard"]["frame"] = DashboardFrame(self.content, self.api)
         self.tabs["Bots"]["frame"]      = BotsFrame(self.content, self.api)
         self.tabs["Bot AI"]["frame"]    = BotAIFrame(self.content, self.api)
+        self.tabs["Citizens"]["frame"]  = CitizensFrame(self.content, self.api)
         self.tabs["Players"]["frame"]   = PlayersFrame(self.content, self.api)
         self.tabs["Server"]["frame"]    = ServerFrame(self.content, self.api)
         self.tabs["Backups"]["frame"]   = BackupsFrame(self.content, self.api)
@@ -777,6 +785,298 @@ class BotsFrame(ctk.CTkFrame):
                 error_msg = str(e)
                 self.after(0, lambda: messagebox.showerror("Error", error_msg))
         threading.Thread(target=do, daemon=True).start()
+
+
+# ----- Citizens tab -----
+
+class CitizensFrame(ctk.CTkFrame):
+    """Population control for Citizen-tier (FSM-driven) bots.
+
+    Layout:
+      - Top row: Refresh / Apply Now / Spawn Quick / Clear All / live count
+      - Editable Treeview: archetype, count, x, y, plane, scatter, autospawn
+      - Per-row Edit (selects + opens editor) / Add Row / Delete Row
+      - Save Budget writes to data/citizen_budget.json on the server.
+    """
+    def __init__(self, master, api):
+        super().__init__(master)
+        self.api = api
+        self.archetypes = []   # list of {"name","label","category"}
+        self.slots = []        # list of dicts (mirror of server slot format)
+        self._dirty = False
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=20, pady=(20, 5))
+        ctk.CTkLabel(top, text="Citizens", font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        self.live_label = ctk.CTkLabel(top, text="—", font=ctk.CTkFont(size=12))
+        self.live_label.pack(side="left", padx=20)
+        self.dirty_label = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=11), text_color="#e0a93f")
+        self.dirty_label.pack(side="left", padx=10)
+
+        actions = ctk.CTkFrame(self)
+        actions.pack(fill="x", padx=20, pady=4)
+        ctk.CTkButton(actions, text="Refresh", width=80, command=self.refresh).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Apply Budget Now", width=140, fg_color="#1b6e3a",
+                      command=self._apply_budget).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Save Budget", width=110,
+                      command=self._save_budget).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Clear All Live", width=120, fg_color="#aa3030",
+                      command=self._clear_all).pack(side="left", padx=4)
+        ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
+        ctk.CTkButton(actions, text="+ Add Row", width=90,
+                      command=self._add_slot).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="− Delete Row", width=110,
+                      command=self._delete_selected).pack(side="left", padx=4)
+
+        # Quick-spawn (one-off, doesn't touch the saved budget)
+        quick = ctk.CTkFrame(self)
+        quick.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(quick, text="Quick Spawn:").pack(side="left", padx=4)
+        self.q_count = tk.StringVar(value="20")
+        ctk.CTkEntry(quick, textvariable=self.q_count, width=60).pack(side="left", padx=2)
+        self.q_category = tk.StringVar(value="mixed")
+        ctk.CTkOptionMenu(quick, values=["mixed","skiller","combatant","socialite","minigamer"],
+                          variable=self.q_category, width=110).pack(side="left", padx=2)
+        ctk.CTkLabel(quick, text=" at X").pack(side="left", padx=(8,2))
+        self.q_x = tk.StringVar(value="3164")
+        ctk.CTkEntry(quick, textvariable=self.q_x, width=70).pack(side="left", padx=2)
+        ctk.CTkLabel(quick, text="Y").pack(side="left", padx=(8,2))
+        self.q_y = tk.StringVar(value="3486")
+        ctk.CTkEntry(quick, textvariable=self.q_y, width=70).pack(side="left", padx=2)
+        ctk.CTkLabel(quick, text="P").pack(side="left", padx=(8,2))
+        self.q_plane = tk.StringVar(value="0")
+        ctk.CTkEntry(quick, textvariable=self.q_plane, width=40).pack(side="left", padx=2)
+        ctk.CTkButton(quick, text="Spawn", width=80, fg_color="#1b6e3a",
+                      command=self._quick_spawn).pack(side="left", padx=8)
+
+        # The slot table
+        tree_frame = ctk.CTkFrame(self)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        cols = ("archetype", "count", "x", "y", "plane", "scatter", "autospawn", "live")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", background="#2b2b2b", foreground="white",
+                        fieldbackground="#2b2b2b", borderwidth=0, rowheight=26)
+        style.configure("Treeview.Heading", background="#1f6aa5", foreground="white", borderwidth=0)
+        style.map("Treeview", background=[("selected", "#1f6aa5")])
+
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
+        widths = {"archetype":210, "count":60, "x":80, "y":80, "plane":50,
+                  "scatter":70, "autospawn":80, "live":60}
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=widths.get(c, 80), anchor="w")
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<Double-1>", self._edit_selected)
+
+    def on_show(self):
+        self.refresh()
+
+    def refresh(self):
+        def do():
+            try:
+                arch = self.api.citizens_archetypes()
+                budget = self.api.citizens_budget_get()
+                live = self.api.citizens()
+                self.after(0, lambda: self._apply_data(arch, budget, live))
+            except Exception as e:
+                self.after(0, lambda: self.live_label.configure(
+                    text=f"refresh failed: {e}", text_color="#cc3030"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply_data(self, arch_resp, budget_resp, live_resp):
+        self.archetypes = arch_resp.get("archetypes", []) if arch_resp else []
+        self.slots = budget_resp.get("slots", []) if budget_resp else []
+        live_total = live_resp.get("total", 0) if live_resp else 0
+        live_by_arch = (live_resp or {}).get("byArchetype", {})
+        self.live_label.configure(text=f"Live: {live_total}", text_color="#3fbf3f")
+        self._render_table(live_by_arch)
+        self._dirty = False
+        self.dirty_label.configure(text="")
+
+    def _render_table(self, live_by_arch):
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        for i, s in enumerate(self.slots):
+            name = s.get("archetype", "?")
+            self.tree.insert("", "end", iid=str(i), values=(
+                name,
+                s.get("count", 0),
+                s.get("x", 0),
+                s.get("y", 0),
+                s.get("plane", 0),
+                s.get("scatter", 8),
+                "yes" if s.get("autospawn", False) else "no",
+                live_by_arch.get(name, 0)
+            ))
+
+    def _mark_dirty(self):
+        self._dirty = True
+        self.dirty_label.configure(text="● unsaved changes")
+
+    def _add_slot(self):
+        # Default to a generic socialite at GE
+        new_slot = {
+            "archetype": (self.archetypes[0]["name"] if self.archetypes else "SOCIALITE_BANKSTAND"),
+            "count": 10, "x": 3164, "y": 3486, "plane": 0,
+            "scatter": 8, "autospawn": False
+        }
+        self.slots.append(new_slot)
+        self._mark_dirty()
+        self._render_table({})
+
+    def _delete_selected(self):
+        sel = self.tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        if 0 <= idx < len(self.slots):
+            del self.slots[idx]
+            self._mark_dirty()
+            self._render_table({})
+
+    def _edit_selected(self, _evt=None):
+        sel = self.tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        if not (0 <= idx < len(self.slots)): return
+        SlotEditor(self, self.slots[idx], self.archetypes, self._on_slot_edited).load(idx)
+
+    def _on_slot_edited(self, idx, updated):
+        self.slots[idx] = updated
+        self._mark_dirty()
+        self._render_table({})
+
+    def _save_budget(self):
+        def do():
+            try:
+                resp = self.api.citizens_budget_set(self.slots)
+                self.after(0, lambda: messagebox.showinfo("Saved",
+                    f"Budget saved: {resp.get('saved', '?')} slots"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Save failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply_budget(self):
+        def do():
+            try:
+                resp = self.api.citizens_budget_apply(include_manual=True)
+                spawned = resp.get("spawned", 0)
+                total = resp.get("total", 0)
+                self.after(0, lambda: messagebox.showinfo("Applied",
+                    f"Spawned {spawned} citizens (live total: {total})"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Apply failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _clear_all(self):
+        if not messagebox.askyesno("Clear", "Despawn ALL live citizens?"): return
+        def do():
+            try:
+                self.api.citizens_clear()
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Clear failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _quick_spawn(self):
+        try:
+            n = int(self.q_count.get())
+            x = int(self.q_x.get()); y = int(self.q_y.get()); p = int(self.q_plane.get())
+        except ValueError:
+            messagebox.showerror("Bad input", "count/x/y/plane must be numbers")
+            return
+        cat = self.q_category.get()
+        if cat == "mixed": cat = None
+        def do():
+            try:
+                resp = self.api.citizens_spawn(n, category=cat, x=x, y=y, plane=p, scatter=12)
+                self.after(0, lambda: messagebox.showinfo("Spawned",
+                    f"Spawned {resp.get('spawned',0)} (live total: {resp.get('total',0)})"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
+class SlotEditor(ctk.CTkToplevel):
+    """Edit a single budget slot's fields."""
+    def __init__(self, parent, slot, archetypes, on_save):
+        super().__init__(parent)
+        self.title("Edit Citizen Slot")
+        self.geometry("440x340")
+        self.on_save = on_save
+        self.slot = dict(slot)  # local copy
+
+        # archetype dropdown
+        ctk.CTkLabel(self, text="Archetype:").pack(anchor="w", padx=20, pady=(20,2))
+        self.arch_var = tk.StringVar(value=slot.get("archetype", ""))
+        names = [a["name"] for a in archetypes] if archetypes else [slot.get("archetype", "")]
+        ctk.CTkOptionMenu(self, variable=self.arch_var, values=names, width=380).pack(padx=20)
+
+        # count / scatter
+        row1 = ctk.CTkFrame(self, fg_color="transparent")
+        row1.pack(fill="x", padx=20, pady=8)
+        ctk.CTkLabel(row1, text="Target count:").pack(side="left")
+        self.count_var = tk.StringVar(value=str(slot.get("count", 10)))
+        ctk.CTkEntry(row1, textvariable=self.count_var, width=80).pack(side="left", padx=8)
+        ctk.CTkLabel(row1, text="Scatter:").pack(side="left", padx=(20,4))
+        self.scatter_var = tk.StringVar(value=str(slot.get("scatter", 8)))
+        ctk.CTkEntry(row1, textvariable=self.scatter_var, width=60).pack(side="left", padx=4)
+
+        # anchor x/y/plane
+        row2 = ctk.CTkFrame(self, fg_color="transparent")
+        row2.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(row2, text="Anchor X:").pack(side="left")
+        self.x_var = tk.StringVar(value=str(slot.get("x", 3164)))
+        ctk.CTkEntry(row2, textvariable=self.x_var, width=80).pack(side="left", padx=4)
+        ctk.CTkLabel(row2, text="Y:").pack(side="left", padx=(20,4))
+        self.y_var = tk.StringVar(value=str(slot.get("y", 3486)))
+        ctk.CTkEntry(row2, textvariable=self.y_var, width=80).pack(side="left", padx=4)
+        ctk.CTkLabel(row2, text="Plane:").pack(side="left", padx=(20,4))
+        self.plane_var = tk.StringVar(value=str(slot.get("plane", 0)))
+        ctk.CTkEntry(row2, textvariable=self.plane_var, width=40).pack(side="left", padx=4)
+
+        # autospawn
+        self.autospawn_var = tk.BooleanVar(value=bool(slot.get("autospawn", False)))
+        ctk.CTkCheckBox(self, text="Auto-spawn on server start",
+                        variable=self.autospawn_var).pack(anchor="w", padx=20, pady=10)
+
+        # buttons
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(side="bottom", fill="x", padx=20, pady=20)
+        ctk.CTkButton(btns, text="Cancel", width=80, command=self.destroy).pack(side="right", padx=4)
+        ctk.CTkButton(btns, text="Save", width=80, fg_color="#1b6e3a",
+                      command=self._save).pack(side="right", padx=4)
+
+        self.idx = -1
+
+    def load(self, idx):
+        self.idx = idx
+        self.lift()
+        self.grab_set()
+
+    def _save(self):
+        try:
+            updated = {
+                "archetype": self.arch_var.get(),
+                "count":   int(self.count_var.get()),
+                "x":       int(self.x_var.get()),
+                "y":       int(self.y_var.get()),
+                "plane":   int(self.plane_var.get()),
+                "scatter": int(self.scatter_var.get()),
+                "autospawn": bool(self.autospawn_var.get()),
+            }
+        except ValueError as e:
+            messagebox.showerror("Invalid", f"Numeric field error: {e}")
+            return
+        if self.on_save:
+            self.on_save(self.idx, updated)
+        self.destroy()
 
 
 # ----- Players tab -----

@@ -216,6 +216,22 @@ public class GameLauncher {
 			return;
 		}
 		Logger.log("Launcher", "Game Server took " + (Utils.currentTimeMillis() - currentTime) + " milli seconds to launch.");
+
+		// Citizen autospawn: ~10s after boot (give the world tick time to
+		// stabilize, region builder to settle), spawn any budget slots
+		// flagged autospawn=true. Manual-only slots wait for the admin to
+		// click 'Apply' in the panel.
+		com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
+			@Override public void run() {
+				try {
+					com.rs.bot.ambient.CitizenBudget.load();
+					int n = com.rs.bot.ambient.CitizenBudget.applyBudget(false);
+					Logger.log("Launcher", "Citizen autospawn: " + n + " spawned from budget");
+				} catch (Throwable t) {
+					System.err.println("[Launcher] Citizen autospawn failed: " + t);
+				}
+			}
+		}, 17); // ~10s at 600ms/tick
 		addAutoSavingTask();
 		addCleanMemoryTask();
 		addRecalculatePricesTask();

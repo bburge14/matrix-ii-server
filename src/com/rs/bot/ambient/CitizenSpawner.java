@@ -47,11 +47,27 @@ public final class CitizenSpawner {
      * @param scatter     radius in tiles to spread the spawn over
      * @return list of newly-spawned bots
      */
+    /** Max spawns to attempt synchronously in one call. Larger batches get
+     *  scheduled across ticks via spawnBatchRateLimited to avoid blocking
+     *  the world tick (each hydrate() is heavy - 100 in a loop locked the
+     *  server for several seconds and dropped real-player sessions). */
+    private static final int SYNC_SPAWN_CAP = 10;
+
     public static List<AIPlayer> spawnBatch(int count, String category,
                                              WorldTile anchor, int scatter) {
         if (count <= 0 || anchor == null) return Collections.emptyList();
         count = Math.max(1, Math.min(count, 500));
         scatter = Math.max(2, scatter);
+
+        // Above the sync cap, queue the rest for the next ticks so we don't
+        // block the world thread.
+        if (count > SYNC_SPAWN_CAP) {
+            int now = SYNC_SPAWN_CAP;
+            int later = count - SYNC_SPAWN_CAP;
+            List<AIPlayer> immediate = spawnBatch(now, category, anchor, scatter);
+            scheduleRemaining(later, category, anchor, scatter);
+            return immediate;
+        }
 
         List<AIPlayer> out = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -110,6 +126,26 @@ public final class CitizenSpawner {
             + (category == null ? "mixed" : category) + " citizens at " + anchor
             + " (live total: " + liveCitizens.size() + ")");
         return out;
+    }
+
+    /**
+     * Schedule the remaining spawns across future ticks so we don't lock the
+     * world thread on a single big batch. Each tick processes up to
+     * SYNC_SPAWN_CAP - bringing 100 citizens online takes ~10 ticks (~6s)
+     * instead of jamming all 100 into a single tick.
+     */
+    private static void scheduleRemaining(final int remaining, final String category,
+                                           final WorldTile anchor, final int scatter) {
+        com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
+            int left = remaining;
+            @Override public void run() {
+                int batch = Math.min(left, SYNC_SPAWN_CAP);
+                if (batch <= 0) { stop(); return; }
+                spawnBatch(batch, category, anchor, scatter);
+                left -= batch;
+                if (left <= 0) stop();
+            }
+        }, 1, 1); // start next tick, repeat every tick
     }
 
     /** Despawn every Citizen we've spawned. */

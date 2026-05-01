@@ -95,6 +95,10 @@ public final class AdminHttpServer {
             server.createContext("/admin/citizens",         auth(new CitizensListHandler()));
             server.createContext("/admin/citizens/spawn",   auth(postOnly(new CitizensSpawnHandler())));
             server.createContext("/admin/citizens/clear",   auth(postOnly(new CitizensClearHandler())));
+            // Citizen population budget (persistent config)
+            server.createContext("/admin/citizens/budget",       auth(new CitizensBudgetHandler()));
+            server.createContext("/admin/citizens/budget/apply", auth(postOnly(new CitizensBudgetApplyHandler())));
+            server.createContext("/admin/citizens/archetypes",   auth(new CitizensArchetypesHandler()));
 
             // World tick profiler (Phase 1.C step 1)
             server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
@@ -1279,6 +1283,163 @@ public final class AdminHttpServer {
             int removed = com.rs.bot.ambient.CitizenSpawner.clearAll();
             sendText(ex, 200, "{\"ok\":true,\"removed\":" + removed + "}");
         }
+    }
+
+    /**
+     * GET  /admin/citizens/budget  - returns the slot list as JSON
+     * POST /admin/citizens/budget  - body is {"slots":[...]} - replaces config + saves
+     */
+    private static class CitizensBudgetHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String method = ex.getRequestMethod();
+            if ("GET".equalsIgnoreCase(method)) {
+                java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> slots = com.rs.bot.ambient.CitizenBudget.getSlots();
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"slots\":[");
+                for (int i = 0; i < slots.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(slots.get(i).toJson());
+                }
+                sb.append("]}");
+                sendText(ex, 200, sb.toString());
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(method)) {
+                sendText(ex, 405, "{\"ok\":false,\"error\":\"GET or POST only\"}");
+                return;
+            }
+            // POST: replace slots with body content. Body format matches the GET output:
+            //   {"slots":[{"archetype":"X","count":N,"x":...,"y":...,"plane":...,"scatter":...,"autospawn":bool}, ...]}
+            String body = readBody(ex);
+            try {
+                java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> parsed = parseBudgetSlots(body);
+                com.rs.bot.ambient.CitizenBudget.setSlots(parsed);
+                sendText(ex, 200, "{\"ok\":true,\"saved\":" + parsed.size() + "}");
+            } catch (Throwable t) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /** POST /admin/citizens/budget/apply - spawn enough to hit each slot's target.
+     *  Optional body field "includeManual": true to also fill non-autospawn slots. */
+    private static class CitizensBudgetApplyHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            boolean includeManual = "true".equalsIgnoreCase(body.getOrDefault("includeManual", "true"));
+            try {
+                int spawned = com.rs.bot.ambient.CitizenBudget.applyBudget(includeManual);
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                sendText(ex, 200, "{\"ok\":true,\"spawned\":" + spawned + ",\"total\":" + total + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /** GET /admin/citizens/archetypes - returns the list of available archetype names
+     *  + their categories so the panel can populate dropdowns. */
+    private static class CitizensArchetypesHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"archetypes\":[");
+            com.rs.bot.ambient.AmbientArchetype[] all = com.rs.bot.ambient.AmbientArchetype.values();
+            for (int i = 0; i < all.length; i++) {
+                if (i > 0) sb.append(",");
+                com.rs.bot.ambient.AmbientArchetype a = all[i];
+                String cat = a.isSkiller() ? "skiller"
+                          : a.isCombatant() ? "combatant"
+                          : a.isSocialite() ? "socialite"
+                          : a.isMinigamer() ? "minigamer"
+                          : "other";
+                sb.append("{\"name\":\"").append(a.name())
+                  .append("\",\"label\":\"").append(jsonEscape(a.label))
+                  .append("\",\"category\":\"").append(cat).append("\"}");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    /** Lightweight JSON parse for budget body: {"slots":[{...},{...}]}.
+     *  Reuses the same opportunistic parser style as CitizenBudget. */
+    private static java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> parseBudgetSlots(String json) {
+        java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> out = new java.util.ArrayList<>();
+        if (json == null) return out;
+        int arrStart = json.indexOf('[');
+        int arrEnd = json.lastIndexOf(']');
+        if (arrStart < 0 || arrEnd < 0 || arrEnd <= arrStart) return out;
+        String arr = json.substring(arrStart + 1, arrEnd);
+        int depth = 0;
+        StringBuilder cur = new StringBuilder();
+        for (int i = 0; i < arr.length(); i++) {
+            char c = arr.charAt(i);
+            if (c == '{') depth++;
+            if (c == '}') {
+                depth--;
+                cur.append(c);
+                if (depth == 0) {
+                    com.rs.bot.ambient.CitizenBudget.Slot s = parseOneSlot(cur.toString());
+                    if (s != null) out.add(s);
+                    cur.setLength(0);
+                }
+                continue;
+            }
+            if (depth == 0 && (c == ',' || Character.isWhitespace(c))) continue;
+            cur.append(c);
+        }
+        return out;
+    }
+
+    private static com.rs.bot.ambient.CitizenBudget.Slot parseOneSlot(String obj) {
+        com.rs.bot.ambient.CitizenBudget.Slot s = new com.rs.bot.ambient.CitizenBudget.Slot();
+        s.archetype = bExtractStr(obj, "archetype");
+        s.count   = bExtractInt(obj, "count", 0);
+        s.x       = bExtractInt(obj, "x", 0);
+        s.y       = bExtractInt(obj, "y", 0);
+        s.plane   = bExtractInt(obj, "plane", 0);
+        s.scatter = bExtractInt(obj, "scatter", 8);
+        s.autospawn = bExtractBool(obj, "autospawn", false);
+        return s.archetype == null ? null : s;
+    }
+
+    private static String bExtractStr(String obj, String key) {
+        String marker = "\"" + key + "\":\"";
+        int i = obj.indexOf(marker);
+        if (i < 0) return null;
+        i += marker.length();
+        int end = obj.indexOf('"', i);
+        return end < 0 ? null : obj.substring(i, end);
+    }
+
+    private static int bExtractInt(String obj, String key, int def) {
+        String marker = "\"" + key + "\":";
+        int i = obj.indexOf(marker);
+        if (i < 0) return def;
+        i += marker.length();
+        int end = i;
+        while (end < obj.length() && (obj.charAt(end) == '-' || Character.isDigit(obj.charAt(end)))) end++;
+        if (end == i) return def;
+        try { return Integer.parseInt(obj.substring(i, end)); }
+        catch (Throwable t) { return def; }
+    }
+
+    private static boolean bExtractBool(String obj, String key, boolean def) {
+        String marker = "\"" + key + "\":";
+        int i = obj.indexOf(marker);
+        if (i < 0) return def;
+        i += marker.length();
+        if (obj.startsWith("true", i)) return true;
+        if (obj.startsWith("false", i)) return false;
+        return def;
+    }
+
+    /** Read raw request body as a UTF-8 string. */
+    private static String readBody(HttpExchange ex) throws IOException {
+        java.io.InputStream is = ex.getRequestBody();
+        java.io.ByteArrayOutputStream bout = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[2048];
+        int n;
+        while ((n = is.read(buf)) > 0) bout.write(buf, 0, n);
+        return bout.toString("UTF-8");
     }
 
     // ===== Profiler handlers =====
