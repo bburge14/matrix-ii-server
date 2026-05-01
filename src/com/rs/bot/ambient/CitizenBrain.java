@@ -184,13 +184,35 @@ public class CitizenBrain extends BotBrain {
     }
 
     private void tickInteracting(AIPlayer bot) {
-        // Stand next to a real world object/NPC and animate. Refresh the
-        // target each interacting tick so a felled tree / dead npc / despawned
-        // fishing spot doesn't lock the citizen into an empty animation.
+        // If we have a TrainingMethods.Method, fire the SAME real Action
+        // Legends fire. This is the key parity move: Citizens chop real
+        // trees, gain real XP, drop real logs, take real damage, can die.
+        // Difference vs Legends is purely WHICH method got picked
+        // (random for citizens vs goal-ranked for Legends).
+        if (currentMethod != null) {
+            try {
+                switch (currentMethod.kind) {
+                    case WOODCUTTING: tryStartWoodcutting(currentMethod); return;
+                    case MINING:      tryStartMining(currentMethod);      return;
+                    case FISHING:     tryStartFishing(currentMethod);     return;
+                    case COMBAT:      tryStartCombat(currentMethod);      return;
+                    case THIEVING:    tryStartThieving(currentMethod);    return;
+                    case FIREMAKING:  tryStartFiremaking(currentMethod);  return;
+                    case COOKING:     tryStartCooking(currentMethod);     return;
+                    case SMELTING:    tryStartSmelting(currentMethod);    return;
+                    case CRAFTING:    tryStartCrafting(currentMethod);    return;
+                    case PRAYER:      tryStartPrayer(currentMethod);      return;
+                }
+            } catch (Throwable t) {
+                debug(bot, "tryStart " + currentMethod.kind + " threw: " + t);
+            }
+        }
+
+        // Fallback: bare scanner + animate for archetypes without method
+        // (socialites at bank booths, minigamers near npcs).
         if (faceAndAnimateTarget(bot)) return;
-        // Fallback: if we can't find a target nearby, just play the anim
-        // in place. That's the old behaviour - looks like skill training in
-        // mid-air but at least keeps the citizen visually active.
+
+        // Last-resort animate-in-place so citizen at least looks active.
         int anim = archetype.randomInteractAnimation();
         if (anim > 0) {
             try { bot.setNextAnimation(new Animation(anim)); }

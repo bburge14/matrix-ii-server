@@ -1036,7 +1036,7 @@ public class BotBrain {
         }
     }
 
-    private void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
             if (lvl < method.minLevel) {
@@ -1088,7 +1088,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("offering bones");
     }
 
-    private void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
             if (lvl < method.minLevel) {
@@ -1119,7 +1119,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("cutting some gems");
     }
 
-    private void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
             if (lvl < method.minLevel) {
@@ -1167,7 +1167,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("smelting bars");
     }
 
-    private void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
             if (lvl < method.minLevel) {
@@ -1218,7 +1218,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("cooking up dinner");
     }
 
-    private void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
             if (lvl < method.minLevel) {
@@ -1398,7 +1398,7 @@ public class BotBrain {
         return m.fishDef.toString().toLowerCase().replace('_', ' ');
     }
 
-    private void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method.npcIds == null || method.npcIds.length == 0) {
             lastDiagnostic = "thieving: no npc ids in method";
             return;
@@ -1444,7 +1444,7 @@ public class BotBrain {
         if (Utils.random(100) < 25) say("nicked another one");
     }
 
-    private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
@@ -1494,7 +1494,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
 
-    private void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
@@ -1549,7 +1549,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(miningChatter());
     }
 
-    private void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
@@ -1596,7 +1596,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(fishingChatter());
     }
 
-    private void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
         // Retreat first if we're low on HP. Eat from inventory if we have
         // food, otherwise stop attacking and walk back to safety.
         if (handleLowHpRetreat()) return;
