@@ -2422,6 +2422,46 @@ public final class Commands {
 		return true;
 	    }
 
+	    case "citizeninfo": {
+		// Dump per-Citizen state to chat. Shows archetype, FSM state,
+		// current TrainingMethod (and its location), and proximity to it.
+		// Use this to verify the role->method picker is working.
+		java.util.List<com.rs.bot.AIPlayer> live = com.rs.bot.ambient.CitizenSpawner.getLive();
+		int max = cmd.length >= 2 ? Math.min(50, parseIntOr(cmd[1], 10)) : 10;
+		int shown = 0;
+		java.util.Map<String,Integer> archCount = new java.util.TreeMap<>();
+		java.util.Map<String,Integer> stateCount = new java.util.TreeMap<>();
+		java.util.Map<String,Integer> methodCount = new java.util.TreeMap<>();
+		int methodless = 0;
+		for (com.rs.bot.AIPlayer b : live) {
+		    if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
+		    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
+		    archCount.merge(cb.getArchetype() == null ? "?" : cb.getArchetype().name(), 1, Integer::sum);
+		    stateCount.merge(cb.getState() == null ? "?" : cb.getState().name(), 1, Integer::sum);
+		    com.rs.bot.ai.TrainingMethods.Method m = cb.getCurrentMethod();
+		    if (m == null) methodless++;
+		    else methodCount.merge(m.description, 1, Integer::sum);
+		    if (shown < max) {
+			String mDesc = m == null ? "none"
+			    : m.description + " @" + m.location.getX() + "," + m.location.getY();
+			player.getPackets().sendPanelBoxMessage("[Citizen] " + b.getDisplayName()
+			    + " arch=" + (cb.getArchetype() == null ? "?" : cb.getArchetype().name())
+			    + " state=" + cb.getState()
+			    + " method=" + mDesc
+			    + " @" + b.getX() + "," + b.getY());
+			shown++;
+		    }
+		}
+		player.getPackets().sendPanelBoxMessage("--- Citizens summary ---");
+		player.getPackets().sendPanelBoxMessage("by archetype: " + archCount);
+		player.getPackets().sendPanelBoxMessage("by state: " + stateCount);
+		player.getPackets().sendPanelBoxMessage("methodless: " + methodless
+		    + " (skip if archetype = socialite/minigamer)");
+		player.getPackets().sendPanelBoxMessage("top methods: "
+		    + topN(methodCount, 5));
+		return true;
+	    }
+
 	    case "profilestart": {
 		// Per-phase WorldThread timing - dumps to stdout every 100 ticks (~60s).
 		// Use this BEFORE multi-threading work so we know the actual hot loops.
@@ -3771,5 +3811,26 @@ public final class Commands {
      */
     private Commands() {
 
+    }
+
+    /** Parse a string as int with a fallback default. */
+    private static int parseIntOr(String s, int def) {
+        if (s == null) return def;
+        try { return Integer.parseInt(s.trim()); }
+        catch (Throwable t) { return def; }
+    }
+
+    /** Format the top N entries of a count map as "k=v, k=v" sorted desc by value. */
+    private static String topN(java.util.Map<String, Integer> counts, int n) {
+        java.util.List<java.util.Map.Entry<String, Integer>> sorted = new java.util.ArrayList<>(counts.entrySet());
+        sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (java.util.Map.Entry<String, Integer> e : sorted) {
+            if (i++ >= n) break;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.getKey()).append("=").append(e.getValue());
+        }
+        return sb.length() == 0 ? "(none)" : sb.toString();
     }
 }

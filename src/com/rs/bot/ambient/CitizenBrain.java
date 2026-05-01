@@ -59,6 +59,23 @@ public class CitizenBrain extends BotBrain {
     private long afkUntilMs = 0;
     private long panicCooldownTicks = 0;
 
+    /**
+     * Currently-assigned training method. Citizens consume the same
+     * TrainingMethods table Legends do, but pick a method at random
+     * (no goal-driven scoring) and animate at it instead of firing real
+     * actions. Stays null for archetypes with no matching kinds (socialite,
+     * pure-minigamer) - those fall back to bare-scanner behaviour.
+     */
+    private com.rs.bot.ai.TrainingMethods.Method currentMethod;
+    /** How many state cycles have elapsed since we picked currentMethod.
+     *  Re-pick after METHOD_REPICK_CYCLES so citizens roam between locations. */
+    private int methodCyclesElapsed = 0;
+    /** ~10 INTERACTING/IDLE cycles before re-picking. With ~30s per cycle
+     *  this rotates a citizen through a new method every 3-5 minutes -
+     *  similar pacing to a real player's "okay, let's try a different
+     *  spot" decision. */
+    private static final int METHOD_REPICK_CYCLES = 10;
+
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
         this.archetype = archetype;
@@ -182,127 +199,212 @@ public class CitizenBrain extends BotBrain {
     }
 
     /**
-     * Pick a real interaction destination based on archetype. Returns null if
-     * nothing's available in the home radius - caller falls back to random.
+     * Pick a real interaction destination via the SAME TrainingMethods data
+     * Legends consume. The flow:
+     *   1) If we don't have a current method, pick one at random from the
+     *      bot's applicable pool (filtered by archetype kinds + bot stats).
+     *   2) Return method.location as the travel destination.
+     *
+     * Falls back to bare-scanner behaviour for archetypes that don't have
+     * matching method kinds (socialite at GE booth, etc).
      */
     private WorldTile findInteractionDestination(AIPlayer bot) {
+        // Try the TrainingMethods route first (shared with Legends)
+        if (currentMethod == null || ++methodCyclesElapsed >= METHOD_REPICK_CYCLES) {
+            com.rs.bot.ai.TrainingMethods.Method old = currentMethod;
+            currentMethod = pickRandomMethodForRole(bot);
+            methodCyclesElapsed = 0;
+            if (currentMethod != null) {
+                debug(bot, "picked method '" + currentMethod.description + "' @ "
+                    + currentMethod.location.getX() + "," + currentMethod.location.getY()
+                    + (old == null ? " (initial)" : " (was: " + old.description + ")"));
+            } else if (old != null) {
+                debug(bot, "no applicable method - cleared previous '" + old.description + "'");
+            } else {
+                debug(bot, "no applicable method for role " + archetype);
+            }
+        }
+        if (currentMethod != null && currentMethod.location != null) {
+            return currentMethod.location;
+        }
+
+        // Fallback: archetypes without matching method kinds (socialites,
+        // bankstanders) hit the world objects directly via name match.
         try {
             int radius = Math.max(homeRadius, 12);
-            switch (archetype) {
-                case SKILLER_EFFICIENT:
-                case SKILLER_CASUAL:
-                case SKILLER_NOOB: {
-                    // Pick one of the gathering targets at random
-                    int pick = Utils.random(3);
-                    if (pick == 0) {
-                        com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
-                            com.rs.bot.ai.EnvironmentScanner.findNearestTree(homeAnchor, radius);
-                        if (tm != null && tm.object != null) return tileNextTo(tm.object);
-                    } else if (pick == 1) {
-                        com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
-                            com.rs.bot.ai.EnvironmentScanner.findNearestRock(homeAnchor, radius);
-                        if (rm != null && rm.object != null) return tileNextTo(rm.object);
-                    } else {
-                        com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
-                            com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(homeAnchor, radius);
-                        if (fm != null && fm.npc != null) return tileNextTo(fm.npc);
-                    }
-                    break;
-                }
-                case COMBATANT_PURE:
-                case COMBATANT_TANK:
-                case COMBATANT_HYBRID:
-                case MINIGAMER_RUSHER:
-                case MINIGAMER_DEFENDER: {
-                    // Walk toward any nearby non-aggressive NPC. We don't
-                    // actually engage combat - just stand near to look like
-                    // we're contemplating an attack.
-                    com.rs.game.npc.NPC n =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestNPC(homeAnchor, radius);
-                    if (n != null) return tileNextTo(n);
-                    break;
-                }
-                case SOCIALITE_BANKSTAND:
-                case SOCIALITE_GE_TRADER:
-                case SOCIALITE_GAMBLER: {
-                    // Bank booth / GE clerk. Generic name match against
-                    // common words.
-                    com.rs.game.WorldObject o =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
-                            homeAnchor, radius, "bank booth", "grand exchange", "ge clerk");
-                    if (o != null) return tileNextTo(o);
-                    break;
-                }
+            if (archetype.isSocialite()) {
+                com.rs.game.WorldObject o =
+                    com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+                        homeAnchor, radius, "bank booth", "grand exchange", "ge clerk");
+                if (o != null) return tileNextTo(o);
+            }
+            if (archetype.isMinigamer()) {
+                com.rs.game.npc.NPC n =
+                    com.rs.bot.ai.EnvironmentScanner.findNearestNPC(homeAnchor, radius);
+                if (n != null) return tileNextTo(n);
             }
         } catch (Throwable ignored) {}
         return null;
     }
 
     /**
+     * Pick a TrainingMethods.Method at random from the pool of methods
+     * compatible with this citizen's archetype + stats. The "random"
+     * here is intentional - Citizens don't optimize like Legends do;
+     * they roam through level-appropriate methods to look populated.
+     *
+     * Filters:
+     *   - method.kind must match one of the role's allowed kinds
+     *   - method.isApplicable(bot) gates on level + items + danger
+     *
+     * Returns null when nothing applies (e.g. archetype with no kind
+     * mapping, or bot's stats don't qualify for any method yet).
+     */
+    private com.rs.bot.ai.TrainingMethods.Method pickRandomMethodForRole(AIPlayer bot) {
+        java.util.Set<com.rs.bot.ai.TrainingMethods.Kind> allowedKinds = allowedKindsFor(archetype);
+        if (allowedKinds.isEmpty()) return null;
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
+        for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
+            if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
+            if (m.location == null) continue;
+            try {
+                if (!m.isApplicable(bot)) continue;
+            } catch (Throwable ignored) { continue; }
+            applicable.add(m);
+        }
+        if (applicable.isEmpty()) return null;
+        return applicable.get(Utils.random(applicable.size()));
+    }
+
+    /**
+     * Map an AmbientArchetype to the set of TrainingMethods.Kind values
+     * that "fit" the role. Skiller does WC/Mining/Fishing/Cooking/etc
+     * (no combat). Combatant does COMBAT (and not gathering - they may
+     * have skill levels but the role's flavor is fighting).
+     */
+    private static java.util.Set<com.rs.bot.ai.TrainingMethods.Kind> allowedKindsFor(AmbientArchetype arch) {
+        java.util.EnumSet<com.rs.bot.ai.TrainingMethods.Kind> set =
+            java.util.EnumSet.noneOf(com.rs.bot.ai.TrainingMethods.Kind.class);
+        if (arch == null) return set;
+        if (arch.isSkiller()) {
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.MINING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.FISHING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.COOKING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.FIREMAKING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.CRAFTING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.SMELTING);
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.PRAYER);
+        }
+        if (arch.isCombatant()) {
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.COMBAT);
+        }
+        return set;
+    }
+
+    /**
      * Find a real interaction target near the bot, face it, and play the
-     * archetype animation. Returns true if we found one, false otherwise.
+     * archetype animation. When we have a currentMethod, scan for THAT
+     * method's specific resource (so a willow-method skiller doesn't
+     * randomly chop a regular tree if both are nearby). Falls back to
+     * generic scanning + name-match for socialites/minigamers.
      */
     private boolean faceAndAnimateTarget(AIPlayer bot) {
         try {
-            int radius = 4; // close-range scan - bot should already be at the target
-            switch (archetype) {
-                case SKILLER_EFFICIENT:
-                case SKILLER_CASUAL:
-                case SKILLER_NOOB: {
+            int radius = 5; // close-range - bot should already be at the target
+            // === TrainingMethods route (shared with Legends) ===
+            if (currentMethod != null) {
+                com.rs.bot.ai.TrainingMethods.Method m = currentMethod;
+                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING) {
                     com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, radius);
+                        com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, radius, m.treeDef);
                     if (tm != null && tm.object != null) {
                         try { bot.faceObject(tm.object); } catch (Throwable ignored) {}
                         playAnim(bot);
                         return true;
                     }
+                } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.MINING) {
                     com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, radius);
+                        com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, radius, m.rockDef);
                     if (rm != null && rm.object != null) {
                         try { bot.faceObject(rm.object); } catch (Throwable ignored) {}
                         playAnim(bot);
                         return true;
                     }
+                } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.FISHING) {
                     com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, radius);
+                        com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, radius, m.fishDef);
                     if (fm != null && fm.npc != null) {
                         try { bot.setNextFaceEntity(fm.npc); } catch (Throwable ignored) {}
                         playAnim(bot);
                         return true;
                     }
-                    break;
-                }
-                case COMBATANT_PURE:
-                case COMBATANT_TANK:
-                case COMBATANT_HYBRID:
-                case MINIGAMER_RUSHER:
-                case MINIGAMER_DEFENDER: {
-                    com.rs.game.npc.NPC n =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius);
-                    if (n != null) {
-                        try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
-                        playAnim(bot);
-                        return true;
+                } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT
+                        || m.kind == com.rs.bot.ai.TrainingMethods.Kind.THIEVING) {
+                    if (m.npcIds != null && m.npcIds.length > 0) {
+                        com.rs.game.npc.NPC n =
+                            com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius, m.npcIds);
+                        if (n != null) {
+                            try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
+                            playAnim(bot);
+                            return true;
+                        }
                     }
-                    break;
+                } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COOKING
+                        || m.kind == com.rs.bot.ai.TrainingMethods.Kind.SMELTING
+                        || m.kind == com.rs.bot.ai.TrainingMethods.Kind.PRAYER
+                        || m.kind == com.rs.bot.ai.TrainingMethods.Kind.FIREMAKING
+                        || m.kind == com.rs.bot.ai.TrainingMethods.Kind.CRAFTING) {
+                    // No specific def to match - just animate in place for now.
+                    // (cooking range / furnace / altar object scan can be added
+                    // when method.requiredObjects is wired through.)
+                    playAnim(bot);
+                    return true;
                 }
-                case SOCIALITE_BANKSTAND:
-                case SOCIALITE_GE_TRADER:
-                case SOCIALITE_GAMBLER: {
-                    com.rs.game.WorldObject o =
-                        com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
-                            bot, radius, "bank booth", "grand exchange", "ge clerk");
-                    if (o != null) {
-                        try { bot.faceObject(o); } catch (Throwable ignored) {}
-                        playAnim(bot);
-                        return true;
-                    }
-                    break;
+                // currentMethod's resource not findable here - log + fall through
+                // to generic scanner. Fires if the method's location is right
+                // but the world object/NPC is missing - exactly what BotAuditor
+                // catches for Legends. Same data, same diagnostic.
+                debug(bot, "method " + m.description + " has no nearby " + m.kind
+                    + " resource - falling back to scanner");
+            }
+
+            // === Fallback generic-scanner route (no method, or method missed) ===
+            if (archetype.isSocialite()) {
+                com.rs.game.WorldObject o =
+                    com.rs.bot.ai.EnvironmentScanner.findNearestObjectByName(
+                        bot, radius, "bank booth", "grand exchange", "ge clerk");
+                if (o != null) {
+                    try { bot.faceObject(o); } catch (Throwable ignored) {}
+                    playAnim(bot);
+                    return true;
+                }
+            }
+            if (archetype.isMinigamer()) {
+                com.rs.game.npc.NPC n =
+                    com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius);
+                if (n != null) {
+                    try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
+                    playAnim(bot);
+                    return true;
                 }
             }
         } catch (Throwable ignored) {}
         return false;
     }
+
+    /**
+     * Per-citizen debug line into the audit log. Shared with Legend logging
+     * so both tiers' activity flows into one tail-able stream.
+     */
+    private void debug(AIPlayer bot, String msg) {
+        try {
+            com.rs.bot.AuditLog.log("[Citizen] " + bot.getDisplayName()
+                + " (" + archetype + ") " + msg);
+        } catch (Throwable ignored) {}
+    }
+
+    public com.rs.bot.ai.TrainingMethods.Method getCurrentMethod() { return currentMethod; }
 
     private void playAnim(AIPlayer bot) {
         int anim = archetype.randomInteractAnimation();

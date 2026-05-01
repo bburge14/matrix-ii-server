@@ -111,7 +111,7 @@ public final class BotAuditor {
      * a continuous picture of what bots are doing right now.
      */
     public static void dumpOnlineBots() {
-        int total = 0, stuck = 0, working = 0, idle = 0;
+        int totalLegend = 0, totalCitizen = 0, stuck = 0, working = 0, idle = 0;
         AuditLog.log("--- bot state snapshot ---");
         try {
             for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
@@ -119,7 +119,27 @@ public final class BotAuditor {
                 AIPlayer bot = (AIPlayer) p;
                 BotBrain brain = bot.getBrain();
                 if (brain == null) continue;
-                total++;
+
+                // Citizens (CitizenBrain) and Legends (BotBrain) split here -
+                // they share the AIPlayer infrastructure but have very
+                // different state to dump.
+                if (brain instanceof com.rs.bot.ambient.CitizenBrain) {
+                    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) brain;
+                    totalCitizen++;
+                    com.rs.bot.ai.TrainingMethods.Method m = cb.getCurrentMethod();
+                    String mDesc = m == null ? "none"
+                        : m.description + " @" + m.location.getX() + "," + m.location.getY();
+                    AuditLog.log("citizen " + bot.getDisplayName()
+                        + " cb=" + bot.getSkills().getCombatLevel()
+                        + " @" + bot.getX() + "," + bot.getY() + "," + bot.getPlane()
+                        + " arch=" + (cb.getArchetype() == null ? "?" : cb.getArchetype().name())
+                        + " state=" + cb.getState()
+                        + " method=" + mDesc);
+                    continue;
+                }
+
+                // Legend bot dump - the original behaviour, unchanged.
+                totalLegend++;
                 String diag = brain.getLastDiagnostic() == null ? "" : brain.getLastDiagnostic();
                 String method = brain.getLastMethod() == null ? "none" : brain.getLastMethod().description;
                 com.rs.bot.ai.Goal g = brain.getCurrentGoal();
@@ -130,7 +150,7 @@ public final class BotAuditor {
                 if (isWorking) working++;
                 if (diag.contains("stuck") || diag.contains("no ") || diag.contains("broke")) stuck++;
                 if (method.equals("none") || diag.isEmpty()) idle++;
-                AuditLog.log("bot " + bot.getDisplayName()
+                AuditLog.log("legend " + bot.getDisplayName()
                     + " cb=" + bot.getSkills().getCombatLevel()
                     + " @" + bot.getX() + "," + bot.getY() + "," + bot.getPlane()
                     + " goal=" + goal
@@ -141,7 +161,8 @@ public final class BotAuditor {
         } catch (Throwable t) {
             AuditLog.log("dumpOnlineBots threw: " + t);
         }
-        AuditLog.log("--- end snapshot: " + total + " bots, " + working + " working, " + stuck + " stuck, " + idle + " idle ---");
+        AuditLog.log("--- end snapshot: legends=" + totalLegend + " (working=" + working
+            + " stuck=" + stuck + " idle=" + idle + "), citizens=" + totalCitizen + " ---");
     }
 
     /**
