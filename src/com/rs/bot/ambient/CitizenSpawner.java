@@ -129,9 +129,12 @@ public final class CitizenSpawner {
         //   - skill checks (Mining/Fishing/etc level requirements) pass
         int targetCb = pickCombatLevel(arch);
         String archetypeStr = archetypeToLoadoutString(arch);
+        // "set" mode = build to the target combat level via the archetype.
+        // "default" mode RETURNS NULL (preserves vanilla level-1 stats), which
+        // is why earlier Citizens were spawning at cb 3 regardless of role.
         int[] profile;
         try {
-            profile = com.rs.bot.BotSkillProfile.build("default", targetCb, archetypeStr);
+            profile = com.rs.bot.BotSkillProfile.build("set", targetCb, archetypeStr);
         } catch (Throwable t) {
             System.err.println("[CitizenSpawner] BotSkillProfile.build failed: " + t);
             profile = null;
