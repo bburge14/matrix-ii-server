@@ -170,3 +170,18 @@
 // ^ DZ Lobby: Head Farmer Jones (Farming)
 14864 - 3794 4390 1
 // ^ DZ Lobby: Ayleth Beaststalker (Hunter)
+
+// === Canonical-world thieving spawns ===
+// Bots in TrainingMethods canonical entries (Wilderness rogue, Pollnivneach
+// thug, Ardougne master farmer) had no real targets - only Burthorpe DZ
+// spawns existed. Adding these so the canonical training spots actually
+// have NPCs to pickpocket. Keeps the DZ cluster as a fallback.
+187 - 3024 3700 0
+// ^ Rogue (Wilderness rogue camp)
+187 - 3027 3702 0
+1905 - 3354 2974 0
+// ^ Menaphite thug (Pollnivneach south)
+1905 - 3357 2976 0
+2234 - 2659 3380 0
+// ^ Master farmer (Ardougne market)
+2234 - 2661 3381 0

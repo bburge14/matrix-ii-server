@@ -419,10 +419,10 @@ public final class TrainingMethods {
             .npcs(41, 1017).build());
         ALL.add(b("Train combat - Goblin Village", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 25).at(2956, 3506).xp(11000).cb(1)
-            .npcs(100, 101, 102, 297, 298, 299, 4493).build());
-        ALL.add(b("Train combat - Lumbridge rats", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(1, 15).at(3187, 3270).xp(8000).cb(1)
-            .npcs(2854, 2855).build());
+            .npcs(4481, 4482, 4485, 4486, 4488, 4491, 4493).build());
+        ALL.add(b("Train combat - Stronghold rats lvl 1", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 15).at(2155, 5092).xp(8000).cb(1)
+            .npcs(2854, 2855, 2856).build());
 
         // Tier 2 (cb 30-60): guards, knights, hill giants
         ALL.add(b("Train combat - Falador guards", Kind.COMBAT)
@@ -431,9 +431,9 @@ public final class TrainingMethods {
         ALL.add(b("Train combat - Edgeville Dungeon hill giants", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(30, 60).at(3117, 9844).xp(28000).cb(30)
             .npcs(2098, 117).build());
-        ALL.add(b("Train combat - Varrock guards", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(30, 50).at(3208, 3416).xp(24000).cb(30)
-            .npcs(9, 32).build());
+        ALL.add(b("Train combat - Ardougne guards", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(30, 50).at(2651, 3307).xp(24000).cb(30)
+            .npcs(32, 33, 34).build());
         ALL.add(b("Train combat - Al-Kharid warriors", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(30, 55).at(3294, 3187).xp(25000).cb(30)
             .npcs(15, 18).build());
@@ -442,15 +442,15 @@ public final class TrainingMethods {
         ALL.add(b("Train combat - Rock crabs Rellekka", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(60, 90).at(2721, 3726).xp(45000).cb(60)
             .npcs(1265, 1267).build());
-        ALL.add(b("Train combat - Ankou Stronghold", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(60, 85).at(2024, 5251).xp(48000).cb(60)
+        ALL.add(b("Train combat - Ankou", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 85).at(2701, 3471).xp(48000).cb(60)
             .npcs(98, 1798).build());
         ALL.add(b("Train combat - Experiment cave", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(50, 75).at(3539, 9963).xp(40000).cb(50)
             .npcs(1677, 1678).build());
         ALL.add(b("Train combat - Kalphite soldiers", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(60, 85).at(3304, 3149).xp(50000).cb(60)
-            .npcs(1308, 1309).build());
+            .skill(Skills.ATTACK).lvl(60, 85).at(2676, 3666).xp(50000).cb(60)
+            .npcs(1308, 1309, 1310, 1311).build());
 
         // Tier 4 (cb 90-120): nechryael, dust devils, abyssal demons, gargoyles
         ALL.add(b("Train combat - Slayer tower abyssal demons", Kind.COMBAT)
@@ -507,8 +507,8 @@ public final class TrainingMethods {
         ALL.add(b("Pickpocket man - Edgeville", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(1, 9).at(3079, 3490).xp(8000).gp(2000)
             .npcs(1, 2, 3, 4, 5, 6, 16, 24, 170, 3205).build());
-        ALL.add(b("Pickpocket farmer - Draynor wheat field", Kind.THIEVING)
-            .skill(Skills.THIEVING).lvl(10, 24).at(3079, 3290).xp(14500).gp(5000)
+        ALL.add(b("Pickpocket farmer - Lumbridge wheat field", Kind.THIEVING)
+            .skill(Skills.THIEVING).lvl(10, 24).at(3236, 3288).xp(14500).gp(5000)
             .npcs(7, 1757, 1758, 1760).build());
         ALL.add(b("Pickpocket warrior - Ardougne south", Kind.THIEVING)
             .skill(Skills.THIEVING).lvl(25, 31).at(2658, 3300).xp(26000).gp(8000)
@@ -767,7 +767,7 @@ public final class TrainingMethods {
             .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565).xp(75000).cb(80)
             .npcs(1604, 1605).build());
         ALL.add(b("Slayer - Dark beasts Mourner tunnels", Kind.COMBAT)
-            .skill(Skills.SLAYER).lvl(75, 99).at(2014, 4641).xp(140000).cb(100)
+            .skill(Skills.SLAYER).lvl(75, 99).at(1648, 5292).xp(140000).cb(100)
             .npcs(2783).build());
         ALL.add(b("Slayer - TzHaar Fight Cave Jad", Kind.COMBAT)
             .skill(Skills.SLAYER).lvl(85, 99).at(2438, 5168).xp(180000).cb(110)
