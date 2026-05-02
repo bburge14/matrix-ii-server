@@ -72,6 +72,14 @@ public final class BotFactory {
                 f.set(bot, name);
             } catch (Throwable ignored) {}
 
+            // Wire the player back-ref on Appearence. createOffline skips
+            // bot.init() (which is what does this on the online path), so
+            // appearence.player stays null and generateAppearenceData NPEs
+            // on player.getSize() at line 123. Fix: set it explicitly here.
+            try {
+                bot.getAppearence().setPlayer(bot);
+            } catch (Throwable ignored) {}
+
             // Generate appearance bytes so save-blob is complete
             try {
                 bot.getAppearence().generateAppearenceData();
