@@ -239,6 +239,25 @@ public class CitizenBrain extends BotBrain {
                     case SMELTING:    tryStartSmelting(currentMethod);    return;
                     case CRAFTING:    tryStartCrafting(currentMethod);    return;
                     case PRAYER:      tryStartPrayer(currentMethod);      return;
+                    // Real-action shared with Legend BotBrain - bank-loop
+                    // skills the user explicitly wanted citizens to do.
+                    case HERBLORE:
+                        if (com.rs.bot.ai.BotSkillActions.cleanHerbs(bot)) return;
+                        break;
+                    case FLETCHING:
+                        if (bot.getActionManager().getAction() instanceof com.rs.game.player.actions.Fletching) return;
+                        if (com.rs.bot.ai.BotSkillActions.fletchBow(bot)) return;
+                        break;
+                    // Auto-XP for skills we don't simulate (Construction POH,
+                    // Dungeoneering with real players). Per user spec.
+                    case CONSTRUCTION:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.CONSTRUCTION, 1500);
+                        return;
+                    case DUNGEONEERING:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.DUNGEONEERING, 2500);
+                        return;
                 }
             } catch (Throwable t) {
                 debug(bot, "tryStart " + currentMethod.kind + " threw: " + t);

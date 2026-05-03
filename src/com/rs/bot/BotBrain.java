@@ -1660,6 +1660,14 @@ public class BotBrain {
 
     protected void tryStartHerblore(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.HERBLORE, "herblore");
+        // At destination: clean grimy herbs (real HerbCleaning XP/anim).
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            if (com.rs.bot.ai.BotSkillActions.cleanHerbs(bot)) {
+                lastDiagnostic = "herblore: cleaning a herb";
+            }
+        }
     }
     protected void tryStartAgility(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.AGILITY, "agility");
@@ -1678,15 +1686,40 @@ public class BotBrain {
     }
     protected void tryStartConstruction(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.CONSTRUCTION, "construction");
+        // POH building needs UI we don't simulate. Auto-XP at the portal so
+        // the bot still progresses (per user spec: "Construction doesn't need
+        // [a step process]. Legend bots can just gradually gain exp"). Caller
+        // is throttled inside autoXp.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, com.rs.game.player.Skills.CONSTRUCTION, 1500);
+        }
     }
     protected void tryStartFletching(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.FLETCHING, "fletching");
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            // Already cutting? Don't double-set the action.
+            if (bot.getActionManager().getAction() instanceof com.rs.game.player.actions.Fletching) return;
+            if (com.rs.bot.ai.BotSkillActions.fletchBow(bot)) {
+                lastDiagnostic = "fletching: cutting bow";
+            }
+        }
     }
     protected void tryStartDivination(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.DIVINATION, "divination");
     }
     protected void tryStartDungeoneering(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.DUNGEONEERING, "dungeoneering");
+        // Dungeon runs need real-player coupling we don't simulate yet.
+        // Auto-XP at Daemonheim entrance per user spec.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, com.rs.game.player.Skills.DUNGEONEERING, 2500);
+        }
     }
     protected void tryStartSmithingAnvil(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.SMITHING, "smith-anvil");
