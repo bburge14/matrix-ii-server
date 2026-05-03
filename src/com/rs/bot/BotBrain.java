@@ -1669,20 +1669,35 @@ public class BotBrain {
             }
         }
     }
+    /** Stub skills (Agility / RC / Hunter / Summoning / Farming / Divination /
+     *  Smithing-anvil) - walk to destination, then gain XP each tick at the
+     *  spot. Same pattern as Construction / Dungeoneering. Real action wiring
+     *  per-skill is involved (course obstacles, altar enter+craft, trap
+     *  timers, patch growth) and lands incrementally. */
+    private void autoXpStubSkill(com.rs.bot.ai.TrainingMethods.Method method,
+                                 int skillId, String label, double xpPerTick) {
+        walkOrStallAtMethod(method, skillId, label);
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, skillId, xpPerTick);
+        }
+    }
+
     protected void tryStartAgility(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.AGILITY, "agility");
+        autoXpStubSkill(method, com.rs.game.player.Skills.AGILITY, "agility", 1200);
     }
     protected void tryStartRunecrafting(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.RUNECRAFTING, "rc");
+        autoXpStubSkill(method, com.rs.game.player.Skills.RUNECRAFTING, "rc", 800);
     }
     protected void tryStartHunter(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.HUNTER, "hunter");
+        autoXpStubSkill(method, com.rs.game.player.Skills.HUNTER, "hunter", 1100);
     }
     protected void tryStartSummoning(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.SUMMONING, "summoning");
+        autoXpStubSkill(method, com.rs.game.player.Skills.SUMMONING, "summoning", 700);
     }
     protected void tryStartFarming(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.FARMING, "farming");
+        autoXpStubSkill(method, com.rs.game.player.Skills.FARMING, "farming", 900);
     }
     protected void tryStartConstruction(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.CONSTRUCTION, "construction");
@@ -1709,7 +1724,7 @@ public class BotBrain {
         }
     }
     protected void tryStartDivination(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.DIVINATION, "divination");
+        autoXpStubSkill(method, com.rs.game.player.Skills.DIVINATION, "divination", 1000);
     }
     protected void tryStartDungeoneering(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.DUNGEONEERING, "dungeoneering");
@@ -1722,7 +1737,7 @@ public class BotBrain {
         }
     }
     protected void tryStartSmithingAnvil(com.rs.bot.ai.TrainingMethods.Method method) {
-        walkOrStallAtMethod(method, com.rs.game.player.Skills.SMITHING, "smith-anvil");
+        autoXpStubSkill(method, com.rs.game.player.Skills.SMITHING, "smith-anvil", 1300);
     }
     protected void tryStartMinigame(com.rs.bot.ai.TrainingMethods.Method method) {
         // No skill gate - minigames are open to all levels. Walk-stall only;

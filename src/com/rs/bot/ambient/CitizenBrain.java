@@ -248,8 +248,36 @@ public class CitizenBrain extends BotBrain {
                         if (bot.getActionManager().getAction() instanceof com.rs.game.player.actions.Fletching) return;
                         if (com.rs.bot.ai.BotSkillActions.fletchBow(bot)) return;
                         break;
-                    // Auto-XP for skills we don't simulate (Construction POH,
-                    // Dungeoneering with real players). Per user spec.
+                    // Auto-XP for skills we don't simulate per-action yet.
+                    // Same XP rates as Legend BotBrain (autoXpStubSkill).
+                    case AGILITY:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.AGILITY, 1200);
+                        return;
+                    case RUNECRAFTING:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.RUNECRAFTING, 800);
+                        return;
+                    case HUNTER:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.HUNTER, 1100);
+                        return;
+                    case SUMMONING:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.SUMMONING, 700);
+                        return;
+                    case FARMING:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.FARMING, 900);
+                        return;
+                    case DIVINATION:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.DIVINATION, 1000);
+                        return;
+                    case SMITHING_ANVIL:
+                        com.rs.bot.ai.BotSkillActions.autoXp(bot,
+                            com.rs.game.player.Skills.SMITHING, 1300);
+                        return;
                     case CONSTRUCTION:
                         com.rs.bot.ai.BotSkillActions.autoXp(bot,
                             com.rs.game.player.Skills.CONSTRUCTION, 1500);
