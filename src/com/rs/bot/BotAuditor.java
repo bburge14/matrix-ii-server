@@ -52,7 +52,14 @@ public final class BotAuditor {
                         int nrx = rx + dx;
                         int nry = ry + dy;
                         if (nrx < 0 || nry < 0) continue;
-                        com.rs.game.World.getRegion((nrx << 8) | nry, true);
+                        int rid = (nrx << 8) | nry;
+                        com.rs.game.World.getRegion(rid, true);
+                        // Region.load only unpacks cache map data - NPC spawns
+                        // are a separate file-driven step. Without this, NPCs
+                        // declared in spawnsList/customSpawnsList stay un-
+                        // realised until a real player enters their region.
+                        try { com.rs.utils.NPCSpawns.loadNPCSpawns(rid); }
+                        catch (Throwable ignored) {}
                     }
                 }
             } catch (Throwable ignored) {}

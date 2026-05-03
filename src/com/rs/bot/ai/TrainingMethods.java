@@ -143,6 +143,7 @@ public final class TrainingMethods {
         Builder skill(int s) { skill = s; return this; }
         Builder lvl(int min, int max) { minLevel = min; maxLevel = max; return this; }
         Builder at(int x, int y) { location = new WorldTile(x, y, 0); return this; }
+        Builder at(int x, int y, int plane) { location = new WorldTile(x, y, plane); return this; }
         Builder xp(int xph) { xpRate = xph; return this; }
         Builder gp(int gph) { gpRate = gph; return this; }
         Builder needs(int... itemIds) { requiredItems = itemIds; return this; }
@@ -454,11 +455,11 @@ public final class TrainingMethods {
 
         // Tier 4 (cb 90-120): nechryael, dust devils, abyssal demons, gargoyles
         ALL.add(b("Train combat - Slayer tower abyssal demons", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(85, 120).at(3417, 3563).xp(70000).cb(85)
+            .skill(Skills.ATTACK).lvl(85, 120).at(3417, 3563, 2).xp(70000).cb(85)
             .gp(180000)
             .npcs(1615, 1616, 13345).build());
         ALL.add(b("Train combat - Slayer tower gargoyles", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(75, 110).at(3437, 3552).xp(65000).cb(75)
+            .skill(Skills.ATTACK).lvl(75, 110).at(3437, 3552, 2).xp(65000).cb(75)
             .gp(120000)
             .npcs(1610, 1611).build());
         ALL.add(b("Train combat - Dust devils Smoke", Kind.COMBAT)
@@ -761,10 +762,10 @@ public final class TrainingMethods {
             .skill(Skills.SLAYER).lvl(30, 60).at(2780, 10000).xp(35000).cb(45)
             .npcs(1633, 1634, 1635).build());
         ALL.add(b("Slayer - Bloodvelds Slayer Tower", Kind.COMBAT)
-            .skill(Skills.SLAYER).lvl(50, 75).at(3422, 3554).xp(60000).cb(70)
+            .skill(Skills.SLAYER).lvl(50, 75).at(3422, 3554, 1).xp(60000).cb(70)
             .npcs(1618, 1619).build());
         ALL.add(b("Slayer - Aberrant spectres Slayer Tower", Kind.COMBAT)
-            .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565).xp(75000).cb(80)
+            .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565, 2).xp(75000).cb(80)
             .npcs(1604, 1605).build());
         ALL.add(b("Slayer - Dark beasts Mourner tunnels", Kind.COMBAT)
             .skill(Skills.SLAYER).lvl(75, 99).at(1648, 5292).xp(140000).cb(100)
