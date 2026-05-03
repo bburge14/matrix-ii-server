@@ -64,6 +64,10 @@ public final class BotTradeHandler {
         if (trade == null) return;
 
         if (!trade.isTrading()) {
+            // Defensive: ensure no trade-state leaks from a previous trade.
+            // acceptInboundTrade clears on entry, but some close paths may
+            // skip that. Out-of-trade = clean slate.
+            clearTradeState(bot);
             // Periodic service broadcast - so players walking by see what
             // the bot offers. Throttled by BROADCAST_INTERVAL_MS per-bot.
             maybeBroadcast(bot, isGambler, isTrader);
@@ -120,10 +124,13 @@ public final class BotTradeHandler {
         }
     }
 
-    /** Clear all trade-machine attributes. Critical: a leak from a previous
+    /** Clear all per-trade attributes. Critical: a leak from a previous
      *  trade (BotTradeDecided=TRUE, BotTradeStage1=TRUE) made the next trade
      *  skip the dice roll AND skip stage 1 accept, leading to "always wins"
-     *  apparent behavior. Called on every fresh trade open. */
+     *  apparent behavior. Called on every fresh trade open and defensively
+     *  when not trading.
+     *  Does NOT clear BotTraderStock - that's per-bot lifetime stock and
+     *  persists across multiple trades until the bot is despawned. */
     private static void clearTradeState(AIPlayer bot) {
         bot.getTemporaryAttributtes().remove("BotTradeStartMs");
         bot.getTemporaryAttributtes().remove("BotTradeDecided");
@@ -131,6 +138,7 @@ public final class BotTradeHandler {
         bot.getTemporaryAttributtes().remove("BotTradeStage2");
         bot.getTemporaryAttributtes().remove("BotTradeBet");
         bot.getTemporaryAttributtes().remove("BotTradeStockOffered");
+        bot.getTemporaryAttributtes().remove("BotTradeSaleQty");
         bot.getTemporaryAttributtes().remove("BotTradeWasInTrade");
     }
 
@@ -413,49 +421,52 @@ public final class BotTradeHandler {
         new StockEntry(1617, 2500,   "uncut diamond", 10),
 
         // === High-tier weapons (sell as 1) ===
-        new StockEntry(4587, 60_000,    "dragon scimitar", 1),
-        new StockEntry(1305, 100_000,   "dragon longsword", 1),
-        new StockEntry(7158, 120_000,   "dragon 2h sword", 1),
-        new StockEntry(4151, 1_500_000, "abyssal whip", 1),
-        new StockEntry(11696, 18_000_000, "armadyl godsword", 1),
-        new StockEntry(11694, 12_000_000, "bandos godsword", 1),
-        new StockEntry(11698, 8_000_000,  "saradomin godsword", 1),
-        new StockEntry(11700, 5_000_000,  "zamorak godsword", 1),
-        new StockEntry(13902, 15_000_000, "primal 2h sword", 1),
-        new StockEntry(15039, 25_000_000, "drygore longsword", 1),
+        // Prices tuned for RSPS economy ~10% of OSRS GE values - user
+        // reported the original OSRS-priced catalog asked 18M for an
+        // item worth ~1.25M on this server.
+        new StockEntry(4587, 25_000,    "dragon scimitar", 1),
+        new StockEntry(1305, 50_000,    "dragon longsword", 1),
+        new StockEntry(7158, 60_000,    "dragon 2h sword", 1),
+        new StockEntry(4151, 150_000,   "abyssal whip", 1),
+        new StockEntry(11696, 1_800_000, "armadyl godsword", 1),
+        new StockEntry(11694, 1_200_000, "bandos godsword", 1),
+        new StockEntry(11698, 800_000,   "saradomin godsword", 1),
+        new StockEntry(11700, 500_000,   "zamorak godsword", 1),
+        new StockEntry(13902, 1_500_000, "primal 2h sword", 1),
+        new StockEntry(15039, 2_500_000, "drygore longsword", 1),
         // Bows / range
         new StockEntry(861,  600,       "magic shortbow", 1),
-        new StockEntry(11212, 6_000,    "dragon arrows",  100),
-        new StockEntry(4734, 800_000,   "karil's pistol crossbow", 1),
-        new StockEntry(15241, 5_000_000, "hand cannon",   1),
+        new StockEntry(11212, 1_500,    "dragon arrows",  100),
+        new StockEntry(4734, 80_000,    "karil's pistol crossbow", 1),
+        new StockEntry(15241, 500_000,  "hand cannon",   1),
         // Armor sets (high-tier)
-        new StockEntry(11724, 18_000_000, "bandos chestplate", 1),
-        new StockEntry(11726, 12_000_000, "bandos tassets",    1),
-        new StockEntry(11722, 30_000_000, "armadyl chestplate", 1),
-        new StockEntry(11720, 25_000_000, "armadyl chainskirt", 1),
-        new StockEntry(11283, 1_500_000,  "dragonfire shield", 1),
-        new StockEntry(1187,  100_000,    "dragon sq shield",  1),
-        new StockEntry(1149,  60_000,     "dragon med helm",   1),
+        new StockEntry(11724, 1_800_000, "bandos chestplate", 1),
+        new StockEntry(11726, 1_200_000, "bandos tassets",    1),
+        new StockEntry(11722, 3_000_000, "armadyl chestplate", 1),
+        new StockEntry(11720, 2_500_000, "armadyl chainskirt", 1),
+        new StockEntry(11283, 150_000,   "dragonfire shield", 1),
+        new StockEntry(1187,  50_000,    "dragon sq shield",  1),
+        new StockEntry(1149,  30_000,    "dragon med helm",   1),
         // Mage robes (high-tier)
-        new StockEntry(4708,  1_200_000, "ahrim's hood",      1),
-        new StockEntry(4712,  3_000_000, "ahrim's robe top",  1),
-        new StockEntry(4714,  2_500_000, "ahrim's robe bottom", 1),
-        new StockEntry(6914,  5_000_000, "master wand",       1),
-        new StockEntry(18353, 15_000_000, "virtus mask",      1),
-        new StockEntry(18355, 25_000_000, "virtus robe top",  1),
-        new StockEntry(18357, 22_000_000, "virtus robe legs", 1),
+        new StockEntry(4708,  120_000,  "ahrim's hood",      1),
+        new StockEntry(4712,  300_000,  "ahrim's robe top",  1),
+        new StockEntry(4714,  250_000,  "ahrim's robe bottom", 1),
+        new StockEntry(6914,  500_000,  "master wand",       1),
+        new StockEntry(18353, 1_500_000, "virtus mask",      1),
+        new StockEntry(18355, 2_500_000, "virtus robe top",  1),
+        new StockEntry(18357, 2_200_000, "virtus robe legs", 1),
         // Amulets / jewelry / capes
         new StockEntry(1712, 12_000,    "amulet of glory(4)", 1),
         new StockEntry(1725, 4_000,     "amulet of strength", 1),
         new StockEntry(1731, 5_000,     "amulet of power",    1),
-        new StockEntry(6585, 4_000_000, "amulet of fury",     1),
-        new StockEntry(11128, 4_500_000, "berserker necklace", 1),
-        new StockEntry(20000, 3_000_000, "fire cape",         1),
+        new StockEntry(6585, 400_000,   "amulet of fury",     1),
+        new StockEntry(11128, 450_000,  "berserker necklace", 1),
+        new StockEntry(20000, 300_000,  "fire cape",          1),
         // Barrows pieces
-        new StockEntry(4716, 600_000,   "dharok's helm",      1),
-        new StockEntry(4720, 1_200_000, "dharok's platebody", 1),
-        new StockEntry(4722, 1_000_000, "dharok's platelegs", 1),
-        new StockEntry(4718, 1_400_000, "dharok's greataxe",  1),
+        new StockEntry(4716, 60_000,    "dharok's helm",      1),
+        new StockEntry(4720, 120_000,   "dharok's platebody", 1),
+        new StockEntry(4722, 100_000,   "dharok's platelegs", 1),
+        new StockEntry(4718, 140_000,   "dharok's greataxe",  1),
     };
 
     private static int countItem(ItemsContainer<Item> c, int itemId) {
