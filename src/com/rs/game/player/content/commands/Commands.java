@@ -1478,6 +1478,54 @@ public final class Commands {
 		}
 		return true;
 	    }
+	    case "objhere": {
+		// Lists nearby world objects with their cache IDs + names. Useful
+		// for figuring out which object IDs to wire into ObjectHandler
+		// (Castle Wars portals - clicked in-game but ObjectHandler only
+		// matched 4387/4388/4408 which may not be the real cache IDs).
+		int objRadius = 5;
+		if (cmd.length >= 2) {
+		    try { objRadius = Math.max(1, Math.min(15, Integer.parseInt(cmd[1]))); }
+		    catch (NumberFormatException ignore) {}
+		}
+		int objFound = 0;
+		try {
+		    player.getPackets().sendGameMessage("Nearby objects (radius " + objRadius + "):");
+		    int rx = (player.getRegionId() >> 8) & 0xff;
+		    int ry = player.getRegionId() & 0xff;
+		    outer: for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+			    int nrx = rx + dx, nry = ry + dy;
+			    if (nrx < 0 || nry < 0) continue;
+			    com.rs.game.Region reg = com.rs.game.World.getRegion((nrx << 8) | nry, true);
+			    if (reg == null) continue;
+			    java.util.List<com.rs.game.WorldObject> objs = reg.getAllObjects();
+			    if (objs == null) continue;
+			    for (com.rs.game.WorldObject o : objs) {
+				if (o == null) continue;
+				if (o.getPlane() != player.getPlane()) continue;
+				int ddx = o.getX() - player.getX();
+				int ddy = o.getY() - player.getY();
+				if (ddx * ddx + ddy * ddy > objRadius * objRadius) continue;
+				String nm = "?";
+				try {
+				    com.rs.cache.loaders.ObjectDefinitions defs =
+					com.rs.cache.loaders.ObjectDefinitions.getObjectDefinitions(o.getId());
+				    if (defs != null && defs.name != null) nm = defs.name;
+				} catch (Throwable ignored) {}
+				player.getPackets().sendGameMessage("  id=" + o.getId() + " '" + nm
+				    + "' at (" + o.getX() + "," + o.getY() + ") type=" + o.getType());
+				if (++objFound >= 30) break outer;
+			    }
+			}
+		    }
+		    if (objFound == 0)
+			player.getPackets().sendGameMessage("  (no objects within " + objRadius + " tiles)");
+		} catch (Throwable t) {
+		    player.getPackets().sendGameMessage("objhere error: " + t.getMessage());
+		}
+		return true;
+	    }
 	    case "ccoords":
 		selection = new StringSelection(player.getX() + ", " + player.getY() + ", " + player.getPlane());
 		clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();

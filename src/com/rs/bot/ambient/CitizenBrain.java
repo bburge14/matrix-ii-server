@@ -284,7 +284,9 @@ public class CitizenBrain extends BotBrain {
                     + (old == null ? " (initial)" : " (was: " + old.description + ")"));
             } else if (old != null) {
                 debug(bot, "no applicable method - cleared previous '" + old.description + "'");
-            } else {
+            } else if (!archetype.isSocialite()) {
+                // Socialites intentionally have no method pool - they wander
+                // GE/banks. Suppressing the log spam for them.
                 debug(bot, "no applicable method for role " + archetype);
             }
         }
@@ -327,10 +329,20 @@ public class CitizenBrain extends BotBrain {
     private com.rs.bot.ai.TrainingMethods.Method pickRandomMethodForRole(AIPlayer bot) {
         java.util.Set<com.rs.bot.ai.TrainingMethods.Kind> allowedKinds = allowedKindsFor(archetype);
         if (allowedKinds.isEmpty()) return null;
+        // Per-minigame archetypes prefer THEIR minigame's method only (so a
+        // SOULWARS_RUSHER doesn't pick the Stealing Creation outpost). The
+        // archetype's lobbyTile() pins this; we filter applicable methods to
+        // those whose location matches the lobby tile. Falls back to any
+        // MINIGAME method if no exact match (shouldn't happen normally).
+        com.rs.game.WorldTile pinned = archetype == null ? null : archetype.lobbyTile();
         java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
         for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
             if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
             if (m.location == null) continue;
+            if (pinned != null) {
+                // Per-minigame archetype - only accept methods at the pinned lobby
+                if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
+            }
             try {
                 if (!m.isApplicable(bot)) continue;
             } catch (Throwable ignored) { continue; }
