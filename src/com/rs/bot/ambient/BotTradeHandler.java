@@ -63,11 +63,24 @@ public final class BotTradeHandler {
         Trade trade = bot.getTrade();
         if (trade == null) return;
 
-        if (!trade.isTrading()) {
+        // Detect "trade just closed" - was trading last tick, now isn't.
+        // For gamblers: this is when we roll the dice + open a payout trade.
+        boolean inTrade = trade.isTrading();
+        boolean wasInTrade = Boolean.TRUE.equals(
+            bot.getTemporaryAttributtes().get("BotTradeWasInTrade"));
+        if (wasInTrade && !inTrade && isGambler) {
+            processGambleAfterTradeClose(bot);
+        }
+        bot.getTemporaryAttributtes().put("BotTradeWasInTrade", inTrade);
+
+        if (!inTrade) {
             // Defensive: ensure no trade-state leaks from a previous trade.
             // acceptInboundTrade clears on entry, but some close paths may
             // skip that. Out-of-trade = clean slate.
             clearTradeState(bot);
+            // If a previous gamble won and we owe a payout, push that to the
+            // player via a fresh trade before doing anything else.
+            if (isGambler && tryStartPayoutTrade(bot)) return;
             // Periodic service broadcast - so players walking by see what
             // the bot offers. Throttled by BROADCAST_INTERVAL_MS per-bot.
             maybeBroadcast(bot, isGambler, isTrader);
@@ -142,19 +155,22 @@ public final class BotTradeHandler {
         bot.getTemporaryAttributtes().remove("BotTradeWasInTrade");
     }
 
-    // === SOCIALITE_GAMBLER: dice + payout ===
+    // === SOCIALITE_GAMBLER: 2-trade dice flow ===
     //
-    // Flow (matches RS dice host convention):
-    //   1. Player adds GP to their side of trade
-    //   2. PLAYER clicks Accept (commits the bet)
-    //   3. Bot detects player.accepted=true -> rolls dice -> adds payout
-    //      if win or nothing if lose -> announces result -> bot.accept(true)
-    //      -> trade advances to stage 2 (Confirmation)
-    //   4. Player accepts stage 2 -> bot accepts stage 2 -> trade completes
+    // Authentic RS dicing convention:
+    //   Trade 1 (bet collection):
+    //     - Player adds GP, clicks Accept
+    //     - Bot accepts (no items added). Both confirm. Trade closes; bot
+    //       has the bet.
+    //   After trade close:
+    //     - Bot rolls dice + announces 3-line result in chat
+    //   Trade 2 (payout, only if win):
+    //     - Bot opens trade with player, adds 2x bet
+    //     - Player accepts, bot accepts. Both confirm. Player gets payout.
     //
-    // Bot does NOT roll until the player has clicked Accept. Prior version
-    // rolled as soon as ANY GP was visible, which felt like the bot was
-    // pre-deciding the outcome.
+    // Lose = bot keeps the gold, no second trade. Win = second trade with
+    // 2x payout. State carried via BotPendingBet/BotPendingPlayer attrs
+    // between trade close and payout-trade start.
 
     private static void handleGambler(AIPlayer bot, Trade trade) {
         Player target = trade.getTarget();
@@ -187,7 +203,20 @@ public final class BotTradeHandler {
         // commitment - player clicked Accept, locking in their bet.
         if (!playerTrade.hasAccepted()) return;
 
-        // Player committed. Read their bet, roll, decide payout.
+        // Two flows from here:
+        //   - Bet trade: bot accepts after player commits, no items added.
+        //     Stash bet for post-close roll.
+        //   - Payout trade: this is the SECOND trade we initiated. Add
+        //     payout to our offer, accept after player accepts.
+        Boolean isPayoutTrade = (Boolean) bot.getTemporaryAttributtes().get("BotIsPayoutTrade");
+        if (Boolean.TRUE.equals(isPayoutTrade)) {
+            handlePayoutTrade(bot, trade);
+            return;
+        }
+
+        // Bet trade: wait for player to commit (accept stage 1) before locking.
+        if (!playerTrade.hasAccepted()) return;
+
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         String pname = target.getDisplayName();
         if (playerGp < MIN_BET) {
@@ -195,39 +224,127 @@ public final class BotTradeHandler {
             bot.getTrade().cancelTrade();
             return;
         }
-        DiceMode mode = pickDiceModeForBot(bot);
         int bet = Math.min(playerGp, MAX_BET);
-        long payout = (long) bet * mode.payoutMultiplier;
-        int roll = Utils.random(100);
-        boolean win = roll >= mode.winThreshold;
+        // Stash bet info so processGambleAfterTradeClose can roll once the
+        // trade closes. We do NOT add anything to our offer; just accept.
+        bot.getTemporaryAttributtes().put("BotPendingBet", bet);
+        bot.getTemporaryAttributtes().put("BotPendingPlayer", target);
         try {
-            // Three-line "host announcement" pattern matching real RS
-            // dicing convention: who-bet-what, what-rolled, who-won-what.
-            sayBoth(bot, pname + " gave " + bet + "gp");
-            if (win) {
-                ensureInvCoins(bot, payout);
-                if (bot.getInventory().getAmountOf(COINS) >= payout) {
-                    bot.getTrade().addItem(new Item(COINS,
-                        (int) Math.min(Integer.MAX_VALUE, payout)));
-                    sayBoth(bot, mode.name + " rolled " + roll + " - WIN");
-                    sayBoth(bot, pname + " wins " + payout + "gp");
-                } else {
-                    sayBoth(bot, "no funds, can't gamble that high");
-                    bot.getTrade().cancelTrade();
-                    return;
-                }
-            } else {
-                sayBoth(bot, mode.name + " rolled " + roll + " - LOSE");
-                sayBoth(bot, "house wins " + bet + "gp");
-            }
-            // Now accept stage 1 (locks in our offer + payout).
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
-            bot.getTemporaryAttributtes().put("BotTradeBet", bet);
         } catch (Throwable ignored) {}
     }
 
-    // === SOCIALITE_GE_TRADER: stock + price ===
+    /** Second trade: bot has already opened it with player. Add payout
+     *  to our offer + accept after player accepts. */
+    private static void handlePayoutTrade(AIPlayer bot, Trade trade) {
+        Player target = trade.getTarget();
+        if (target == null) return;
+        Long payoutObj = (Long) bot.getTemporaryAttributtes().get("BotPayoutAmount");
+        if (payoutObj == null) {
+            // Shouldn't happen but be safe.
+            bot.getTrade().cancelTrade();
+            return;
+        }
+        long payout = payoutObj;
+
+        Boolean offered = (Boolean) bot.getTemporaryAttributtes().get("BotPayoutOffered");
+        if (!Boolean.TRUE.equals(offered)) {
+            ensureInvCoins(bot, payout);
+            if (bot.getInventory().getAmountOf(COINS) < payout) {
+                sayBoth(bot, "couldn't pay out, sorry");
+                bot.getTrade().cancelTrade();
+                bot.getTemporaryAttributtes().remove("BotIsPayoutTrade");
+                bot.getTemporaryAttributtes().remove("BotPayoutAmount");
+                return;
+            }
+            try {
+                bot.getTrade().addItem(new Item(COINS,
+                    (int) Math.min(Integer.MAX_VALUE, payout)));
+                sayBoth(bot, "your winnings: " + payout + "gp");
+                bot.getTemporaryAttributtes().put("BotPayoutOffered", Boolean.TRUE);
+            } catch (Throwable ignored) {}
+            return;
+        }
+
+        // Wait for player accept then accept ourselves.
+        if (!target.getTrade().hasAccepted()) return;
+        try {
+            bot.getTrade().accept(true);
+            bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Called when a gambler's bet trade just closed. Rolls the dice +
+     *  announces. If win, schedules a payout trade with the player. */
+    private static void processGambleAfterTradeClose(AIPlayer bot) {
+        try {
+            Integer betObj = (Integer) bot.getTemporaryAttributtes().get("BotPendingBet");
+            Player p = (Player) bot.getTemporaryAttributtes().get("BotPendingPlayer");
+            // Was this a payout trade closing? If so, no roll needed.
+            Boolean wasPayout = (Boolean) bot.getTemporaryAttributtes().get("BotIsPayoutTrade");
+            bot.getTemporaryAttributtes().remove("BotIsPayoutTrade");
+            bot.getTemporaryAttributtes().remove("BotPayoutAmount");
+            bot.getTemporaryAttributtes().remove("BotPayoutOffered");
+            if (Boolean.TRUE.equals(wasPayout)) return;
+
+            if (betObj == null || p == null) return;
+            int bet = betObj;
+            DiceMode mode = pickDiceModeForBot(bot);
+            int roll = Utils.random(100);
+            boolean win = roll >= mode.winThreshold;
+            String pname = p.getDisplayName();
+            sayBoth(bot, pname + " gave " + bet + "gp");
+            sayBoth(bot, mode.name + " rolled " + roll + " - " + (win ? "WIN" : "LOSE"));
+            if (win) {
+                long payout = (long) bet * mode.payoutMultiplier;
+                sayBoth(bot, pname + " wins " + payout + "gp - opening trade...");
+                bot.getTemporaryAttributtes().put("BotPayoutPendingPlayer", p);
+                bot.getTemporaryAttributtes().put("BotPayoutPendingAmount", payout);
+            } else {
+                sayBoth(bot, "house wins " + bet + "gp");
+            }
+            bot.getTemporaryAttributtes().remove("BotPendingBet");
+            bot.getTemporaryAttributtes().remove("BotPendingPlayer");
+        } catch (Throwable ignored) {}
+    }
+
+    /** Bot-initiated payout trade. Returns true if started one. */
+    private static boolean tryStartPayoutTrade(AIPlayer bot) {
+        Player p = (Player) bot.getTemporaryAttributtes().get("BotPayoutPendingPlayer");
+        Long amt = (Long) bot.getTemporaryAttributtes().get("BotPayoutPendingAmount");
+        if (p == null || amt == null) return false;
+        try {
+            // Player must be nearby + not busy.
+            if (p.hasFinished() || p.isCantTrade()) return false;
+            if (!p.withinDistance(bot, 14)) return false;
+            // Also bot can't be in an interface or other trade.
+            if (bot.getTrade().isTrading()) return false;
+            bot.getTrade().openTrade(p);
+            p.getTrade().openTrade(bot);
+            bot.getTemporaryAttributtes().put("BotIsPayoutTrade", Boolean.TRUE);
+            bot.getTemporaryAttributtes().put("BotPayoutAmount", amt);
+            bot.getTemporaryAttributtes().remove("BotPayoutPendingPlayer");
+            bot.getTemporaryAttributtes().remove("BotPayoutPendingAmount");
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    // === SOCIALITE_GE_TRADER: per-unit pricing ===
+    //
+    // Flow: bot is a vendor. Player decides QUANTITY by adding GP to the
+    // trade - we derive units = floor(playerGp / pricePerUnit), capped at
+    // bot's on-hand stock. So if bot is selling logs at 50gp each:
+    //   - player adds 500gp -> bot offers 10 logs
+    //   - player adds 5000gp -> bot offers 100 logs
+    //   - player adds 50000gp -> bot offers stock-cap logs (capped)
+    // High-tier weapons are bundleSize=1 priced as 1 unit, so player adds
+    // exactly the price to get exactly 1.
+    //
+    // Bot waits for player.accept (commitment) before locking in offer +
+    // accepting stage 1 - same pattern as gambler.
 
     private static void handleTrader(AIPlayer bot, Trade trade) {
         Player target = trade.getTarget();
@@ -252,9 +369,6 @@ public final class BotTradeHandler {
             return;
         }
 
-        // Persistent per-bot stock - assigned at spawn (loadout), depleted as
-        // trades complete. Read from bot inventory each trade so quantity
-        // reflects what's actually still in stock.
         StockEntry stock = ensureBotStockAssigned(bot);
         if (stock == null) {
             sayBoth(bot, "out of stock");
@@ -268,38 +382,37 @@ public final class BotTradeHandler {
             return;
         }
 
-        // Check if player paid the right amount AND committed (accepted).
-        // Only roll-and-accept after player commits, like the gambler flow.
-        if (!playerTrade.hasAccepted()) {
-            // First-time setup: add an item to our offer + announce price so
-            // the player knows what to do.
-            Boolean offered = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
-            if (!Boolean.TRUE.equals(offered)) {
-                int saleQty = Math.min(onHand, stock.bundleSize);
-                try {
-                    bot.getTrade().addItem(new Item(stock.itemId, saleQty));
-                    long price = (long) saleQty * stock.priceGp;
-                    sayBoth(bot, "selling " + saleQty + "x " + stock.name + " for " + price + "gp");
-                    bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
-                    bot.getTemporaryAttributtes().put("BotTradeSaleQty", saleQty);
-                } catch (Throwable ignored) {}
-            }
+        // First-time announcement so player knows the per-unit price.
+        Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
+        if (!Boolean.TRUE.equals(announced)) {
+            sayBoth(bot, "selling " + stock.name + " at " + stock.priceGp
+                + "gp/each, " + onHand + " available - add gp + click Accept");
+            bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
+        }
+
+        // Wait for player to commit by clicking Accept.
+        if (!playerTrade.hasAccepted()) return;
+
+        // Player committed. Derive quantity from their GP.
+        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
+        int unitsRequested = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
+        int units = Math.min(unitsRequested, onHand);
+        if (units <= 0) {
+            sayBoth(bot, "need at least " + stock.priceGp + "gp for 1 " + stock.name);
+            bot.getTrade().cancelTrade();
             return;
         }
 
-        // Player accepted - check their GP against our asking price for the
-        // bundle on offer.
-        int saleQty = (Integer) bot.getTemporaryAttributtes().getOrDefault("BotTradeSaleQty", 1);
-        long askingPrice = (long) saleQty * stock.priceGp;
-        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
-        if (playerGp < askingPrice) {
-            sayBoth(bot, "need " + askingPrice + "gp for " + saleQty + "x " + stock.name);
-            // Don't cancel - player can still add more GP and re-accept.
-            return;
-        }
+        // Add the calculated quantity. Trade.addItem stacks for stackable
+        // items (one slot regardless of qty); for non-stackable adds N
+        // separate items (limited by free slots in trade window).
         try {
+            bot.getTrade().addItem(new Item(stock.itemId, units));
+            long total = (long) units * stock.priceGp;
+            sayBoth(bot, "selling " + units + "x " + stock.name + " for " + total + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
+            bot.getTemporaryAttributtes().put("BotTradeSaleQty", units);
         } catch (Throwable ignored) {}
     }
 
@@ -518,7 +631,7 @@ public final class BotTradeHandler {
         String line = null;
         if (isGambler) {
             DiceMode mode = pickDiceModeForBot(bot);
-            line = "host " + mode.name + " - trusted dicer";
+            line = "Dice Game " + mode.name + " - trusted host";
         } else if (isTrader) {
             StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
             if (stock == null) {
@@ -547,17 +660,26 @@ public final class BotTradeHandler {
         } catch (Throwable ignored) {}
     }
 
-    /** Force-talk (overhead balloon) + public chat message (chat box). The
-     *  overhead is what real players see in proximity; the public chat
-     *  message is what shows in the chat box for nearby visible players.
-     *  Bots' chat goes through neither by default - we have to manually
-     *  broadcast so chat-box readers see the line. */
-    static void sayBoth(AIPlayer bot, String text) {
+    /** Force-talk (overhead balloon) + public chat message (chat box) with
+     *  per-bot stable color/animation effect. Public so CitizenBrain can use
+     *  it for non-trade chatter (idle, panic) too - was previously using
+     *  ForceTalk-only which doesn't reach chat boxes.
+     *
+     *  Effects format: (color << 8) | animation
+     *    color  6=glow1, 7=glow2, 8=glow3, 9=flash1, 10=flash2, 11=flash3,
+     *           1=red, 2=green, 3=cyan, 4=purple, 5=white, 0=yellow
+     *    anim   0=none, 1=wave, 2=wave2, 3=shake, 4=scroll, 5=slide
+     *
+     *  Each bot rolls one effect at first chat (cached in TemporaryAttributtes)
+     *  so the same bot consistently uses the same color/animation - mirrors
+     *  RS hosts who have a "signature look". */
+    public static void sayBoth(AIPlayer bot, String text) {
         try { bot.setNextForceTalk(new com.rs.game.ForceTalk(text)); }
         catch (Throwable ignored) {}
         try {
+            int effects = chatEffectFor(bot);
             com.rs.game.player.PublicChatMessage msg =
-                new com.rs.game.player.PublicChatMessage(text, 0);
+                new com.rs.game.player.PublicChatMessage(text, effects);
             int botX = bot.getX(), botY = bot.getY(), botPlane = bot.getPlane();
             for (com.rs.game.player.Player real : com.rs.game.World.getPlayers()) {
                 if (real == null) continue;
@@ -566,10 +688,37 @@ public final class BotTradeHandler {
                 if (real.getPlane() != botPlane) continue;
                 int dx = real.getX() - botX;
                 int dy = real.getY() - botY;
-                if (dx * dx + dy * dy > 196) continue; // ~14 tiles, std visibility
+                if (dx * dx + dy * dy > 196) continue; // ~14 tiles
                 try { real.getPackets().sendPublicMessage(bot, msg); }
                 catch (Throwable ignored2) {}
             }
         } catch (Throwable ignored) {}
+    }
+
+    /** Per-bot stable chat effect. Rolled once per bot, cached. */
+    private static int chatEffectFor(AIPlayer bot) {
+        Object cached = bot.getTemporaryAttributtes().get("BotChatEffect");
+        if (cached != null) return (Integer) cached;
+        // Pool of "host-like" effects - colored + sometimes animated.
+        // Most colors only (anim 0); some scroll/wave/shake for flair.
+        int[] pool = new int[] {
+            (1 << 8) | 0,    // red
+            (2 << 8) | 0,    // green
+            (3 << 8) | 0,    // cyan
+            (4 << 8) | 0,    // purple
+            (6 << 8) | 0,    // glow1 (red->yellow)
+            (7 << 8) | 0,    // glow2 (red->purple)
+            (8 << 8) | 0,    // glow3 (white->green)
+            (9 << 8) | 0,    // flash1 (yellow->red)
+            (10 << 8) | 0,   // flash2 (blue->cyan)
+            (11 << 8) | 0,   // flash3 (black->white)
+            (1 << 8) | 4,    // red + scroll
+            (6 << 8) | 1,    // glow + wave
+            (9 << 8) | 3,    // flash + shake
+        };
+        int hash = bot.getDisplayName() == null ? 0 : bot.getDisplayName().hashCode();
+        int eff = pool[Math.abs(hash) % pool.length];
+        bot.getTemporaryAttributtes().put("BotChatEffect", eff);
+        return eff;
     }
 }
