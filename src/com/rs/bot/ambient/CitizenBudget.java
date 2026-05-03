@@ -163,8 +163,13 @@ public final class CitizenBudget {
         slots.clear();
         // Grand Exchange anchor (Varrock GE): ~3164, 3486
         slots.add(new Slot("SOCIALITE_BANKSTAND",   30, 3164, 3486, 0, 8, false));
-        slots.add(new Slot("SOCIALITE_GE_TRADER",   25, 3164, 3486, 0, 8, false));
-        slots.add(new Slot("SOCIALITE_GAMBLER",     10, 3164, 3486, 0, 6, false));
+        // GE traders cluster at the GE itself - they're the "selling X" hosts
+        // that real players see when they walk in. autospawn=true so first-
+        // time users see them immediately.
+        slots.add(new Slot("SOCIALITE_GE_TRADER",   25, 3164, 3486, 0, 8, true));
+        // Gamblers cluster at Edgeville bank (real RS dicing area), not GE.
+        // Real players know to look here for hosts. autospawn=true.
+        slots.add(new Slot("SOCIALITE_GAMBLER",     12, 3094, 3491, 0, 5, true));
         // Lumbridge skillers
         slots.add(new Slot("SKILLER_NOOB",          15, 3222, 3218, 0, 10, false));
         slots.add(new Slot("SKILLER_CASUAL",        15, 3222, 3218, 0, 10, false));
