@@ -143,9 +143,11 @@ public class CitizenBrain extends BotBrain {
                 // probability. Skiller/combatant pursue their method's
                 // target so they do need to traverse more often.
                 if (archetype != null && archetype.isSocialite()) {
-                    // 90% stay idle, 5% short traverse, 5% interact
-                    if (r < 90) next = State.IDLE;
-                    else if (r < 95) next = State.TRAVERSING;
+                    // 95% stay idle, 3% short traverse, 2% interact. They're
+                    // fixtures - they stand at GE/Edge and chat/trade. User
+                    // feedback was "bots are moving WAY too much".
+                    if (r < 95) next = State.IDLE;
+                    else if (r < 98) next = State.TRAVERSING;
                     else next = State.INTERACTING;
                 } else {
                     // Default: 60 traverse / 30 interact / 10 idle (legacy)
@@ -611,8 +613,15 @@ public class CitizenBrain extends BotBrain {
         int dist = 5 + Utils.random(4);
         WorldTile flee = new WorldTile(bot.getX() + sx * dist, bot.getY() + sy * dist, bot.getPlane());
         bot.addWalkSteps(flee.getX(), flee.getY(), 10, true);
-        if (Math.random() < 0.15) {
-            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, "...!"); }
+        // Drop a single realistic panic line - rare so it doesn't spam.
+        // Old "...!" placeholder looked like debug output in chat boxes.
+        if (Math.random() < 0.04) {
+            String[] lines = new String[] {
+                "ahh!", "help!", "leave me alone!", "get away!",
+                "noo!", "stop!", "back off!"
+            };
+            String line = lines[Utils.random(lines.length)];
+            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line); }
             catch (Throwable ignored) {}
         }
     }
@@ -620,11 +629,25 @@ public class CitizenBrain extends BotBrain {
     // === Helpers ===
 
     private WorldTile pickWanderTarget() {
-        int dx = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
-        int dy = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
-        if (Math.random() < 0.3) dx += Utils.random(-1, 2);
-        if (Math.random() < 0.3) dy += Utils.random(-1, 2);
-        return new WorldTile(homeAnchor.getX() + dx, homeAnchor.getY() + dy, homeAnchor.getPlane());
+        // Try up to 6 candidates - reject any that aren't walkable so bots
+        // don't pathfind into wall corners and end up "noclipping" between
+        // walls/trees. Falls back to home anchor if nothing's walkable
+        // (which is itself a known-good tile by construction).
+        int plane = homeAnchor.getPlane();
+        for (int attempt = 0; attempt < 6; attempt++) {
+            int dx = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
+            int dy = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
+            if (Math.random() < 0.3) dx += Utils.random(-1, 2);
+            if (Math.random() < 0.3) dy += Utils.random(-1, 2);
+            int tx = homeAnchor.getX() + dx;
+            int ty = homeAnchor.getY() + dy;
+            try {
+                if (com.rs.game.World.isTileFree(plane, tx, ty, 1)) {
+                    return new WorldTile(tx, ty, plane);
+                }
+            } catch (Throwable ignored) {}
+        }
+        return new WorldTile(homeAnchor);
     }
 
     private void stepRandom(AIPlayer bot) {
@@ -632,7 +655,13 @@ public class CitizenBrain extends BotBrain {
         int sx = Utils.random(3) - 1;
         int sy = Utils.random(3) - 1;
         if (sx == 0 && sy == 0) sx = 1;
-        bot.addWalkSteps(bot.getX() + sx, bot.getY() + sy, 1, true);
+        int tx = bot.getX() + sx;
+        int ty = bot.getY() + sy;
+        try {
+            // Reject misclick steps that land on walls/objects.
+            if (!com.rs.game.World.isTileFree(bot.getPlane(), tx, ty, 1)) return;
+        } catch (Throwable ignored) {}
+        bot.addWalkSteps(tx, ty, 1, true);
     }
 
     private boolean realPlayerNearby(AIPlayer bot) {

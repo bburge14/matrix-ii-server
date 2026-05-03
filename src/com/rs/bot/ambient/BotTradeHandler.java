@@ -42,9 +42,10 @@ public final class BotTradeHandler {
     };
 
     /** How often (ms) gambler/trader bots broadcast their service line when
-     *  not actively in a trade. Lets nearby players see them as live hosts/
-     *  vendors. 30s = avoids spam, still visible. */
-    private static final long BROADCAST_INTERVAL_MS = 30_000;
+     *  not actively in a trade. 10s = active "barker" pacing real RS hosts
+     *  use. Each bot has a randomized phase offset so a cluster doesn't all
+     *  shout at the same instant. */
+    private static final long BROADCAST_INTERVAL_MS = 10_000;
 
     /** How many ticks the bot waits after entering trade before acting. Lets
      *  the player see the trade screen + add items / GP before bot responds. */
@@ -55,9 +56,10 @@ public final class BotTradeHandler {
     public static void tick(AIPlayer bot, AmbientArchetype arch) {
         if (bot == null || arch == null) return;
         if (!arch.isSocialite()) return;
-        // Only gambler + GE trader subtypes do trade. Bankstanders ignore.
+        // Only gambler + (any tier of) GE trader subtypes do trade.
+        // Bankstanders ignore.
         boolean isGambler = arch == AmbientArchetype.SOCIALITE_GAMBLER;
-        boolean isTrader  = arch == AmbientArchetype.SOCIALITE_GE_TRADER;
+        boolean isTrader  = arch.isTrader();
         if (!isGambler && !isTrader) return;
 
         Trade trade = bot.getTrade();
@@ -152,7 +154,9 @@ public final class BotTradeHandler {
         bot.getTemporaryAttributtes().remove("BotTradeBet");
         bot.getTemporaryAttributtes().remove("BotTradeStockOffered");
         bot.getTemporaryAttributtes().remove("BotTradeSaleQty");
+        bot.getTemporaryAttributtes().remove("BotTradeUnitsOffered");
         bot.getTemporaryAttributtes().remove("BotTradeWasInTrade");
+        bot.getTemporaryAttributtes().remove("BotPayoutOffered");
     }
 
     // === SOCIALITE_GAMBLER: 2-trade dice flow ===
@@ -199,28 +203,25 @@ public final class BotTradeHandler {
             return;
         }
 
-        // Wait for player to accept stage 1 before rolling. This is the
-        // commitment - player clicked Accept, locking in their bet.
-        if (!playerTrade.hasAccepted()) return;
-
-        // Two flows from here:
-        //   - Bet trade: bot accepts after player commits, no items added.
-        //     Stash bet for post-close roll.
-        //   - Payout trade: this is the SECOND trade we initiated. Add
-        //     payout to our offer, accept after player accepts.
+        // Detect PAYOUT trade FIRST (before any wait-for-player gating). The
+        // bot must add the winnings to its offer immediately so the player
+        // can see them and accept; previously this was gated behind the
+        // playerTrade.hasAccepted() check below, which meant the player saw
+        // an empty trade window, never accepted, and the bot walked off.
         Boolean isPayoutTrade = (Boolean) bot.getTemporaryAttributtes().get("BotIsPayoutTrade");
         if (Boolean.TRUE.equals(isPayoutTrade)) {
             handlePayoutTrade(bot, trade);
             return;
         }
 
-        // Bet trade: wait for player to commit (accept stage 1) before locking.
+        // Bet trade: wait for player to commit (accept stage 1) before locking
+        // in the bet amount. They can keep adding gp until they hit Accept.
         if (!playerTrade.hasAccepted()) return;
 
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         String pname = target.getDisplayName();
         if (playerGp < MIN_BET) {
-            sayBoth(bot, "min bet " + MIN_BET + "gp - cancelling");
+            sayBoth(bot, "min bet is " + MIN_BET + "gp - try again");
             bot.getTrade().cancelTrade();
             return;
         }
@@ -235,8 +236,9 @@ public final class BotTradeHandler {
         } catch (Throwable ignored) {}
     }
 
-    /** Second trade: bot has already opened it with player. Add payout
-     *  to our offer + accept after player accepts. */
+    /** Second trade: bot has already opened it with player. Add payout to
+     *  our offer IMMEDIATELY so player can see what they're getting, then
+     *  wait for player to accept and accept ourselves. */
     private static void handlePayoutTrade(AIPlayer bot, Trade trade) {
         Player target = trade.getTarget();
         if (target == null) return;
@@ -250,6 +252,8 @@ public final class BotTradeHandler {
 
         Boolean offered = (Boolean) bot.getTemporaryAttributtes().get("BotPayoutOffered");
         if (!Boolean.TRUE.equals(offered)) {
+            // Add winnings IMMEDIATELY, BEFORE player accepts. Player needs
+            // to see what's being offered to decide whether to accept.
             ensureInvCoins(bot, payout);
             if (bot.getInventory().getAmountOf(COINS) < payout) {
                 sayBoth(bot, "couldn't pay out, sorry");
@@ -261,7 +265,7 @@ public final class BotTradeHandler {
             try {
                 bot.getTrade().addItem(new Item(COINS,
                     (int) Math.min(Integer.MAX_VALUE, payout)));
-                sayBoth(bot, "your winnings: " + payout + "gp");
+                sayBoth(bot, "here's your " + payout + "gp - hit accept");
                 bot.getTemporaryAttributtes().put("BotPayoutOffered", Boolean.TRUE);
             } catch (Throwable ignored) {}
             return;
@@ -371,13 +375,13 @@ public final class BotTradeHandler {
 
         StockEntry stock = ensureBotStockAssigned(bot);
         if (stock == null) {
-            sayBoth(bot, "out of stock");
+            sayBoth(bot, "no stock right now, sorry");
             bot.getTrade().cancelTrade();
             return;
         }
         int onHand = bot.getInventory().getAmountOf(stock.itemId);
         if (onHand <= 0) {
-            sayBoth(bot, "sold out of " + stock.name);
+            sayBoth(bot, "ran out of " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
@@ -386,30 +390,51 @@ public final class BotTradeHandler {
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
             sayBoth(bot, "selling " + stock.name + " at " + stock.priceGp
-                + "gp/each, " + onHand + " available - add gp + click Accept");
+                + "gp each, " + onHand + " in stock - add gp + accept");
             bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
+        }
+
+        // Update our offer to match the player's gp so they can SEE what
+        // they're buying before they hit Accept. Re-runs each tick so as
+        // they add more gp, the bot's offered qty grows in sync.
+        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
+        int unitsRequested = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
+        int units = Math.min(unitsRequested, onHand);
+        Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotTradeUnitsOffered");
+        int lastOffered = lastOfferedObj == null ? 0 : lastOfferedObj;
+        if (units != lastOffered) {
+            try {
+                // Clear our previous offer of this stock item, then re-add the
+                // updated qty. ItemsContainer doesn't have a removeAll-by-id
+                // helper here so we walk slots manually.
+                ItemsContainer<Item> botItems = bot.getTrade().getItemsContainer();
+                if (botItems != null) {
+                    for (int i = 0; i < botItems.getSize(); i++) {
+                        Item it = botItems.get(i);
+                        if (it != null && it.getId() == stock.itemId) {
+                            botItems.set(i, null);
+                        }
+                    }
+                }
+                if (units > 0) {
+                    bot.getTrade().addItem(new Item(stock.itemId, units));
+                }
+                bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", units);
+            } catch (Throwable ignored) {}
         }
 
         // Wait for player to commit by clicking Accept.
         if (!playerTrade.hasAccepted()) return;
-
-        // Player committed. Derive quantity from their GP.
-        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
-        int unitsRequested = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
-        int units = Math.min(unitsRequested, onHand);
         if (units <= 0) {
             sayBoth(bot, "need at least " + stock.priceGp + "gp for 1 " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
 
-        // Add the calculated quantity. Trade.addItem stacks for stackable
-        // items (one slot regardless of qty); for non-stackable adds N
-        // separate items (limited by free slots in trade window).
+        // Player accepted with qty matching their gp. Bot accepts.
         try {
-            bot.getTrade().addItem(new Item(stock.itemId, units));
             long total = (long) units * stock.priceGp;
-            sayBoth(bot, "selling " + units + "x " + stock.name + " for " + total + "gp");
+            sayBoth(bot, "deal! " + units + "x " + stock.name + " for " + total + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
             bot.getTemporaryAttributtes().put("BotTradeSaleQty", units);
@@ -417,14 +442,53 @@ public final class BotTradeHandler {
     }
 
     /** Per-bot stock pick. Stable per bot: same bot keeps offering the same
-     *  thing for the trade lifetime. Picks a low-tier item the bot can plausibly
-     *  acquire. Real economy comes later. */
+     *  thing for the trade lifetime. Picks from the appropriate tier catalog
+     *  for the bot's archetype; falls back to the mixed catalog for legacy
+     *  SOCIALITE_GE_TRADER. Skips any catalog entry that isn't tradeable
+     *  (deg PvP gear, charged items etc) - was rolling 13902 "primal 2h"
+     *  which is actually Statius's warhammer + degrades = untradeable. */
     private static StockEntry pickStockForBot(AIPlayer bot) {
-        // Curated by category - skilling supplies, food, runes, gear, gems,
-        // high-tier weapons + armor. Each bot deterministically picks one by
-        // display-name hash so the same bot consistently sells the same thing.
-        int idx = Math.abs((bot.getDisplayName() == null ? 0 : bot.getDisplayName().hashCode())) % CATALOG.length;
-        return CATALOG[idx];
+        StockEntry[] pool = catalogForBot(bot);
+        if (pool == null || pool.length == 0) return null;
+        int hash = bot.getDisplayName() == null ? 0
+            : bot.getDisplayName().hashCode();
+        int base = Math.abs(hash) % pool.length;
+        // Walk the catalog from `base` and return the first tradeable entry.
+        // Without this, a bot whose name happened to hash to an untradeable
+        // entry would silently fail to stock and immediately cancel "sold out".
+        for (int i = 0; i < pool.length; i++) {
+            StockEntry e = pool[(base + i) % pool.length];
+            if (isTradeableId(e.itemId)) return e;
+        }
+        return null;
+    }
+
+    /** Pick the right catalog tier for a bot's archetype. */
+    private static StockEntry[] catalogForBot(AIPlayer bot) {
+        try {
+            if (bot.getBrain() instanceof com.rs.bot.ambient.CitizenBrain) {
+                AmbientArchetype a = ((com.rs.bot.ambient.CitizenBrain) bot.getBrain()).getArchetype();
+                if (a != null) {
+                    int tier = a.traderTier();
+                    if (tier == 0) return CATALOG_SKILL;
+                    if (tier == 1) return CATALOG_COMBAT;
+                    if (tier == 2) return CATALOG_RARE;
+                }
+            }
+        } catch (Throwable ignored) {}
+        // Legacy SOCIALITE_GE_TRADER falls back to the mixed pool.
+        return CATALOG_MIXED;
+    }
+
+    /** Wraps ItemConstants.isTradeable so we don't bake bad IDs into stocks.
+     *  Trade.addItem early-returns silently for untradeable items - was the
+     *  "added gp, never got my masterwand" bug for catalog entries with charges. */
+    private static boolean isTradeableId(int itemId) {
+        try {
+            return com.rs.game.player.content.ItemConstants.isTradeable(new Item(itemId, 1));
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Pick stock + materialize starting inventory if not already done.
@@ -437,18 +501,37 @@ public final class BotTradeHandler {
             bot.getTemporaryAttributtes().put("BotTraderStock", stock);
             stockBot(bot, stock);
         }
+        // Re-stock if depleted (bot sold everything between trades).
+        try {
+            if (bot.getInventory().getAmountOf(stock.itemId) <= 0) {
+                stockBot(bot, stock);
+            }
+        } catch (Throwable ignored) {}
         return stock;
     }
 
-    /** Spawn-time stock for SOCIALITE_GE_TRADER bots. Called by
-     *  CitizenSpawner.spawnOne so the trader actually has inventory before
-     *  any player initiates a trade. Pre-trade-time materialise was failing
-     *  silently because toolkit ran first and ate inventory slots. */
+    /** Spawn-time stock for trader bots. Called by CitizenSpawner.spawnOne
+     *  so the trader actually has inventory before any player initiates a
+     *  trade. Pre-trade-time materialise was failing silently because toolkit
+     *  ran first and ate inventory slots. */
     public static void preStockTrader(AIPlayer bot) {
         StockEntry stock = pickStockForBot(bot);
-        if (stock == null) return;
+        if (stock == null) {
+            System.err.println("[BotTradeHandler] preStockTrader: no tradeable catalog entry for "
+                + bot.getDisplayName());
+            return;
+        }
         bot.getTemporaryAttributtes().put("BotTraderStock", stock);
         stockBot(bot, stock);
+        // Verify - if we couldn't stock anything (inv full), surface it.
+        try {
+            int onHand = bot.getInventory().getAmountOf(stock.itemId);
+            if (onHand <= 0) {
+                System.err.println("[BotTradeHandler] preStockTrader: " + bot.getDisplayName()
+                    + " could not stock " + stock.name + " (id=" + stock.itemId
+                    + ") - inv full?");
+            }
+        } catch (Throwable ignored) {}
     }
 
     /** Materialise stock into the bot's inventory. Stackable items get a big
@@ -483,18 +566,34 @@ public final class BotTradeHandler {
         }
     }
 
-    /** Trader stock catalog. Each entry includes a bundleSize - how many
-     *  units the bot offers per sale. Bulk consumables (logs/runes/arrows)
-     *  sell in 100s; high-tier weapons/armor sell as 1.
-     *  Prices roughly match RS economy; tune per server later. */
-    private static final StockEntry[] CATALOG = new StockEntry[] {
-        // === Bulk skilling supplies (sell 100s) ===
+    // ===== TIERED CATALOGS =====
+    //
+    // Three tiers, three trader archetypes, three GE-quadrant spawn anchors.
+    // Each entry is (itemId, pricePerUnit, name, bundleSize). Prices tuned
+    // to RSPS economy (~10% of OSRS GE), per-unit so player chooses qty by
+    // amount of GP they add to the trade.
+    //
+    // ALL ENTRIES MUST BE TRADEABLE on this server. We filter via
+    // ItemConstants.isTradeable at pick-time, but listing only known-good
+    // ids keeps the bots' offered stock predictable. Removed previously:
+    //   - 13902 "primal 2h sword" (actually Statius warhammer, degrading)
+    //   - 18353/18355/18357 "virtus" (chaotic items, untradeable range)
+    //   - 18359/18361 chaotic family (untradeable 18330-18374)
+    //   - barrows raw 4708-4738 (degrade-on-wear; tradeable but unstable)
+    //   - 13884/13890/13896 statius pvp gear (degrades)
+
+    /** Tier 1: bulk skilling supplies (logs, ores, runes, raw/cooked fish,
+     *  bones, herbs, gems). Per-unit pricing so a player adds GP and gets
+     *  the matching quantity. */
+    private static final StockEntry[] CATALOG_SKILL = new StockEntry[] {
+        // Logs
         new StockEntry(1511, 50,     "logs",         100),
         new StockEntry(1521, 200,    "oak logs",     100),
         new StockEntry(1519, 400,    "willow logs",  100),
         new StockEntry(1517, 600,    "maple logs",   100),
         new StockEntry(1515, 800,    "yew logs",     100),
         new StockEntry(1513, 1500,   "magic logs",   100),
+        // Ores
         new StockEntry(436,  50,     "copper ore",   100),
         new StockEntry(438,  50,     "tin ore",      100),
         new StockEntry(440,  150,    "iron ore",     100),
@@ -532,55 +631,101 @@ public final class BotTradeHandler {
         new StockEntry(1623, 400,    "uncut sapphire", 25),
         new StockEntry(1619, 1000,   "uncut ruby",   25),
         new StockEntry(1617, 2500,   "uncut diamond", 10),
+        // Arrows / ammo (consumables - bulk)
+        new StockEntry(884,  20,     "steel arrows", 500),
+        new StockEntry(886,  40,     "mithril arrows", 500),
+        new StockEntry(888,  80,     "adamant arrows", 500),
+        new StockEntry(892,  150,    "rune arrows",  500),
+    };
 
-        // === High-tier weapons (sell as 1) ===
-        // Prices tuned for RSPS economy ~10% of OSRS GE values - user
-        // reported the original OSRS-priced catalog asked 18M for an
-        // item worth ~1.25M on this server.
+    /** Tier 2: combat gear (mid). Dragon weapons, rune armor, basic mage
+     *  staves, mid-tier amulets, F2P gear singles. */
+    private static final StockEntry[] CATALOG_COMBAT = new StockEntry[] {
+        // Dragon weapons (singles)
         new StockEntry(4587, 25_000,    "dragon scimitar", 1),
         new StockEntry(1305, 50_000,    "dragon longsword", 1),
         new StockEntry(7158, 60_000,    "dragon 2h sword", 1),
+        new StockEntry(1377, 35_000,    "dragon battleaxe", 1),
+        new StockEntry(1434, 25_000,    "dragon mace", 1),
+        new StockEntry(1215, 30_000,    "dragon dagger", 1),
         new StockEntry(4151, 150_000,   "abyssal whip", 1),
+        new StockEntry(861,  600,       "magic shortbow", 1),
+        new StockEntry(859,  500,       "magic longbow", 1),
+        // Rune armor (singles)
+        new StockEntry(1163, 30_000,    "rune full helm", 1),
+        new StockEntry(1127, 40_000,    "rune platebody", 1),
+        new StockEntry(1079, 25_000,    "rune platelegs", 1),
+        new StockEntry(1201, 25_000,    "rune kiteshield", 1),
+        new StockEntry(1333, 18_000,    "rune scimitar", 1),
+        new StockEntry(1373, 15_000,    "rune battleaxe", 1),
+        new StockEntry(1303, 20_000,    "rune longsword", 1),
+        // Dragon armor pieces (singles)
+        new StockEntry(1149,  30_000,   "dragon med helm", 1),
+        new StockEntry(1187,  50_000,   "dragon sq shield", 1),
+        new StockEntry(11283, 150_000,  "dragonfire shield", 1),
+        // Mage stuff
+        new StockEntry(1389, 8_000,     "mystic staff", 1),
+        new StockEntry(1391, 5_000,     "staff of air",  1),
+        new StockEntry(6914, 80_000,    "master wand", 1),
+        new StockEntry(4097, 35_000,    "mystic robe top (red)", 1),
+        new StockEntry(4099, 30_000,    "mystic robe legs (red)", 1),
+        // Amulets / jewelry
+        new StockEntry(1712, 12_000,    "amulet of glory(4)", 1),
+        new StockEntry(1725, 4_000,     "amulet of strength", 1),
+        new StockEntry(1731, 5_000,     "amulet of power",    1),
+        new StockEntry(11128, 450_000,  "berserker necklace", 1),
+        new StockEntry(11105, 8_000,    "skills necklace(4)", 1),
+        // Range
+        new StockEntry(11212, 1_500,    "dragon arrows", 100),
+        new StockEntry(4734, 80_000,    "karil's crossbow", 1),
+        // Boots / gloves
+        new StockEntry(11732, 60_000,   "dragon boots",  1),
+        new StockEntry(2577,  25_000,   "ranger boots",  1),
+    };
+
+    /** Tier 3: rares + endgame. Godswords, bandos/armadyl, fury, fire cape. */
+    private static final StockEntry[] CATALOG_RARE = new StockEntry[] {
         new StockEntry(11696, 1_800_000, "armadyl godsword", 1),
         new StockEntry(11694, 1_200_000, "bandos godsword", 1),
         new StockEntry(11698, 800_000,   "saradomin godsword", 1),
         new StockEntry(11700, 500_000,   "zamorak godsword", 1),
-        new StockEntry(13902, 1_500_000, "primal 2h sword", 1),
-        new StockEntry(15039, 2_500_000, "drygore longsword", 1),
-        // Bows / range
-        new StockEntry(861,  600,       "magic shortbow", 1),
-        new StockEntry(11212, 1_500,    "dragon arrows",  100),
-        new StockEntry(4734, 80_000,    "karil's pistol crossbow", 1),
-        new StockEntry(15241, 500_000,  "hand cannon",   1),
-        // Armor sets (high-tier)
         new StockEntry(11724, 1_800_000, "bandos chestplate", 1),
         new StockEntry(11726, 1_200_000, "bandos tassets",    1),
         new StockEntry(11722, 3_000_000, "armadyl chestplate", 1),
         new StockEntry(11720, 2_500_000, "armadyl chainskirt", 1),
-        new StockEntry(11283, 150_000,   "dragonfire shield", 1),
-        new StockEntry(1187,  50_000,    "dragon sq shield",  1),
-        new StockEntry(1149,  30_000,    "dragon med helm",   1),
-        // Mage robes (high-tier)
-        new StockEntry(4708,  120_000,  "ahrim's hood",      1),
-        new StockEntry(4712,  300_000,  "ahrim's robe top",  1),
-        new StockEntry(4714,  250_000,  "ahrim's robe bottom", 1),
-        new StockEntry(6914,  500_000,  "master wand",       1),
-        new StockEntry(18353, 1_500_000, "virtus mask",      1),
-        new StockEntry(18355, 2_500_000, "virtus robe top",  1),
-        new StockEntry(18357, 2_200_000, "virtus robe legs", 1),
-        // Amulets / jewelry / capes
-        new StockEntry(1712, 12_000,    "amulet of glory(4)", 1),
-        new StockEntry(1725, 4_000,     "amulet of strength", 1),
-        new StockEntry(1731, 5_000,     "amulet of power",    1),
-        new StockEntry(6585, 400_000,   "amulet of fury",     1),
-        new StockEntry(11128, 450_000,  "berserker necklace", 1),
-        new StockEntry(20000, 300_000,  "fire cape",          1),
-        // Barrows pieces
-        new StockEntry(4716, 60_000,    "dharok's helm",      1),
-        new StockEntry(4720, 120_000,   "dharok's platebody", 1),
-        new StockEntry(4722, 100_000,   "dharok's platelegs", 1),
-        new StockEntry(4718, 140_000,   "dharok's greataxe",  1),
+        new StockEntry(11718, 1_500_000, "armadyl helmet", 1),
+        new StockEntry(11728, 600_000,   "bandos boots", 1),
+        new StockEntry(6585,  400_000,   "amulet of fury", 1),
+        new StockEntry(6737,  900_000,   "berserker ring", 1),
+        new StockEntry(6735,  600_000,   "warrior ring", 1),
+        new StockEntry(6733,  400_000,   "archers ring", 1),
+        new StockEntry(6731,  500_000,   "seers ring", 1),
+        new StockEntry(2572,  300_000,   "ring of wealth", 1),
+        new StockEntry(15241, 500_000,   "hand cannon", 1),
+        // Spirit shields
+        new StockEntry(13738, 8_000_000, "arcane spirit shield", 1),
+        new StockEntry(13740, 6_000_000, "divine spirit shield", 1),
+        new StockEntry(13742, 5_000_000, "elysian spirit shield", 1),
+        new StockEntry(13744, 4_000_000, "spectral spirit shield", 1),
+        // Tradeable rares
+        new StockEntry(20000, 300_000,   "fire cape", 1),
     };
+
+    /** Mixed legacy catalog - flattened union of the three tiers, used by
+     *  the back-compat SOCIALITE_GE_TRADER archetype only. New spawns should
+     *  use the tier-specific archetypes. */
+    private static final StockEntry[] CATALOG_MIXED = mergeCatalogs(
+        CATALOG_SKILL, CATALOG_COMBAT, CATALOG_RARE);
+
+    private static StockEntry[] mergeCatalogs(StockEntry[]... arrays) {
+        int total = 0;
+        for (StockEntry[] arr : arrays) total += arr.length;
+        StockEntry[] out = new StockEntry[total];
+        int i = 0;
+        for (StockEntry[] arr : arrays)
+            for (StockEntry e : arr) out[i++] = e;
+        return out;
+    }
 
     private static int countItem(ItemsContainer<Item> c, int itemId) {
         int total = 0;
@@ -622,23 +767,48 @@ public final class BotTradeHandler {
         return DICE_MODES[idx];
     }
 
-    /** Periodic chatter so players see what the bot offers without trading. */
+    /** Periodic chatter so players see what the bot offers without trading.
+     *  Each bot gets a random phase offset so a cluster of bots doesn't
+     *  shout in unison. Line varies between calls for variety. */
     private static void maybeBroadcast(AIPlayer bot, boolean isGambler, boolean isTrader) {
         Object lastMs = bot.getTemporaryAttributtes().get("BotTradeBroadcastMs");
         long now = System.currentTimeMillis();
-        if (lastMs != null && now - ((Long) lastMs) < BROADCAST_INTERVAL_MS) return;
+        // Phase offset (0-7s) so 10 bots at the same spawn don't sync.
+        Long phase = (Long) bot.getTemporaryAttributtes().get("BotTradeBroadcastPhase");
+        if (phase == null) {
+            phase = (long) Utils.random(7000);
+            bot.getTemporaryAttributtes().put("BotTradeBroadcastPhase", phase);
+        }
+        if (lastMs != null && now - ((Long) lastMs) < BROADCAST_INTERVAL_MS + phase) return;
         bot.getTemporaryAttributtes().put("BotTradeBroadcastMs", now);
         String line = null;
         if (isGambler) {
             DiceMode mode = pickDiceModeForBot(bot);
-            line = "Dice Game " + mode.name + " - trusted host";
+            String[] templates = new String[] {
+                "Dice Game " + mode.name + " - trusted host",
+                "Dicing here! " + mode.name + " up to 1m",
+                mode.name + " active - msg to play",
+                "Hot dice! " + mode.name + " - quick payouts",
+                "Dicing " + mode.name + " - trade me to play",
+                "Trusted host - " + mode.name + " no scams"
+            };
+            line = templates[Utils.random(templates.length)];
         } else if (isTrader) {
             StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
             if (stock == null) {
                 stock = pickStockForBot(bot);
-                bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+                if (stock != null) bot.getTemporaryAttributtes().put("BotTraderStock", stock);
             }
-            if (stock != null) line = "selling " + stock.name + " " + stock.priceGp + "gp";
+            if (stock != null) {
+                String[] templates = new String[] {
+                    "selling " + stock.name + " " + stock.priceGp + "gp each",
+                    "wts " + stock.name + " " + stock.priceGp + "gp",
+                    stock.name + " for sale - " + stock.priceGp + "gp ea",
+                    "got " + stock.name + " - " + stock.priceGp + "gp",
+                    "buy " + stock.name + " " + stock.priceGp + "gp"
+                };
+                line = templates[Utils.random(templates.length)];
+            }
         }
         if (line != null) sayBoth(bot, line);
     }
@@ -695,26 +865,47 @@ public final class BotTradeHandler {
         } catch (Throwable ignored) {}
     }
 
-    /** Per-bot stable chat effect. Rolled once per bot, cached. */
+    /** Per-bot stable chat effect. Rolled once per bot, cached.
+     *  Larger pool than before so adjacent bots don't all use the same color
+     *  - user feedback was that GE bots all looked identical. */
     private static int chatEffectFor(AIPlayer bot) {
         Object cached = bot.getTemporaryAttributtes().get("BotChatEffect");
         if (cached != null) return (Integer) cached;
-        // Pool of "host-like" effects - colored + sometimes animated.
-        // Most colors only (anim 0); some scroll/wave/shake for flair.
+        // Effect format: (color << 8) | animation
+        //   color  0=yellow, 1=red, 2=green, 3=cyan, 4=purple, 5=white,
+        //          6=glow1 (red->yellow), 7=glow2 (red->purple),
+        //          8=glow3 (white->green), 9=flash1, 10=flash2, 11=flash3
+        //   anim   0=none, 1=wave, 2=wave2, 3=shake, 4=scroll, 5=slide
         int[] pool = new int[] {
+            // Plain colors
             (1 << 8) | 0,    // red
             (2 << 8) | 0,    // green
             (3 << 8) | 0,    // cyan
             (4 << 8) | 0,    // purple
-            (6 << 8) | 0,    // glow1 (red->yellow)
-            (7 << 8) | 0,    // glow2 (red->purple)
-            (8 << 8) | 0,    // glow3 (white->green)
-            (9 << 8) | 0,    // flash1 (yellow->red)
-            (10 << 8) | 0,   // flash2 (blue->cyan)
-            (11 << 8) | 0,   // flash3 (black->white)
+            (5 << 8) | 0,    // white
+            // Glow effects
+            (6 << 8) | 0,    // glow1
+            (7 << 8) | 0,    // glow2
+            (8 << 8) | 0,    // glow3
+            // Flash effects
+            (9 << 8) | 0,    // flash1
+            (10 << 8) | 0,   // flash2
+            (11 << 8) | 0,   // flash3
+            // Color + animation combos
+            (1 << 8) | 1,    // red + wave
             (1 << 8) | 4,    // red + scroll
-            (6 << 8) | 1,    // glow + wave
-            (9 << 8) | 3,    // flash + shake
+            (2 << 8) | 1,    // green + wave
+            (2 << 8) | 4,    // green + scroll
+            (3 << 8) | 2,    // cyan + wave2
+            (4 << 8) | 5,    // purple + slide
+            (5 << 8) | 4,    // white + scroll
+            (6 << 8) | 1,    // glow1 + wave
+            (6 << 8) | 4,    // glow1 + scroll
+            (7 << 8) | 2,    // glow2 + wave2
+            (8 << 8) | 1,    // glow3 + wave
+            (9 << 8) | 3,    // flash1 + shake
+            (10 << 8) | 4,   // flash2 + scroll
+            (11 << 8) | 5,   // flash3 + slide
         };
         int hash = bot.getDisplayName() == null ? 0 : bot.getDisplayName().hashCode();
         int eff = pool[Math.abs(hash) % pool.length];

@@ -68,6 +68,24 @@ public enum AmbientArchetype {
         new String[] {"buying logs 200ea", "selling sharks 950 each",
                       "pst me", "wts whip", "wtb dragon claws", "ge prices going up"}),
 
+    // Tiered traders - same trade lifecycle as GE_TRADER but with curated
+    // catalog + spawn anchor per tier. SKILL = bulk skilling supplies,
+    // COMBAT = mid-tier weapons/armor, RARE = high-tier rares.
+    SOCIALITE_GE_TRADER_SKILL("ge skill trader",
+        new int[] {863, 864, 855},
+        new String[] {"selling logs", "wts ores", "raw fish here",
+                      "100k bone bundle", "bulk runes", "low low prices"}),
+
+    SOCIALITE_GE_TRADER_COMBAT("ge combat trader",
+        new int[] {863, 864, 857, 855},
+        new String[] {"selling weapons", "wts armor", "barrows for sale",
+                      "dragon weapons here", "rune sets cheap"}),
+
+    SOCIALITE_GE_TRADER_RARE("ge rare trader",
+        new int[] {864, 857, 855, 858},
+        new String[] {"top tier gear", "endgame weapons", "rares for sale",
+                      "godswords here", "premium prices, premium gear"}),
+
     SOCIALITE_BANKSTAND("bankstander",
         new int[] {863, 862, 866, 858},                   // wave/cheer/dance/bow
         new String[] {"hi", "hello there", "anyone need help?", "cool gear",
@@ -146,7 +164,26 @@ public enum AmbientArchetype {
     }
 
     public boolean isSocialite() {
-        return this == SOCIALITE_GAMBLER || this == SOCIALITE_GE_TRADER || this == SOCIALITE_BANKSTAND;
+        return this == SOCIALITE_GAMBLER || this == SOCIALITE_GE_TRADER
+            || this == SOCIALITE_GE_TRADER_SKILL || this == SOCIALITE_GE_TRADER_COMBAT
+            || this == SOCIALITE_GE_TRADER_RARE  || this == SOCIALITE_BANKSTAND;
+    }
+
+    /** Any of the trader subtypes (legacy + tiered). */
+    public boolean isTrader() {
+        return this == SOCIALITE_GE_TRADER
+            || this == SOCIALITE_GE_TRADER_SKILL
+            || this == SOCIALITE_GE_TRADER_COMBAT
+            || this == SOCIALITE_GE_TRADER_RARE;
+    }
+
+    /** Trader tier - drives catalog selection in BotTradeHandler.
+     *  0 = skill/bulk, 1 = combat, 2 = rare/high-tier, -1 = mixed (legacy). */
+    public int traderTier() {
+        if (this == SOCIALITE_GE_TRADER_SKILL)  return 0;
+        if (this == SOCIALITE_GE_TRADER_COMBAT) return 1;
+        if (this == SOCIALITE_GE_TRADER_RARE)   return 2;
+        return -1;
     }
 
     public boolean isMinigamer() {
@@ -177,12 +214,71 @@ public enum AmbientArchetype {
         return null;
     }
 
+    /**
+     * GE-area anchor tiles per socialite role. Returns null for non-socialite
+     * archetypes. Multi-anchor roles (gambler, bankstand) randomly pick one
+     * per call so a batch spawns at varied spots, not stacked on one tile.
+     *
+     * Coords (per user spec):
+     *   Gambler:        3142,3487 (north of rare traders) OR 3163,3489 (fountain)
+     *   Bankstander:    one of the 4 GE bank counters
+     *   SKILL trader:   3157,3477 (SW counter quadrant)
+     *   COMBAT trader:  3157,3477 (same quadrant as skill)
+     *   RARE trader:    3147,3472 (NW corner near tree)
+     *   Legacy trader:  3164,3486 (default GE center)
+     */
+    public com.rs.game.WorldTile socialiteAnchor() {
+        if (this == SOCIALITE_GAMBLER) {
+            return Utils.random(2) == 0
+                ? new com.rs.game.WorldTile(3142, 3487, 0)
+                : new com.rs.game.WorldTile(3163, 3489, 0);
+        }
+        if (this == SOCIALITE_BANKSTAND) {
+            // 4 GE bank counter clusters - covers all sides of the GE.
+            com.rs.game.WorldTile[] counters = new com.rs.game.WorldTile[] {
+                new com.rs.game.WorldTile(3165, 3490, 0),  // N counter
+                new com.rs.game.WorldTile(3168, 3486, 0),  // E counter
+                new com.rs.game.WorldTile(3164, 3482, 0),  // S counter
+                new com.rs.game.WorldTile(3160, 3486, 0)   // W counter
+            };
+            return counters[Utils.random(counters.length)];
+        }
+        if (this == SOCIALITE_GE_TRADER_SKILL || this == SOCIALITE_GE_TRADER_COMBAT) {
+            return new com.rs.game.WorldTile(3157, 3477, 0);
+        }
+        if (this == SOCIALITE_GE_TRADER_RARE) {
+            return new com.rs.game.WorldTile(3147, 3472, 0);
+        }
+        if (this == SOCIALITE_GE_TRADER) {
+            return new com.rs.game.WorldTile(3164, 3486, 0);
+        }
+        return null;
+    }
+
     public static AmbientArchetype randomFor(String category) {
         if (category == null) return values()[Utils.random(values().length)];
+        // Exact enum name (e.g. "SOCIALITE_GE_TRADER_RARE") wins over fuzzy
+        // category match - lets CitizenBudget pin a slot to a specific tier.
+        try {
+            return AmbientArchetype.valueOf(category);
+        } catch (IllegalArgumentException ignored) { /* fall through */ }
         switch (category.toLowerCase()) {
             case "skiller":   return new AmbientArchetype[] {SKILLER_EFFICIENT, SKILLER_CASUAL, SKILLER_NOOB}[Utils.random(3)];
             case "combatant": return new AmbientArchetype[] {COMBATANT_PURE, COMBATANT_TANK, COMBATANT_HYBRID}[Utils.random(3)];
-            case "socialite": return new AmbientArchetype[] {SOCIALITE_GAMBLER, SOCIALITE_GE_TRADER, SOCIALITE_BANKSTAND}[Utils.random(3)];
+            // Mixed socialite category: weighted toward bankstanders + tiered
+            // traders (the visible "real" GE crowd) over gamblers/legacy.
+            case "socialite": return new AmbientArchetype[] {
+                    SOCIALITE_BANKSTAND, SOCIALITE_BANKSTAND,
+                    SOCIALITE_GE_TRADER_SKILL, SOCIALITE_GE_TRADER_SKILL,
+                    SOCIALITE_GE_TRADER_COMBAT, SOCIALITE_GE_TRADER_COMBAT,
+                    SOCIALITE_GE_TRADER_RARE,
+                    SOCIALITE_GAMBLER
+                }[Utils.random(8)];
+            case "trader_skill":  return SOCIALITE_GE_TRADER_SKILL;
+            case "trader_combat": return SOCIALITE_GE_TRADER_COMBAT;
+            case "trader_rare":   return SOCIALITE_GE_TRADER_RARE;
+            case "gambler":       return SOCIALITE_GAMBLER;
+            case "bankstand":     return SOCIALITE_BANKSTAND;
             // "minigamer" = legacy generic; pick from generic + per-minigame
             // variants so old budget configs still spawn a mix.
             case "minigamer": return new AmbientArchetype[] {

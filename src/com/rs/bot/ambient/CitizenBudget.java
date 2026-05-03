@@ -138,15 +138,13 @@ public final class CitizenBudget {
             int need = Math.max(0, s.count - alive);
             if (need == 0) continue;
             try {
-                AmbientArchetype arch = AmbientArchetype.valueOf(s.archetype);
                 com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(s.x, s.y, s.plane);
-                String category = arch.isSkiller() ? "skiller"
-                                : arch.isCombatant() ? "combatant"
-                                : arch.isSocialite() ? "socialite"
-                                : arch.isMinigamer() ? "minigamer"
-                                : null;
+                // Pass the archetype name directly so spawner picks THAT exact
+                // archetype (CITIZEN_GE_TRADER_RARE etc) instead of a random
+                // socialite. randomFor() handles enum-name match before falling
+                // back to category buckets.
                 java.util.List<com.rs.bot.AIPlayer> batch =
-                    CitizenSpawner.spawnBatch(need, category, anchor, s.scatter);
+                    CitizenSpawner.spawnBatch(need, s.archetype, anchor, s.scatter);
                 // batch.size() is just the FIRST sync spawn; the rest are
                 // queued. We count what we requested as "spawned planned".
                 spawned += need;
@@ -158,18 +156,29 @@ public final class CitizenBudget {
     }
 
     /** Default budget seed: a small mixed-population spawn at GE so first-time
-     *  users see SOMETHING rather than an empty world. */
+     *  users see SOMETHING rather than an empty world.
+     *
+     *  GE socialite anchors (per user spec):
+     *    Bankstanders - 4 GE bank counters (archetype picks one)
+     *    SKILL trader - SW counter quadrant (3157, 3477)
+     *    COMBAT trader - SW counter quadrant (3157, 3477)
+     *    RARE trader - NW corner near tree (3147, 3472)
+     *    Gambler GE  - north of rare traders (3142, 3487) or center fountain (3163, 3489)
+     *    Gambler Edge - Edgeville bank (3094, 3491) [legacy spot] */
     private static void seedDefaults() {
         slots.clear();
-        // Grand Exchange anchor (Varrock GE): ~3164, 3486
-        slots.add(new Slot("SOCIALITE_BANKSTAND",   30, 3164, 3486, 0, 8, false));
-        // GE traders cluster at the GE itself - they're the "selling X" hosts
-        // that real players see when they walk in. autospawn=true so first-
-        // time users see them immediately.
-        slots.add(new Slot("SOCIALITE_GE_TRADER",   25, 3164, 3486, 0, 8, true));
-        // Gamblers cluster at Edgeville bank (real RS dicing area), not GE.
-        // Real players know to look here for hosts. autospawn=true.
-        slots.add(new Slot("SOCIALITE_GAMBLER",     12, 3094, 3491, 0, 5, true));
+        // Bankstanders: random of 4 counters via socialiteAnchor()
+        slots.add(new Slot("SOCIALITE_BANKSTAND",            20, 3164, 3486, 0, 4, true));
+        // Tier 1: bulk skilling supplies traders (most common)
+        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",      15, 3157, 3477, 0, 4, true));
+        // Tier 2: combat gear traders
+        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",     10, 3157, 3477, 0, 4, true));
+        // Tier 3: rare/endgame traders (fewer, premium pricing)
+        slots.add(new Slot("SOCIALITE_GE_TRADER_RARE",        5, 3147, 3472, 0, 3, true));
+        // Gamblers at GE - randomized between fountain/north anchor
+        slots.add(new Slot("SOCIALITE_GAMBLER",               8, 3142, 3487, 0, 4, true));
+        // Gamblers at Edgeville (legacy dicing spot)
+        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3094, 3491, 0, 4, false));
         // Lumbridge skillers
         slots.add(new Slot("SKILLER_NOOB",          15, 3222, 3218, 0, 10, false));
         slots.add(new Slot("SKILLER_CASUAL",        15, 3222, 3218, 0, 10, false));

@@ -115,12 +115,51 @@ public final class CitizenSpawner {
         // correct minigame lobby instead of wherever the caller picked.
         com.rs.game.WorldTile minigameLobby = arch == null ? null : arch.lobbyTile();
         if (minigameLobby != null) anchor = minigameLobby;
+        // Per-socialite-role anchor (gambler/trader-tier/bankstander) - pin
+        // to the GE-area tile defined by the archetype unless the caller's
+        // anchor is significantly far away (e.g. user explicitly placed
+        // gamblers at Edgeville). 30 tile threshold lets the caller override.
+        if (arch != null && arch.isSocialite() && minigameLobby == null) {
+            com.rs.game.WorldTile sanchor = arch.socialiteAnchor();
+            if (sanchor != null) {
+                long d = (long) Math.hypot(anchor.getX() - sanchor.getX(),
+                                           anchor.getY() - sanchor.getY());
+                if (d <= 30) anchor = sanchor;
+            }
+        }
+        // Smaller scatter for socialites - they should cluster, not spread.
+        if (arch != null && arch.isSocialite()) {
+            scatter = Math.min(scatter, 4);
+        }
         scatter = Math.max(2, scatter);
-        int dx = gaussianOffset(scatter);
-        int dy = gaussianOffset(scatter);
-        WorldTile spawn = new WorldTile(
-            anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
-        int wanderRadius = 4 + Utils.random(8);
+        // Validate the picked spawn tile is walkable. Try up to 8 times - if
+        // the gaussian lands on a wall/object/water, retry. Falls back to the
+        // anchor itself (which should be a known-good tile by definition).
+        WorldTile spawn = null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            int dx = gaussianOffset(scatter);
+            int dy = gaussianOffset(scatter);
+            WorldTile cand = new WorldTile(
+                anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
+            try {
+                if (com.rs.game.World.isTileFree(cand.getPlane(),
+                        cand.getX(), cand.getY(), 1)) {
+                    spawn = cand;
+                    break;
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (spawn == null) spawn = new WorldTile(anchor);
+        // Socialites cluster at GE - small wander radius keeps them at the
+        // counter / fountain / dicing tile and not drifting across the GE.
+        // Other archetypes get a bigger radius so skillers/combatants can
+        // patrol resource pockets.
+        int wanderRadius;
+        if (arch != null && arch.isSocialite()) {
+            wanderRadius = 2 + Utils.random(2);   // 2-3 tiles
+        } else {
+            wanderRadius = 4 + Utils.random(8);   // 4-11 tiles
+        }
 
         String name = com.rs.bot.BotNames.generate();
         // === SAME PIPELINE AS LEGENDS ===
@@ -172,7 +211,7 @@ public final class CitizenSpawner {
             // Otherwise the trade handler tries to materialize at trade-time
             // which silently failed (full inv from toolkit, non-stackable
             // items > slots, etc) and traders cancelled "sold out".
-            if (arch == AmbientArchetype.SOCIALITE_GE_TRADER) {
+            if (arch != null && arch.isTrader()) {
                 try {
                     com.rs.bot.ambient.BotTradeHandler.preStockTrader(bot);
                 } catch (Throwable ignored) {}
