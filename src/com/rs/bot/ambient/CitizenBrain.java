@@ -94,6 +94,11 @@ public class CitizenBrain extends BotBrain {
             afkUntilMs = 0;
         }
 
+        // Trade lifecycle for socialite gambler/trader bots. Runs first so
+        // they can accept inbound trade requests before any other behavior
+        // moves them away from the trade UI.
+        try { BotTradeHandler.tick(bot, archetype); } catch (Throwable ignored) {}
+
         // Real-player proximity -> PANICKING. Cooldown so we don't oscillate.
         if (panicCooldownTicks > 0) panicCooldownTicks--;
         if (panicCooldownTicks <= 0 && state != State.PANICKING) {

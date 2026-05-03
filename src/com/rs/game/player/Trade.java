@@ -165,6 +165,13 @@ public class Trade {
 		return target != null;
 	}
 
+	/** Bots need read access to who they're trading with + what was offered + accept state. */
+	public Player getTarget() { return target; }
+	public com.rs.game.item.ItemsContainer<com.rs.game.item.Item> getItemsContainer() { return items; }
+	public boolean hasAccepted() { return accepted; }
+	/** Public convenience for bots / external callers - cancels the trade. */
+	public void cancelTrade() { closeTrade(CloseTradeStage.CANCEL); }
+
 	public void setTradeModified(boolean modified) {
 		if (modified == tradeModified)
 			return;
