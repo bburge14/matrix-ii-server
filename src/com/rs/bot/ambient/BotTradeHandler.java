@@ -114,84 +114,102 @@ public final class BotTradeHandler {
             player.getTemporaryAttributtes().remove("TradeTarget");
             bot.getTrade().openTrade(player);
             player.getTrade().openTrade(bot);
-            bot.getTemporaryAttributtes().remove("BotTradeStartMs");
-            bot.getTemporaryAttributtes().remove("BotTradeDecided");
+            clearTradeState(bot);
         } catch (Throwable t) {
             // Swallow - player retries on rejection.
         }
     }
 
-    // === SOCIALITE_GAMBLER: 50/50 dice ===
+    /** Clear all trade-machine attributes. Critical: a leak from a previous
+     *  trade (BotTradeDecided=TRUE, BotTradeStage1=TRUE) made the next trade
+     *  skip the dice roll AND skip stage 1 accept, leading to "always wins"
+     *  apparent behavior. Called on every fresh trade open. */
+    private static void clearTradeState(AIPlayer bot) {
+        bot.getTemporaryAttributtes().remove("BotTradeStartMs");
+        bot.getTemporaryAttributtes().remove("BotTradeDecided");
+        bot.getTemporaryAttributtes().remove("BotTradeStage1");
+        bot.getTemporaryAttributtes().remove("BotTradeStage2");
+        bot.getTemporaryAttributtes().remove("BotTradeBet");
+        bot.getTemporaryAttributtes().remove("BotTradeStockOffered");
+        bot.getTemporaryAttributtes().remove("BotTradeWasInTrade");
+    }
+
+    // === SOCIALITE_GAMBLER: dice + payout ===
+    //
+    // Flow (matches RS dice host convention):
+    //   1. Player adds GP to their side of trade
+    //   2. PLAYER clicks Accept (commits the bet)
+    //   3. Bot detects player.accepted=true -> rolls dice -> adds payout
+    //      if win or nothing if lose -> announces result -> bot.accept(true)
+    //      -> trade advances to stage 2 (Confirmation)
+    //   4. Player accepts stage 2 -> bot accepts stage 2 -> trade completes
+    //
+    // Bot does NOT roll until the player has clicked Accept. Prior version
+    // rolled as soon as ANY GP was visible, which felt like the bot was
+    // pre-deciding the outcome.
 
     private static void handleGambler(AIPlayer bot, Trade trade) {
         Player target = trade.getTarget();
         if (target == null) return;
+        Trade playerTrade = target.getTrade();
+        if (playerTrade == null) return;
 
-        // Read what the player offered.
-        ItemsContainer<Item> offered = target.getTrade().getItemsContainer();
-        if (offered == null) return;
-        int playerGp = countItem(offered, COINS);
+        // Already at confirmation stage: accept stage 2 to seal.
+        Boolean stage2Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage2");
+        if (Boolean.TRUE.equals(stage2Done)) {
+            try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
+            return;
+        }
 
-        // Stage 2 confirmation: if we already accepted stage 1, watch for the
-        // trade to advance to confirmation (player accepted too). Then call
-        // accept(false) to seal it.
+        // Already accepted stage 1, waiting for player to accept their stage 1
+        // (which advances both to stage 2). Bot is idle here.
         Boolean stage1Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage1");
         if (Boolean.TRUE.equals(stage1Done)) {
-            try {
-                // accept(false) only completes when both sides are at stage 2.
-                // Calling it before then is a no-op; calling it after both
-                // stage-1-accept seals the trade.
-                bot.getTrade().accept(false);
-            } catch (Throwable ignored) {}
-            return;
-        }
-
-        Boolean decided = (Boolean) bot.getTemporaryAttributtes().get("BotTradeDecided");
-        if (decided == null) decided = Boolean.FALSE;
-
-        if (!decided) {
-            if (playerGp < MIN_BET) {
-                // Wait for them to add a real bet.
-                return;
-            }
-            DiceMode mode = pickDiceModeForBot(bot);
-            int bet = Math.min(playerGp, MAX_BET);
-            long payout = (long) bet * mode.payoutMultiplier;
-            int roll = Utils.random(100);
-            boolean win = roll >= mode.winThreshold;
-            try {
-                if (win) {
-                    // Move coins from MoneyPouch -> inventory so addItem
-                    // works. accumulatedWealth puts cb-scaled GP in the
-                    // pouch, not inventory, so without this gamblers
-                    // always cancel "no funds".
-                    ensureInvCoins(bot, payout);
-                    if (bot.getInventory().getAmountOf(COINS) >= payout) {
-                        bot.getTrade().addItem(new Item(COINS, (int) Math.min(Integer.MAX_VALUE, payout)));
-                        sayBoth(bot, mode.name + " - rolled " + roll + " - you win " + payout + "!");
-                    } else {
-                        sayBoth(bot, "no funds, can't gamble that high");
-                        bot.getTrade().cancelTrade();
-                        return;
-                    }
-                } else {
-                    sayBoth(bot, mode.name + " - rolled " + roll + " - you lose");
-                }
-            } catch (Throwable ignored) {}
-            bot.getTemporaryAttributtes().put("BotTradeDecided", Boolean.TRUE);
-            bot.getTemporaryAttributtes().put("BotTradeBet", bet);
-            return;
-        }
-
-        // Accept stage 1 once decided. Trade is 2-stage: both sides accept
-        // stage 1 (Trade interface) -> advances to stage 2 (Confirmation) ->
-        // both sides accept stage 2 -> trade completes. We mark stage1Done
-        // so next tick handles stage 2.
-        try {
+            // Detect stage advancement: after player accepts stage 1, both
+            // sides' accepted reset to false (nextStage). Bot's hasAccepted
+            // == false again is the signal we're at stage 2.
             if (!bot.getTrade().hasAccepted()) {
-                bot.getTrade().accept(true);
-                bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
+                bot.getTemporaryAttributtes().put("BotTradeStage2", Boolean.TRUE);
+                try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
             }
+            return;
+        }
+
+        // Wait for player to accept stage 1 before rolling. This is the
+        // commitment - player clicked Accept, locking in their bet.
+        if (!playerTrade.hasAccepted()) return;
+
+        // Player committed. Read their bet, roll, decide payout.
+        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
+        if (playerGp < MIN_BET) {
+            sayBoth(bot, "min bet " + MIN_BET + "gp - cancelling");
+            bot.getTrade().cancelTrade();
+            return;
+        }
+        DiceMode mode = pickDiceModeForBot(bot);
+        int bet = Math.min(playerGp, MAX_BET);
+        long payout = (long) bet * mode.payoutMultiplier;
+        int roll = Utils.random(100);
+        boolean win = roll >= mode.winThreshold;
+        try {
+            if (win) {
+                ensureInvCoins(bot, payout);
+                if (bot.getInventory().getAmountOf(COINS) >= payout) {
+                    bot.getTrade().addItem(new Item(COINS,
+                        (int) Math.min(Integer.MAX_VALUE, payout)));
+                    sayBoth(bot, mode.name + " rolled " + roll + " - you win " + payout + "!");
+                } else {
+                    sayBoth(bot, "no funds, can't gamble that high");
+                    bot.getTrade().cancelTrade();
+                    return;
+                }
+            } else {
+                sayBoth(bot, mode.name + " rolled " + roll + " - you lose");
+            }
+            // Now accept stage 1 (locks in our offer + payout).
+            bot.getTrade().accept(true);
+            bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
+            bot.getTemporaryAttributtes().put("BotTradeBet", bet);
         } catch (Throwable ignored) {}
     }
 
@@ -200,110 +218,202 @@ public final class BotTradeHandler {
     private static void handleTrader(AIPlayer bot, Trade trade) {
         Player target = trade.getTarget();
         if (target == null) return;
+        Trade playerTrade = target.getTrade();
+        if (playerTrade == null) return;
 
-        // First time: pick what we're selling + price, add to our offer.
-        StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
-        if (stock == null) {
-            stock = pickStockForBot(bot);
-            if (stock == null) {
-                // No stockable item - just close trade.
-                bot.getTrade().cancelTrade();
-                return;
-            }
-            try {
-                if (bot.getInventory().getAmountOf(stock.itemId) < 1) {
-                    // Self-stock: give bot 1 of the item to sell. (Trader
-                    // bots get pre-stocked at spawn time eventually; for now
-                    // we materialize on-demand.)
-                    bot.getInventory().addItem(stock.itemId, 1);
-                }
-                bot.getTrade().addItem(new Item(stock.itemId, 1));
-                sayBoth(bot, "selling " + stock.name + " for " + stock.priceGp + "gp");
-            } catch (Throwable ignored) {}
-            bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+        // Stage 2 (Confirmation): seal the trade.
+        Boolean stage2Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage2");
+        if (Boolean.TRUE.equals(stage2Done)) {
+            try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
             return;
         }
 
-        // Check if player paid the right amount.
-        ItemsContainer<Item> offered = target.getTrade().getItemsContainer();
-        if (offered == null) return;
-        int playerGp = countItem(offered, COINS);
-
-        if (playerGp >= stock.priceGp) {
-            try {
-                if (!bot.getTrade().hasAccepted()) {
-                    bot.getTrade().accept(true);
-                    bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
-                }
-            } catch (Throwable ignored) {}
+        // Already accepted stage 1; watch for advancement to stage 2.
+        Boolean stage1Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage1");
+        if (Boolean.TRUE.equals(stage1Done)) {
+            if (!bot.getTrade().hasAccepted()) {
+                bot.getTemporaryAttributtes().put("BotTradeStage2", Boolean.TRUE);
+                try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
+            }
+            return;
         }
+
+        // Persistent per-bot stock - assigned at spawn (loadout), depleted as
+        // trades complete. Read from bot inventory each trade so quantity
+        // reflects what's actually still in stock.
+        StockEntry stock = ensureBotStockAssigned(bot);
+        if (stock == null) {
+            sayBoth(bot, "out of stock");
+            bot.getTrade().cancelTrade();
+            return;
+        }
+        int onHand = bot.getInventory().getAmountOf(stock.itemId);
+        if (onHand <= 0) {
+            sayBoth(bot, "sold out of " + stock.name);
+            bot.getTrade().cancelTrade();
+            return;
+        }
+
+        // Check if player paid the right amount AND committed (accepted).
+        // Only roll-and-accept after player commits, like the gambler flow.
+        if (!playerTrade.hasAccepted()) {
+            // First-time setup: add an item to our offer + announce price so
+            // the player knows what to do.
+            Boolean offered = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
+            if (!Boolean.TRUE.equals(offered)) {
+                int saleQty = Math.min(onHand, stock.bundleSize);
+                try {
+                    bot.getTrade().addItem(new Item(stock.itemId, saleQty));
+                    long price = (long) saleQty * stock.priceGp;
+                    sayBoth(bot, "selling " + saleQty + "x " + stock.name + " for " + price + "gp");
+                    bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
+                    bot.getTemporaryAttributtes().put("BotTradeSaleQty", saleQty);
+                } catch (Throwable ignored) {}
+            }
+            return;
+        }
+
+        // Player accepted - check their GP against our asking price for the
+        // bundle on offer.
+        int saleQty = (Integer) bot.getTemporaryAttributtes().getOrDefault("BotTradeSaleQty", 1);
+        long askingPrice = (long) saleQty * stock.priceGp;
+        int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
+        if (playerGp < askingPrice) {
+            sayBoth(bot, "need " + askingPrice + "gp for " + saleQty + "x " + stock.name);
+            // Don't cancel - player can still add more GP and re-accept.
+            return;
+        }
+        try {
+            bot.getTrade().accept(true);
+            bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
+        } catch (Throwable ignored) {}
     }
 
     /** Per-bot stock pick. Stable per bot: same bot keeps offering the same
      *  thing for the trade lifetime. Picks a low-tier item the bot can plausibly
      *  acquire. Real economy comes later. */
     private static StockEntry pickStockForBot(AIPlayer bot) {
-        // Curated by category - skilling supplies, food, runes, gear, gems.
-        // Each bot deterministically picks one by display-name hash so the
-        // same bot consistently sells the same thing.
+        // Curated by category - skilling supplies, food, runes, gear, gems,
+        // high-tier weapons + armor. Each bot deterministically picks one by
+        // display-name hash so the same bot consistently sells the same thing.
         int idx = Math.abs((bot.getDisplayName() == null ? 0 : bot.getDisplayName().hashCode())) % CATALOG.length;
         return CATALOG[idx];
     }
 
-    /** Trader stock catalog - 30+ entries across categories so trader bots
-     *  feel varied. Prices are rough; tune per server economy later. */
+    /** Pick stock + materialize starting inventory if not already done.
+     *  Returns null only on catastrophic failure. */
+    private static StockEntry ensureBotStockAssigned(AIPlayer bot) {
+        StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
+        if (stock == null) {
+            stock = pickStockForBot(bot);
+            if (stock == null) return null;
+            bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+            // Initial stock: enough copies to last several sales. Materialised
+            // so the trader actually has the item in inventory.
+            int startQty = stock.bundleSize * 8; // 8 sales worth
+            try {
+                int already = bot.getInventory().getAmountOf(stock.itemId);
+                int give = Math.max(0, startQty - already);
+                if (give > 0) bot.getInventory().addItem(stock.itemId, give);
+            } catch (Throwable ignored) {}
+        }
+        return stock;
+    }
+
+    /** Trader stock catalog. Each entry includes a bundleSize - how many
+     *  units the bot offers per sale. Bulk consumables (logs/runes/arrows)
+     *  sell in 100s; high-tier weapons/armor sell as 1.
+     *  Prices roughly match RS economy; tune per server later. */
     private static final StockEntry[] CATALOG = new StockEntry[] {
-        // Logs (Woodcutting drops + Fletching)
-        new StockEntry(1511, 50,     "logs"),
-        new StockEntry(1521, 200,    "oak logs"),
-        new StockEntry(1519, 400,    "willow logs"),
-        new StockEntry(1517, 600,    "maple logs"),
-        new StockEntry(1515, 800,    "yew logs"),
-        new StockEntry(1513, 1500,   "magic logs"),
-        // Ores (Mining + Smelting)
-        new StockEntry(436,  50,     "copper ore"),
-        new StockEntry(438,  50,     "tin ore"),
-        new StockEntry(440,  150,    "iron ore"),
-        new StockEntry(453,  150,    "coal"),
-        new StockEntry(447,  250,    "mithril ore"),
-        new StockEntry(449,  500,    "adamantite ore"),
-        new StockEntry(451,  10000,  "runite ore"),
-        new StockEntry(444,  500,    "gold ore"),
-        // Raw fish (Fishing + Cooking)
-        new StockEntry(317,  100,    "raw shrimps"),
-        new StockEntry(331,  300,    "raw salmon"),
-        new StockEntry(335,  200,    "raw trout"),
-        new StockEntry(341,  150,    "raw herring"),
-        new StockEntry(353,  150,    "raw mackerel"),
-        new StockEntry(371,  500,    "raw swordfish"),
-        new StockEntry(377,  500,    "raw lobster"),
-        new StockEntry(383,  900,    "raw shark"),
-        // Cooked food
-        new StockEntry(379,  600,    "lobster"),
-        new StockEntry(385,  1200,   "shark"),
+        // === Bulk skilling supplies (sell 100s) ===
+        new StockEntry(1511, 50,     "logs",         100),
+        new StockEntry(1521, 200,    "oak logs",     100),
+        new StockEntry(1519, 400,    "willow logs",  100),
+        new StockEntry(1517, 600,    "maple logs",   100),
+        new StockEntry(1515, 800,    "yew logs",     100),
+        new StockEntry(1513, 1500,   "magic logs",   100),
+        new StockEntry(436,  50,     "copper ore",   100),
+        new StockEntry(438,  50,     "tin ore",      100),
+        new StockEntry(440,  150,    "iron ore",     100),
+        new StockEntry(453,  150,    "coal",         100),
+        new StockEntry(447,  250,    "mithril ore",  100),
+        new StockEntry(449,  500,    "adamantite ore", 50),
+        new StockEntry(451,  10000,  "runite ore",   10),
+        new StockEntry(444,  500,    "gold ore",     50),
+        // Raw + cooked fish
+        new StockEntry(317,  100,    "raw shrimps",  100),
+        new StockEntry(331,  300,    "raw salmon",   50),
+        new StockEntry(335,  200,    "raw trout",    50),
+        new StockEntry(371,  500,    "raw swordfish", 50),
+        new StockEntry(377,  500,    "raw lobster",  50),
+        new StockEntry(383,  900,    "raw shark",    50),
+        new StockEntry(379,  600,    "lobster",      50),
+        new StockEntry(385,  1200,   "shark",        50),
         // Runes
-        new StockEntry(554,  20,     "fire runes"),
-        new StockEntry(555,  20,     "water runes"),
-        new StockEntry(556,  20,     "air runes"),
-        new StockEntry(557,  20,     "earth runes"),
-        new StockEntry(558,  10,     "mind runes"),
-        new StockEntry(559,  100,    "body runes"),
-        new StockEntry(560,  300,    "death runes"),
-        new StockEntry(562,  150,    "chaos runes"),
-        new StockEntry(565,  250,    "blood runes"),
+        new StockEntry(554,  20,     "fire runes",   500),
+        new StockEntry(555,  20,     "water runes",  500),
+        new StockEntry(556,  20,     "air runes",    500),
+        new StockEntry(557,  20,     "earth runes",  500),
+        new StockEntry(560,  300,    "death runes",  100),
+        new StockEntry(562,  150,    "chaos runes",  100),
+        new StockEntry(565,  250,    "blood runes",  100),
         // Bones (Prayer)
-        new StockEntry(526,  50,     "bones"),
-        new StockEntry(532,  150,    "big bones"),
-        new StockEntry(536,  3500,   "dragon bones"),
-        // Herbs (Herblore)
-        new StockEntry(199,  100,    "grimy guam"),
-        new StockEntry(207,  4000,   "grimy ranarr"),
-        new StockEntry(219,  9000,   "grimy torstol"),
-        // Gems (Crafting)
-        new StockEntry(1623, 400,    "uncut sapphire"),
-        new StockEntry(1621, 500,    "uncut emerald"),
-        new StockEntry(1619, 1000,   "uncut ruby"),
-        new StockEntry(1617, 2500,   "uncut diamond"),
+        new StockEntry(526,  50,     "bones",        100),
+        new StockEntry(532,  150,    "big bones",    100),
+        new StockEntry(536,  3500,   "dragon bones", 25),
+        // Herbs
+        new StockEntry(199,  100,    "grimy guam",   50),
+        new StockEntry(207,  4000,   "grimy ranarr", 25),
+        new StockEntry(219,  9000,   "grimy torstol", 10),
+        // Gems
+        new StockEntry(1623, 400,    "uncut sapphire", 25),
+        new StockEntry(1619, 1000,   "uncut ruby",   25),
+        new StockEntry(1617, 2500,   "uncut diamond", 10),
+
+        // === High-tier weapons (sell as 1) ===
+        new StockEntry(4587, 60_000,    "dragon scimitar", 1),
+        new StockEntry(1305, 100_000,   "dragon longsword", 1),
+        new StockEntry(7158, 120_000,   "dragon 2h sword", 1),
+        new StockEntry(4151, 1_500_000, "abyssal whip", 1),
+        new StockEntry(11696, 18_000_000, "armadyl godsword", 1),
+        new StockEntry(11694, 12_000_000, "bandos godsword", 1),
+        new StockEntry(11698, 8_000_000,  "saradomin godsword", 1),
+        new StockEntry(11700, 5_000_000,  "zamorak godsword", 1),
+        new StockEntry(13902, 15_000_000, "primal 2h sword", 1),
+        new StockEntry(15039, 25_000_000, "drygore longsword", 1),
+        // Bows / range
+        new StockEntry(861,  600,       "magic shortbow", 1),
+        new StockEntry(11212, 6_000,    "dragon arrows",  100),
+        new StockEntry(4734, 800_000,   "karil's pistol crossbow", 1),
+        new StockEntry(15241, 5_000_000, "hand cannon",   1),
+        // Armor sets (high-tier)
+        new StockEntry(11724, 18_000_000, "bandos chestplate", 1),
+        new StockEntry(11726, 12_000_000, "bandos tassets",    1),
+        new StockEntry(11722, 30_000_000, "armadyl chestplate", 1),
+        new StockEntry(11720, 25_000_000, "armadyl chainskirt", 1),
+        new StockEntry(11283, 1_500_000,  "dragonfire shield", 1),
+        new StockEntry(1187,  100_000,    "dragon sq shield",  1),
+        new StockEntry(1149,  60_000,     "dragon med helm",   1),
+        // Mage robes (high-tier)
+        new StockEntry(4708,  1_200_000, "ahrim's hood",      1),
+        new StockEntry(4712,  3_000_000, "ahrim's robe top",  1),
+        new StockEntry(4714,  2_500_000, "ahrim's robe bottom", 1),
+        new StockEntry(6914,  5_000_000, "master wand",       1),
+        new StockEntry(18353, 15_000_000, "virtus mask",      1),
+        new StockEntry(18355, 25_000_000, "virtus robe top",  1),
+        new StockEntry(18357, 22_000_000, "virtus robe legs", 1),
+        // Amulets / jewelry / capes
+        new StockEntry(1712, 12_000,    "amulet of glory(4)", 1),
+        new StockEntry(1725, 4_000,     "amulet of strength", 1),
+        new StockEntry(1731, 5_000,     "amulet of power",    1),
+        new StockEntry(6585, 4_000_000, "amulet of fury",     1),
+        new StockEntry(11128, 4_500_000, "berserker necklace", 1),
+        new StockEntry(20000, 3_000_000, "fire cape",         1),
+        // Barrows pieces
+        new StockEntry(4716, 600_000,   "dharok's helm",      1),
+        new StockEntry(4720, 1_200_000, "dharok's platebody", 1),
+        new StockEntry(4722, 1_000_000, "dharok's platelegs", 1),
+        new StockEntry(4718, 1_400_000, "dharok's greataxe",  1),
     };
 
     private static int countItem(ItemsContainer<Item> c, int itemId) {
@@ -316,10 +426,14 @@ public final class BotTradeHandler {
     }
 
     public static final class StockEntry {
-        public final int itemId, priceGp;
+        public final int itemId, priceGp, bundleSize;
         public final String name;
         public StockEntry(int itemId, int priceGp, String name) {
+            this(itemId, priceGp, name, 1);
+        }
+        public StockEntry(int itemId, int priceGp, String name, int bundleSize) {
             this.itemId = itemId; this.priceGp = priceGp; this.name = name;
+            this.bundleSize = Math.max(1, bundleSize);
         }
     }
 

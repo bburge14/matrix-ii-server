@@ -275,7 +275,11 @@ public final class CitizenSpawner {
         }
         if (arch.isSkiller())   return "skiller";
         if (arch.isMinigamer()) return "main"; // minigamers carry standard combat gear
-        if (arch.isSocialite()) return "main"; // socialites flash gear
+        // Socialites get fancy/holiday-rare gear (cape, robes, partyhat) -
+        // they're standing at GE/dicing areas and should look the part, not
+        // wear bronze plate. BotEquipment "socialite" branch picks from a
+        // small fashionscape pool incl. holiday rares.
+        if (arch.isSocialite()) return "socialite";
         return "main";
     }
 }

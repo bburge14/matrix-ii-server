@@ -138,9 +138,21 @@ public class CitizenBrain extends BotBrain {
         switch (state) {
             case IDLE: {
                 int r = Utils.random(100);
-                if (r < 60) next = State.TRAVERSING;
-                else if (r < 90) next = State.INTERACTING;
-                else next = State.IDLE;
+                // Socialites are fixtures - they stand at their hub (GE,
+                // Edge bank dicing area) and chat/trade. Very low traverse
+                // probability. Skiller/combatant pursue their method's
+                // target so they do need to traverse more often.
+                if (archetype != null && archetype.isSocialite()) {
+                    // 90% stay idle, 5% short traverse, 5% interact
+                    if (r < 90) next = State.IDLE;
+                    else if (r < 95) next = State.TRAVERSING;
+                    else next = State.INTERACTING;
+                } else {
+                    // Default: 60 traverse / 30 interact / 10 idle (legacy)
+                    if (r < 60) next = State.TRAVERSING;
+                    else if (r < 90) next = State.INTERACTING;
+                    else next = State.IDLE;
+                }
                 break;
             }
             case TRAVERSING:
@@ -172,11 +184,27 @@ public class CitizenBrain extends BotBrain {
     }
 
     private void scheduleNextStateChange(State s) {
+        // Socialites get LONG idle phases - they're meant to stand at GE/
+        // dicing areas trading + chatting, not wandering. Skillers/
+        // combatants keep faster cycles since they're actively training.
+        boolean socialite = archetype != null && archetype.isSocialite();
         switch (s) {
-            case IDLE:        stateTicksRemaining = (int) gaussianRange(3, 12, 3); break;
-            case TRAVERSING:  stateTicksRemaining = (int) gaussianRange(8, 20, 5); break;
-            case INTERACTING: stateTicksRemaining = (int) gaussianRange(15, 40, 8); break;
-            case PANICKING:   stateTicksRemaining = (int) gaussianRange(5, 15, 3); break;
+            case IDLE:
+                stateTicksRemaining = socialite
+                    ? (int) gaussianRange(40, 120, 20)   // ~24-72s
+                    : (int) gaussianRange(3, 12, 3);
+                break;
+            case TRAVERSING:
+                stateTicksRemaining = socialite
+                    ? (int) gaussianRange(3, 8, 2)       // brief wander
+                    : (int) gaussianRange(8, 20, 5);
+                break;
+            case INTERACTING:
+                stateTicksRemaining = (int) gaussianRange(15, 40, 8);
+                break;
+            case PANICKING:
+                stateTicksRemaining = (int) gaussianRange(5, 15, 3);
+                break;
         }
     }
 
