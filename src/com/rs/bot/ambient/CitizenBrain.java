@@ -214,7 +214,9 @@ public class CitizenBrain extends BotBrain {
         if (Math.random() < CHATTER_PROBABILITY) {
             String line = archetype.randomChatter();
             if (line != null) {
-                try { bot.setNextForceTalk(new ForceTalk(line)); }
+                // sayBoth = ForceTalk overhead + PublicChatMessage to nearby
+                // real players, so chatter appears in chat boxes (RS-style).
+                try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line); }
                 catch (Throwable ignored) {}
             }
         }
@@ -610,7 +612,7 @@ public class CitizenBrain extends BotBrain {
         WorldTile flee = new WorldTile(bot.getX() + sx * dist, bot.getY() + sy * dist, bot.getPlane());
         bot.addWalkSteps(flee.getX(), flee.getY(), 10, true);
         if (Math.random() < 0.15) {
-            try { bot.setNextForceTalk(new ForceTalk("...!")); }
+            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, "...!"); }
             catch (Throwable ignored) {}
         }
     }
