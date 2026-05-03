@@ -32,6 +32,20 @@ public final class BotTradeHandler {
     private static final int MIN_BET = 100;
     private static final int MAX_BET = 1_000_000;
 
+    /** Gambling dice modes - per-bot, deterministic by display-name hash.
+     *  RuneScape host convention: NxX means "roll, win if >= N for X payout".
+     *  e.g. 55x2 = win at 55+, get 2x bet. Lower N = better odds for player. */
+    private static final DiceMode[] DICE_MODES = new DiceMode[] {
+        new DiceMode("55x2", 55, 2),
+        new DiceMode("65x2", 65, 2),
+        new DiceMode("75x2", 75, 2),
+    };
+
+    /** How often (ms) gambler/trader bots broadcast their service line when
+     *  not actively in a trade. Lets nearby players see them as live hosts/
+     *  vendors. 30s = avoids spam, still visible. */
+    private static final long BROADCAST_INTERVAL_MS = 30_000;
+
     /** How many ticks the bot waits after entering trade before acting. Lets
      *  the player see the trade screen + add items / GP before bot responds. */
     private static final int RESPONSE_DELAY_TICKS = 4;
@@ -50,6 +64,9 @@ public final class BotTradeHandler {
         if (trade == null) return;
 
         if (!trade.isTrading()) {
+            // Periodic service broadcast - so players walking by see what
+            // the bot offers. Throttled by BROADCAST_INTERVAL_MS per-bot.
+            maybeBroadcast(bot, isGambler, isTrader);
             // Look for a player who right-clicked us and chose Trade.
             Player requester = findInboundTradeRequest(bot);
             if (requester != null) {
@@ -123,21 +140,19 @@ public final class BotTradeHandler {
                 // Wait for them to add a real bet.
                 return;
             }
+            DiceMode mode = pickDiceModeForBot(bot);
             int bet = Math.min(playerGp, MAX_BET);
+            long payout = (long) bet * mode.payoutMultiplier;
             int roll = Utils.random(100);
-            boolean win = roll >= 50;
+            boolean win = roll >= mode.winThreshold;
             try {
                 if (win) {
-                    // Add 2x payout from bot's stash. We trust the bot has
-                    // enough - SOCIALITE_GAMBLER bots get accumulated wealth
-                    // at create time.
-                    if (bot.getInventory().getAmountOf(COINS) >= bet * 2L) {
-                        bot.getTrade().addItem(new Item(COINS, bet * 2));
+                    if (bot.getInventory().getAmountOf(COINS) >= payout) {
+                        bot.getTrade().addItem(new Item(COINS, (int) Math.min(Integer.MAX_VALUE, payout)));
                         try { bot.setNextForceTalk(new com.rs.game.ForceTalk(
-                            "rolled " + roll + " - you win " + (bet * 2L) + "!"));
+                            mode.name + " - rolled " + roll + " - you win " + payout + "!"));
                         } catch (Throwable ignored) {}
                     } else {
-                        // Bot can't pay out - decline by closing trade.
                         try { bot.setNextForceTalk(new com.rs.game.ForceTalk(
                             "no funds, can't gamble that high"));
                         } catch (Throwable ignored) {}
@@ -146,9 +161,8 @@ public final class BotTradeHandler {
                     }
                 } else {
                     try { bot.setNextForceTalk(new com.rs.game.ForceTalk(
-                        "rolled " + roll + " - you lose"));
+                        mode.name + " - rolled " + roll + " - you lose"));
                     } catch (Throwable ignored) {}
-                    // Bot offers nothing; accepts the trade as-is.
                 }
             } catch (Throwable ignored) {}
             bot.getTemporaryAttributtes().put("BotTradeDecided", Boolean.TRUE);
@@ -248,5 +262,49 @@ public final class BotTradeHandler {
         public StockEntry(int itemId, int priceGp, String name) {
             this.itemId = itemId; this.priceGp = priceGp; this.name = name;
         }
+    }
+
+    public static final class DiceMode {
+        public final String name;
+        public final int winThreshold;     // win if random(100) >= this
+        public final int payoutMultiplier; // bet * this on win
+        public DiceMode(String name, int winThreshold, int payoutMultiplier) {
+            this.name = name;
+            this.winThreshold = winThreshold;
+            this.payoutMultiplier = payoutMultiplier;
+        }
+    }
+
+    /** Per-bot deterministic mode pick so the same gambler always advertises
+     *  the same game. Hash on display name. */
+    private static DiceMode pickDiceModeForBot(AIPlayer bot) {
+        int idx = Math.abs(bot.getDisplayName() == null ? 0
+            : bot.getDisplayName().hashCode()) % DICE_MODES.length;
+        return DICE_MODES[idx];
+    }
+
+    /** Periodic chatter so players see what the bot offers without trading. */
+    private static void maybeBroadcast(AIPlayer bot, boolean isGambler, boolean isTrader) {
+        Object lastMs = bot.getTemporaryAttributtes().get("BotTradeBroadcastMs");
+        long now = System.currentTimeMillis();
+        if (lastMs != null && now - ((Long) lastMs) < BROADCAST_INTERVAL_MS) return;
+        bot.getTemporaryAttributtes().put("BotTradeBroadcastMs", now);
+        try {
+            String line = null;
+            if (isGambler) {
+                DiceMode mode = pickDiceModeForBot(bot);
+                line = "host " + mode.name + " - trusted dicer";
+            } else if (isTrader) {
+                StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
+                if (stock == null) {
+                    stock = pickStockForBot(bot);
+                    bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+                }
+                if (stock != null) line = "selling " + stock.name + " " + stock.priceGp + "gp";
+            }
+            if (line != null) {
+                bot.setNextForceTalk(new com.rs.game.ForceTalk(line));
+            }
+        } catch (Throwable ignored) {}
     }
 }
