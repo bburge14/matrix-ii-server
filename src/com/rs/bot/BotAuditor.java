@@ -37,6 +37,25 @@ public final class BotAuditor {
             WorldTile from = m.location;
             int radius = 24;
             try {
+            // Force-load the method's region (and its 8 neighbours) before
+            // scanning. NPCs from spawn files are only realised into
+            // World.getNPCs() when their region loads via a player tick.
+            // The audit runs from coords with no nearby player, so without
+            // this preload every NPC check returns "no NPC [...]" and every
+            // object scan returns null - all 85 of the FAIL entries from
+            // the prior run were from this, not from bad coords.
+            try {
+                int rx = (from.getRegionId() >> 8) & 0xff;
+                int ry = from.getRegionId() & 0xff;
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        int nrx = rx + dx;
+                        int nry = ry + dy;
+                        if (nrx < 0 || nry < 0) continue;
+                        com.rs.game.World.getRegion((nrx << 8) | nry, true);
+                    }
+                }
+            } catch (Throwable ignored) {}
             switch (m.kind) {
                 case WOODCUTTING: {
                     EnvironmentScanner.TreeMatch tm =
