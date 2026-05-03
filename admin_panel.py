@@ -835,8 +835,12 @@ class CitizensFrame(ctk.CTkFrame):
         self.q_count = tk.StringVar(value="20")
         ctk.CTkEntry(quick, textvariable=self.q_count, width=60).pack(side="left", padx=2)
         self.q_category = tk.StringVar(value="mixed")
-        ctk.CTkOptionMenu(quick, values=["mixed","skiller","combatant","socialite","minigamer"],
-                          variable=self.q_category, width=110).pack(side="left", padx=2)
+        # Per-minigame categories (castlewars/soulwars/stealingcreation) auto-
+        # spawn at the corresponding lobby tile - X/Y/P fields are ignored when
+        # one of those is selected.
+        ctk.CTkOptionMenu(quick, values=["mixed","skiller","combatant","socialite","minigamer",
+                                         "castlewars","soulwars","stealingcreation"],
+                          variable=self.q_category, width=130).pack(side="left", padx=2)
         ctk.CTkLabel(quick, text=" at X").pack(side="left", padx=(8,2))
         self.q_x = tk.StringVar(value="3164")
         ctk.CTkEntry(quick, textvariable=self.q_x, width=70).pack(side="left", padx=2)
@@ -848,6 +852,16 @@ class CitizensFrame(ctk.CTkFrame):
         ctk.CTkEntry(quick, textvariable=self.q_plane, width=40).pack(side="left", padx=2)
         ctk.CTkButton(quick, text="Spawn", width=80, fg_color="#1b6e3a",
                       command=self._quick_spawn).pack(side="left", padx=8)
+        # Per-minigame quick row
+        mg_quick = ctk.CTkFrame(self)
+        mg_quick.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(mg_quick, text="Per-minigame quick spawn:").pack(side="left", padx=4)
+        self.mg_count = tk.StringVar(value="10")
+        ctk.CTkEntry(mg_quick, textvariable=self.mg_count, width=50).pack(side="left", padx=2)
+        for label, cat in [("Castle Wars","castlewars"), ("Soul Wars","soulwars"),
+                           ("Stealing Creation","stealingcreation")]:
+            ctk.CTkButton(mg_quick, text=label, width=140, fg_color="#1b6e3a",
+                          command=lambda c=cat: self._minigame_spawn(c)).pack(side="left", padx=4)
 
         # The slot table
         tree_frame = ctk.CTkFrame(self)
@@ -997,6 +1011,34 @@ class CitizensFrame(ctk.CTkFrame):
                 resp = self.api.citizens_spawn(n, category=cat, x=x, y=y, plane=p, scatter=12)
                 self.after(0, lambda: messagebox.showinfo("Spawned",
                     f"Spawned {resp.get('spawned',0)} (live total: {resp.get('total',0)})"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _minigame_spawn(self, category):
+        """Spawn N citizens at a specific minigame's lobby tile.
+
+        Server-side, AmbientArchetype.lobbyTile() pins the spawn location
+        for any minigame archetype regardless of the X/Y the request sends.
+        We pass dummy coords; the spawner ignores them for these categories.
+        """
+        try:
+            n = int(self.mg_count.get())
+        except ValueError:
+            messagebox.showerror("Bad input", "count must be a number")
+            return
+        # Dummy anchor - server pins to lobbyTile() per archetype.
+        lobby = {"castlewars": (2442,3090,0),
+                 "soulwars":   (2210,3056,0),
+                 "stealingcreation": (2860,5567,0)}.get(category, (3164,3486,0))
+        def do():
+            try:
+                resp = self.api.citizens_spawn(n, category=category,
+                    x=lobby[0], y=lobby[1], plane=lobby[2], scatter=6)
+                self.after(0, lambda: messagebox.showinfo("Minigame spawn",
+                    f"Spawned {resp.get('spawned',0)} {category} citizens "
+                    f"(live total: {resp.get('total',0)})"))
                 self.after(0, self.refresh)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))

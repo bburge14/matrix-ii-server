@@ -73,16 +73,49 @@ public enum AmbientArchetype {
         new String[] {"hi", "hello there", "anyone need help?", "cool gear",
                       "where do you train?", "nice cape"}),
 
-    // === Minigamer variants ===
-    MINIGAMER_RUSHER("rusher",
-        new int[] {862, 855, 865},                        // cheer/yes/clap
-        new String[] {"castle wars rusher here", "let's flag", "saradomin team",
-                      "soul wars next", "in the mood for a minigame"}),
+    // === Minigamer - Castle Wars (rusher = goes for flag, defender = guards base) ===
+    MINIGAMER_CASTLEWARS_RUSHER("CW rusher",
+        new int[] {862, 855, 865},
+        new String[] {"saradomin team rusher", "going for the flag", "let's gooo",
+                      "flag bearer here", "team push north"}),
 
-    MINIGAMER_DEFENDER("defender",
-        new int[] {857, 856, 862},                        // think/no/cheer
-        new String[] {"defending", "watch the flag", "zammy team",
-                      "anyone with food?", "pots running low"});
+    MINIGAMER_CASTLEWARS_DEFENDER("CW defender",
+        new int[] {857, 856, 862},
+        new String[] {"defending the flag", "zammy team here", "watch the gates",
+                      "barricade up", "team push south"}),
+
+    // === Minigamer - Soul Wars ===
+    MINIGAMER_SOULWARS_RUSHER("SW rusher",
+        new int[] {862, 866, 865},
+        new String[] {"blue team go go go", "obelisk push", "graveyard rush",
+                      "soul fragments incoming"}),
+
+    MINIGAMER_SOULWARS_DEFENDER("SW defender",
+        new int[] {857, 856, 862},
+        new String[] {"red team defend", "obelisk lock", "guarding the avatar",
+                      "watching the graveyard"}),
+
+    // === Minigamer - Stealing Creation ===
+    MINIGAMER_STEALINGCREATION_RUSHER("SC rusher",
+        new int[] {862, 866, 865},
+        new String[] {"red team SC", "harvesting clay", "team rush mid",
+                      "scoring resources"}),
+
+    MINIGAMER_STEALINGCREATION_DEFENDER("SC defender",
+        new int[] {857, 856, 862},
+        new String[] {"blue team SC", "guarding the bin", "depositing materials",
+                      "watching the score"}),
+
+    // === Generic minigamer fallback (back-compat for old budget configs) ===
+    MINIGAMER_RUSHER("generic rusher",
+        new int[] {862, 855, 865},
+        new String[] {"any minigame going?", "looking for a team",
+                      "in the mood for a minigame"}),
+
+    MINIGAMER_DEFENDER("generic defender",
+        new int[] {857, 856, 862},
+        new String[] {"any minigame going?", "looking for a team",
+                      "watching for some action"});
 
     public final String label;
     private final int[] interactAnimations;
@@ -117,7 +150,31 @@ public enum AmbientArchetype {
     }
 
     public boolean isMinigamer() {
-        return this == MINIGAMER_RUSHER || this == MINIGAMER_DEFENDER;
+        return this == MINIGAMER_RUSHER || this == MINIGAMER_DEFENDER
+            || this == MINIGAMER_CASTLEWARS_RUSHER || this == MINIGAMER_CASTLEWARS_DEFENDER
+            || this == MINIGAMER_SOULWARS_RUSHER || this == MINIGAMER_SOULWARS_DEFENDER
+            || this == MINIGAMER_STEALINGCREATION_RUSHER || this == MINIGAMER_STEALINGCREATION_DEFENDER;
+    }
+
+    public boolean isCastleWars() {
+        return this == MINIGAMER_CASTLEWARS_RUSHER || this == MINIGAMER_CASTLEWARS_DEFENDER;
+    }
+    public boolean isSoulWars() {
+        return this == MINIGAMER_SOULWARS_RUSHER || this == MINIGAMER_SOULWARS_DEFENDER;
+    }
+    public boolean isStealingCreation() {
+        return this == MINIGAMER_STEALINGCREATION_RUSHER || this == MINIGAMER_STEALINGCREATION_DEFENDER;
+    }
+
+    /**
+     * Lobby tile this archetype should spawn at. Returns null for non-minigame
+     * archetypes - those use category anchors set by the spawner caller.
+     */
+    public com.rs.game.WorldTile lobbyTile() {
+        if (isCastleWars())        return new com.rs.game.WorldTile(2442, 3090, 0);
+        if (isSoulWars())          return new com.rs.game.WorldTile(2210, 3056, 0);
+        if (isStealingCreation())  return new com.rs.game.WorldTile(2860, 5567, 0);
+        return null;
     }
 
     public static AmbientArchetype randomFor(String category) {
@@ -126,7 +183,18 @@ public enum AmbientArchetype {
             case "skiller":   return new AmbientArchetype[] {SKILLER_EFFICIENT, SKILLER_CASUAL, SKILLER_NOOB}[Utils.random(3)];
             case "combatant": return new AmbientArchetype[] {COMBATANT_PURE, COMBATANT_TANK, COMBATANT_HYBRID}[Utils.random(3)];
             case "socialite": return new AmbientArchetype[] {SOCIALITE_GAMBLER, SOCIALITE_GE_TRADER, SOCIALITE_BANKSTAND}[Utils.random(3)];
-            case "minigamer": return new AmbientArchetype[] {MINIGAMER_RUSHER, MINIGAMER_DEFENDER}[Utils.random(2)];
+            // "minigamer" = legacy generic; pick from generic + per-minigame
+            // variants so old budget configs still spawn a mix.
+            case "minigamer": return new AmbientArchetype[] {
+                    MINIGAMER_RUSHER, MINIGAMER_DEFENDER,
+                    MINIGAMER_CASTLEWARS_RUSHER, MINIGAMER_CASTLEWARS_DEFENDER,
+                    MINIGAMER_SOULWARS_RUSHER, MINIGAMER_SOULWARS_DEFENDER,
+                    MINIGAMER_STEALINGCREATION_RUSHER, MINIGAMER_STEALINGCREATION_DEFENDER
+                }[Utils.random(8)];
+            // Per-minigame categories so admin panel can spawn specific groups.
+            case "castlewars":        return new AmbientArchetype[] {MINIGAMER_CASTLEWARS_RUSHER, MINIGAMER_CASTLEWARS_DEFENDER}[Utils.random(2)];
+            case "soulwars":          return new AmbientArchetype[] {MINIGAMER_SOULWARS_RUSHER, MINIGAMER_SOULWARS_DEFENDER}[Utils.random(2)];
+            case "stealingcreation":  return new AmbientArchetype[] {MINIGAMER_STEALINGCREATION_RUSHER, MINIGAMER_STEALINGCREATION_DEFENDER}[Utils.random(2)];
             default:          return values()[Utils.random(values().length)];
         }
     }

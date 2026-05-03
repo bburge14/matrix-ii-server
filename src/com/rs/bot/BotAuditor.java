@@ -35,7 +35,10 @@ public final class BotAuditor {
             boolean ok = false;
             String reason = "";
             WorldTile from = m.location;
-            int radius = 24;
+            // Bumped 24 -> 36. Some canonical RS resource clusters span more
+            // than 24 tiles (mining guild, fishing guild guildhalls). Catches
+            // a few near-miss fails without flagging false positives.
+            int radius = 36;
             try {
             // Force-load the method's region (and its 8 neighbours) before
             // scanning. NPCs from spawn files are only realised into

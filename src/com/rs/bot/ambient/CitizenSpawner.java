@@ -108,12 +108,18 @@ public final class CitizenSpawner {
      */
     public static AIPlayer spawnOne(String category, WorldTile anchor, int scatter) {
         if (anchor == null) return null;
+        AmbientArchetype arch = AmbientArchetype.randomFor(category);
+        // Per-minigame archetypes pin the spawn to their lobby tile regardless
+        // of the caller's anchor. Lets admin panel spawn castlewars/soulwars/sc
+        // citizens via category=castlewars etc and have them appear at the
+        // correct minigame lobby instead of wherever the caller picked.
+        com.rs.game.WorldTile minigameLobby = arch == null ? null : arch.lobbyTile();
+        if (minigameLobby != null) anchor = minigameLobby;
         scatter = Math.max(2, scatter);
         int dx = gaussianOffset(scatter);
         int dy = gaussianOffset(scatter);
         WorldTile spawn = new WorldTile(
             anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
-        AmbientArchetype arch = AmbientArchetype.randomFor(category);
         int wanderRadius = 4 + Utils.random(8);
 
         String name = com.rs.bot.BotNames.generate();

@@ -172,9 +172,18 @@ public final class CitizenBudget {
         slots.add(new Slot("COMBATANT_PURE",        10, 3088, 3491, 0, 8, false));
         slots.add(new Slot("COMBATANT_TANK",        10, 3088, 3491, 0, 8, false));
         slots.add(new Slot("COMBATANT_HYBRID",      8,  3088, 3491, 0, 8, false));
-        // Minigame areas
-        slots.add(new Slot("MINIGAMER_RUSHER",      8,  2440, 3093, 0, 8, false));
-        slots.add(new Slot("MINIGAMER_DEFENDER",    8,  2440, 3093, 0, 8, false));
+        // Per-minigame lobbies. Anchor is the lobby tile - CitizenSpawner
+        // pins minigame archetypes to AmbientArchetype.lobbyTile() at spawn
+        // time so anchor here is mostly informational.
+        slots.add(new Slot("MINIGAMER_CASTLEWARS_RUSHER",        4,  2442, 3090, 0, 6, false));
+        slots.add(new Slot("MINIGAMER_CASTLEWARS_DEFENDER",      4,  2442, 3090, 0, 6, false));
+        slots.add(new Slot("MINIGAMER_SOULWARS_RUSHER",          4,  2210, 3056, 0, 6, false));
+        slots.add(new Slot("MINIGAMER_SOULWARS_DEFENDER",        4,  2210, 3056, 0, 6, false));
+        slots.add(new Slot("MINIGAMER_STEALINGCREATION_RUSHER",  4,  2860, 5567, 0, 6, false));
+        slots.add(new Slot("MINIGAMER_STEALINGCREATION_DEFENDER",4,  2860, 5567, 0, 6, false));
+        // Generic catch-all (legacy + bots that pick a random minigame)
+        slots.add(new Slot("MINIGAMER_RUSHER",                   4,  2440, 3093, 0, 8, false));
+        slots.add(new Slot("MINIGAMER_DEFENDER",                 4,  2440, 3093, 0, 8, false));
     }
 
     // === Minimal JSON parsing (slot list only) ===
