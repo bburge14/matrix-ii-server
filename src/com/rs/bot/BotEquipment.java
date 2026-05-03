@@ -383,25 +383,27 @@ public final class BotEquipment {
         };
         if (chance(60)) equip(bot, Equipment.SLOT_CAPE, pick(capes));
 
-        // === Chest === (verified TOPS - same ids the skiller archetype uses)
+        // === Chest === (verified TOPS only)
+        // Mystic IDs from ItemSets: 4091 blue/4101 dark/4111 light = TOPS
         int[] robeTops = {
-            577,     // wizard robe top (blue) - skiller uses this
-            1005,    // black robe top - skiller uses this
-            4091,    // mystic top (blue) - mage uses this
-            4101,    // mystic top (light) - mage uses this
-            4111,    // mystic top (dark) - mage uses this
-            4097,    // mystic top (red)
+            577,     // wizard robe top (blue)
+            1005,    // black robe top
+            4091,    // mystic top (blue)
+            4101,    // mystic top (dark)
+            4111,    // mystic top (light)
         };
         equip(bot, Equipment.SLOT_CHEST, pick(robeTops));
 
-        // === Legs === (verified LEGS - matched pairs to chest items above)
+        // === Legs === (verified LEGS)
+        // Mystic IDs from ItemSets: 4093 blue/4103 dark/4113 light = LEGS
+        // (4099 was previously mislabelled "red legs" - it's actually the
+        // dark-mystic HAT, hence "trader sold legs but gave a hat" bug.)
         int[] robeLegs = {
-            1013,    // wizard robe bottom (blue) - skiller uses this
-            1095,    // wizard skirt (alt for blue wizard set)
-            4093,    // mystic legs (blue) - mage uses this
-            4103,    // mystic legs (light) - mage uses this
-            4113,    // mystic legs (dark) - mage uses this
-            4099,    // mystic legs (red)
+            1013,    // wizard robe bottom (blue)
+            1095,    // wizard skirt
+            4093,    // mystic legs (blue)
+            4103,    // mystic legs (dark)
+            4113,    // mystic legs (light)
         };
         equip(bot, Equipment.SLOT_LEGS, pick(robeLegs));
 

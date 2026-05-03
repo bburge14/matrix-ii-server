@@ -227,6 +227,14 @@ public final class CitizenSpawner {
                     com.rs.bot.ambient.BotTradeHandler.preStockTrader(bot);
                 } catch (Throwable ignored) {}
             }
+            // Gambler bankroll - they need to be able to pay 2x of MAX_BET
+            // (100m * 2 = 200m). Default accumulatedWealth tops out around
+            // 20m for cb 100+ which left them unable to cover big wins.
+            if (arch == AmbientArchetype.SOCIALITE_GAMBLER) {
+                try {
+                    bot.getMoneyPouch().setCoinsAmount(250_000_000);
+                } catch (Throwable ignored) {}
+            }
 
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);

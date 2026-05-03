@@ -27,10 +27,13 @@ public final class BotTradeHandler {
     /** Coins item id - the only thing players bet/pay with for now. */
     private static final int COINS = 995;
 
-    /** Min/max bet a gambler bot will accept. Caps blast radius if a player
-     *  tries to dump 500M into a dice game and break our economy. */
+    /** Min/max bet a gambler bot will accept. Old MAX_BET=1m was the
+     *  cause of "I gave 50m, bot said 10m, kept the rest" - bot internally
+     *  capped the bet to 1m for the dice + payout but trade still
+     *  transferred the full 50m to the bot. Now caps at 100m for big rolls.
+     *  Bot's bankroll (set in spawnOne for gamblers) covers up to 2x this. */
     private static final int MIN_BET = 100;
-    private static final int MAX_BET = 1_000_000;
+    private static final int MAX_BET = 100_000_000;
 
     /** Gambling dice modes - per-bot, deterministic by display-name hash.
      *  RuneScape host convention: NxX means "roll, win if >= N for X payout".
@@ -88,6 +91,12 @@ public final class BotTradeHandler {
             //   P2 -> "WIN!" or "LOSE"
             //   P3 -> if win, open payout trade
             if (isGambler && tickGambleAnnouncePhase(bot)) return;
+            // Pending payout trade (gambler win) - opens the second trade
+            // with the player to deliver the winnings.
+            if (isGambler && tryStartPayoutTrade(bot)) return;
+            // Pending chat-triggered trade response (trader heard a WTB or
+            // WTS broadcast nearby). Opens a trade with the chatter.
+            if (isTrader && tryRespondToChatRequest(bot)) return;
             // Periodic service broadcast - so players walking by see what
             // the bot offers. Throttled by BROADCAST_INTERVAL_MS per-bot.
             maybeBroadcast(bot, isGambler, isTrader);
@@ -352,9 +361,18 @@ public final class BotTradeHandler {
             bot.getTrade().cancelTrade();
             return;
         }
-        int bet = Math.min(playerGp, MAX_BET);
-        // Stash bet info so processGambleAfterTradeClose can roll once the
-        // trade closes. We do NOT add anything to our offer; just accept.
+        if (playerGp > MAX_BET) {
+            // Refuse the trade upfront so we don't take 1B and only "see"
+            // 100m internally. Player drops their gp and re-trades within
+            // the limit. User feedback: "I gave 50m, bot said 10m, kept
+            // the rest" - that was the silent cap doing exactly this.
+            sayBoth(bot, "max bet is " + MAX_BET + "gp - reduce and retry");
+            bot.getTrade().cancelTrade();
+            return;
+        }
+        int bet = playerGp;
+        // Stash bet info so the post-trade-close announce phase can roll.
+        // We do NOT add anything to our offer; just accept.
         bot.getTemporaryAttributtes().put("BotPendingBet", bet);
         bot.getTemporaryAttributtes().put("BotPendingPlayer", target);
         try {
@@ -438,6 +456,80 @@ public final class BotTradeHandler {
         }
     }
 
+    /** Trader bot heard a WTB/WTS in public chat (BotChatListener stashed the
+     *  intent on the bot). Open a trade with the chatter and stash a
+     *  per-trade override stock so handleTrader/handleBuyer fulfills the
+     *  player's specific item request instead of the bot's default stock. */
+    private static boolean tryRespondToChatRequest(AIPlayer bot) {
+        BotChatListener.TradeIntent intent =
+            (BotChatListener.TradeIntent) bot.getTemporaryAttributtes().get("ChatRespondIntent");
+        Player p = (Player) bot.getTemporaryAttributtes().get("ChatRespondPlayer");
+        if (intent == null || p == null) return false;
+        Long after = (Long) bot.getTemporaryAttributtes().get("ChatRespondAfterMs");
+        if (after != null && System.currentTimeMillis() < after) return false;
+
+        // Gate on price tolerance vs catalog reference.
+        int catalogPrice = catalogPriceFor(intent.itemId);
+        if (catalogPrice <= 0) {
+            // Item not in any catalog - we don't know its price, can't safely respond.
+            bot.getTemporaryAttributtes().remove("ChatRespondIntent");
+            bot.getTemporaryAttributtes().remove("ChatRespondPlayer");
+            return false;
+        }
+        if (intent.price > 0 && !BotChatListener.priceAcceptable(intent.intent, intent.price, catalogPrice)) {
+            // Price too far off - decline visibly so the player knows.
+            bot.getTemporaryAttributtes().remove("ChatRespondIntent");
+            bot.getTemporaryAttributtes().remove("ChatRespondPlayer");
+            sayBoth(bot, intent.intent == BotChatListener.Intent.BUY
+                ? "too low for " + intent.itemName + " sorry"
+                : "no thanks, " + intent.itemName + " too high");
+            return true;
+        }
+
+        // Validate player + bot proximity + availability.
+        try {
+            if (p.hasFinished() || p.isCantTrade()) {
+                bot.getTemporaryAttributtes().remove("ChatRespondIntent");
+                bot.getTemporaryAttributtes().remove("ChatRespondPlayer");
+                return false;
+            }
+            if (!p.withinDistance(bot, 14)) return false;
+            if (bot.getTrade().isTrading()) return false;
+            if (p.getTrade() != null && p.getTrade().isTrading()) return false;
+
+            // For BUY (player buys = bot sells): make sure bot has the item.
+            if (intent.intent == BotChatListener.Intent.BUY) {
+                int onHand = bot.getInventory().getAmountOf(intent.itemId);
+                if (onHand <= 0) {
+                    // Stock the bot from "warehouse" (free spawn).
+                    int target = Math.max(intent.quantity, 3);
+                    try { bot.getInventory().addItem(intent.itemId, target); } catch (Throwable ignored) {}
+                }
+            }
+
+            bot.getTrade().openTrade(p);
+            p.getTrade().openTrade(bot);
+            bot.getTemporaryAttributtes().put("BotChatTradeIntent", intent);
+            bot.getTemporaryAttributtes().remove("ChatRespondIntent");
+            bot.getTemporaryAttributtes().remove("ChatRespondPlayer");
+            sayBoth(bot, intent.intent == BotChatListener.Intent.BUY
+                ? "yo " + p.getDisplayName() + ", got your " + intent.itemName
+                : "trading you for " + intent.itemName + " " + p.getDisplayName());
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Look up the catalog price for an item id across all tiers. Returns
+     *  -1 if not in any catalog. */
+    private static int catalogPriceFor(int itemId) {
+        for (StockEntry e : CATALOG_MIXED) {
+            if (e.itemId == itemId) return e.priceGp;
+        }
+        return -1;
+    }
+
     // === SOCIALITE_GE_TRADER: per-unit pricing ===
     //
     // Flow: bot is a vendor. Player decides QUANTITY by adding GP to the
@@ -475,6 +567,25 @@ public final class BotTradeHandler {
             return;
         }
 
+        // Chat-driven trade dispatch: the trader bot heard a WTS broadcast
+        // (player wants to sell = bot is the buyer) - run the buyer flow.
+        BotChatListener.TradeIntent chatIntent =
+            (BotChatListener.TradeIntent) bot.getTemporaryAttributtes().get("BotChatTradeIntent");
+        if (chatIntent != null && chatIntent.intent == BotChatListener.Intent.SELL) {
+            handleBuyer(bot, trade, chatIntent);
+            return;
+        }
+        // For chat-driven BUY (player wants to buy = bot sells specific item),
+        // override the bot's default stock with the requested item.
+        if (chatIntent != null && chatIntent.intent == BotChatListener.Intent.BUY) {
+            int price = chatIntent.price > 0
+                ? (int) Math.min(Integer.MAX_VALUE, chatIntent.price)
+                : catalogPriceFor(chatIntent.itemId);
+            if (price <= 0) price = 1;
+            StockEntry override = new StockEntry(chatIntent.itemId, price, chatIntent.itemName, 1);
+            bot.getTemporaryAttributtes().put("BotTraderStock", override);
+        }
+
         StockEntry stock = ensureBotStockAssigned(bot);
         if (stock == null) {
             sayBoth(bot, "no stock right now, sorry");
@@ -488,18 +599,22 @@ public final class BotTradeHandler {
             return;
         }
 
-        // First-time announcement + put 1 unit immediately so the player
-        // sees what they're buying before they add any gp. User feedback
-        // was that bots said they were selling but never put the item in.
+        // First-time announcement + put the FULL stack immediately so the
+        // player can see the merchandise before adding any gp. User wants
+        // "no more low tier bots selling 1 of their item" - if a bot has
+        // 100 logs, they need to PUT all 100 up so player sees it as a
+        // bulk seller. Player can narrow by gp ('1000gp = 20 logs at 50gp
+        // each') or by chat ('i want 25 logs').
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
-            sayBoth(bot, "selling " + stock.name + " at " + stock.priceGp
-                + "gp each, " + onHand + " in stock - add gp + accept");
+            // Initial offer: full stack for stackable; single for non-stack.
+            int initialQty = isStackable(stock.itemId) ? onHand : 1;
+            sayBoth(bot, "selling " + initialQty + "x " + stock.name + " at "
+                + stock.priceGp + "gp each, total "
+                + ((long) initialQty * stock.priceGp) + "gp - add gp + accept");
             try {
-                // Put 1 sample unit in our offer immediately - player can
-                // SEE the item now without needing to add gp first.
-                bot.getTrade().addItem(new Item(stock.itemId, 1));
-                bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", 1);
+                bot.getTrade().addItem(new Item(stock.itemId, initialQty));
+                bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", initialQty);
                 bot.getTemporaryAttributtes().put("BotTraderInitialOffered", Boolean.TRUE);
             } catch (Throwable ignored) {}
             bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
@@ -507,12 +622,23 @@ public final class BotTradeHandler {
         }
 
         // Update our offer to match the player's gp. Re-runs each tick so
-        // as they add more gp, the bot's offered qty grows in sync.
+        // as they add more gp, the bot's offered qty grows in sync. Player
+        // can also chat "i want 25 logs" in trade and we honor that as a
+        // qty cap (BotChatListener stashes it as BotTraderRequestedQty).
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
-        int unitsRequested = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
-        // If player has 0gp, keep showing the 1-unit preview so they see
-        // what they're buying (don't yank it back to 0).
-        int units = Math.max(unitsRequested == 0 ? 1 : 0, Math.min(unitsRequested, onHand));
+        int unitsFromGp = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
+        Integer reqQtyObj = (Integer) bot.getTemporaryAttributtes().get("BotTraderRequestedQty");
+        int requestedQty = reqQtyObj == null ? Integer.MAX_VALUE : reqQtyObj;
+        int unitsRequested = Math.min(unitsFromGp, requestedQty);
+        // Preview when player has 0gp: keep showing the FULL stack so they
+        // can see the merchandise (was previously yanking back to 1 - user
+        // didn't want low-tier sellers showing only 1 item).
+        int units;
+        if (unitsRequested == 0) {
+            units = isStackable(stock.itemId) ? onHand : 1;
+        } else {
+            units = Math.min(unitsRequested, onHand);
+        }
         Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotTradeUnitsOffered");
         int lastOffered = lastOfferedObj == null ? 0 : lastOfferedObj;
         if (units != lastOffered) {
@@ -551,6 +677,83 @@ public final class BotTradeHandler {
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
             bot.getTemporaryAttributtes().put("BotTradeSaleQty", actualUnits);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Bot is BUYING from the player (player chatted WTS). Player puts the
+     *  item in trade; bot puts matching gold. Bot accepts when player accepts. */
+    private static void handleBuyer(AIPlayer bot, Trade trade, BotChatListener.TradeIntent chatIntent) {
+        Player target = trade.getTarget();
+        if (target == null) return;
+        Trade playerTrade = target.getTrade();
+        if (playerTrade == null) return;
+
+        // Stage 2 (Confirmation): seal.
+        Boolean stage2Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage2");
+        if (Boolean.TRUE.equals(stage2Done)) {
+            try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
+            return;
+        }
+        Boolean stage1Done = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStage1");
+        if (Boolean.TRUE.equals(stage1Done)) {
+            if (!bot.getTrade().hasAccepted()) {
+                bot.getTemporaryAttributtes().put("BotTradeStage2", Boolean.TRUE);
+                try { bot.getTrade().accept(false); } catch (Throwable ignored) {}
+            }
+            return;
+        }
+
+        int itemId = chatIntent.itemId;
+        int playerOffered = countItem(playerTrade.getItemsContainer(), itemId);
+        int unitPrice = chatIntent.price > 0
+            ? (int) Math.min(Integer.MAX_VALUE, chatIntent.price)
+            : Math.max(1, catalogPriceFor(itemId));
+
+        Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
+        if (!Boolean.TRUE.equals(announced)) {
+            sayBoth(bot, "buying " + chatIntent.itemName + " at " + unitPrice + "gp each - put it in");
+            bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
+        }
+
+        // Match our coin offer to the player's item count.
+        long total = (long) playerOffered * unitPrice;
+        Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotBuyerCoinsOffered");
+        long lastOffered = lastOfferedObj == null ? 0L : (long) (int) lastOfferedObj;
+        if (total != lastOffered) {
+            try {
+                ItemsContainer<Item> botItems = bot.getTrade().getItemsContainer();
+                if (botItems != null) {
+                    for (int i = 0; i < botItems.getSize(); i++) {
+                        Item it = botItems.get(i);
+                        if (it != null && it.getId() == COINS) {
+                            botItems.set(i, null);
+                        }
+                    }
+                }
+                if (total > 0) {
+                    ensureInvCoins(bot, total);
+                    long avail = bot.getInventory().getAmountOf(COINS);
+                    long give = Math.min(avail, total);
+                    if (give > 0) {
+                        bot.getTrade().addItem(new Item(COINS, (int) Math.min(Integer.MAX_VALUE, give)));
+                    }
+                }
+                bot.getTemporaryAttributtes().put("BotBuyerCoinsOffered",
+                    (int) Math.min(Integer.MAX_VALUE, total));
+                try { bot.getTrade().refresh(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27); } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {}
+        }
+
+        if (!playerTrade.hasAccepted()) return;
+        if (playerOffered <= 0) {
+            sayBoth(bot, "no " + chatIntent.itemName + " in the trade?");
+            bot.getTrade().cancelTrade();
+            return;
+        }
+        try {
+            sayBoth(bot, "deal! " + playerOffered + "x " + chatIntent.itemName + " for " + total + "gp");
+            bot.getTrade().accept(true);
+            bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
         } catch (Throwable ignored) {}
     }
 
@@ -751,8 +954,10 @@ public final class BotTradeHandler {
         new StockEntry(892,  150,    "rune arrows",  500),
     };
 
-    /** Tier 2: combat gear (mid). Dragon weapons, rune armor, basic mage
-     *  staves, mid-tier amulets, F2P gear singles. */
+    /** Tier 2: combat gear. Dragon weapons, rune armor, basic mage staves,
+     *  mid-tier amulets, F2P gear singles, godswords + bandos/armadyl
+     *  endgame combat (moved here from RARE since "rares" now means
+     *  holiday items per user spec). */
     private static final StockEntry[] CATALOG_COMBAT = new StockEntry[] {
         // Dragon weapons (singles)
         new StockEntry(4587, 25_000,    "dragon scimitar", 1),
@@ -780,8 +985,16 @@ public final class BotTradeHandler {
         new StockEntry(1389, 8_000,     "mystic staff", 1),
         new StockEntry(1391, 5_000,     "staff of air",  1),
         new StockEntry(6914, 80_000,    "master wand", 1),
-        new StockEntry(4097, 35_000,    "mystic robe top (red)", 1),
-        new StockEntry(4099, 30_000,    "mystic robe legs (red)", 1),
+        // Mystic IDs verified against ItemSets.java:
+        //   blue: 4089 hat, 4091 top, 4093 legs, 4095 gloves, 4097 boots
+        //   dark: 4099 hat, 4101 top, 4103 legs, 4105 gloves, 4107 boots
+        //   light: 4109 hat, 4111 top, 4113 legs, 4115 gloves, 4117 boots
+        new StockEntry(4091, 35_000,    "mystic robe top (blue)", 1),
+        new StockEntry(4093, 30_000,    "mystic robe legs (blue)", 1),
+        new StockEntry(4101, 35_000,    "mystic robe top (dark)", 1),
+        new StockEntry(4103, 30_000,    "mystic robe legs (dark)", 1),
+        new StockEntry(4111, 35_000,    "mystic robe top (light)", 1),
+        new StockEntry(4113, 30_000,    "mystic robe legs (light)", 1),
         // Amulets / jewelry
         new StockEntry(1712, 12_000,    "amulet of glory(4)", 1),
         new StockEntry(1725, 4_000,     "amulet of strength", 1),
@@ -794,10 +1007,7 @@ public final class BotTradeHandler {
         // Boots / gloves
         new StockEntry(11732, 60_000,   "dragon boots",  1),
         new StockEntry(2577,  25_000,   "ranger boots",  1),
-    };
-
-    /** Tier 3: rares + endgame. Godswords, bandos/armadyl, fury, fire cape. */
-    private static final StockEntry[] CATALOG_RARE = new StockEntry[] {
+        // Endgame combat (moved from RARE - now holds holiday items only)
         new StockEntry(11696, 1_800_000, "armadyl godsword", 1),
         new StockEntry(11694, 1_200_000, "bandos godsword", 1),
         new StockEntry(11698, 800_000,   "saradomin godsword", 1),
@@ -820,8 +1030,37 @@ public final class BotTradeHandler {
         new StockEntry(13740, 6_000_000, "divine spirit shield", 1),
         new StockEntry(13742, 5_000_000, "elysian spirit shield", 1),
         new StockEntry(13744, 4_000_000, "spectral spirit shield", 1),
-        // Tradeable rares
+        // Tradeable rares (combat-ish)
         new StockEntry(20000, 300_000,   "fire cape", 1),
+    };
+
+    /** Tier 3: HOLIDAY RARES per user spec. Partyhats, h'ween masks, santa
+     *  hats, easter items, christmas crackers. Premium pricing - these
+     *  bots stand at the NW corner of GE near the tree (3147, 3472). */
+    private static final StockEntry[] CATALOG_RARE = new StockEntry[] {
+        // Partyhats (cracker rewards)
+        new StockEntry(1038, 80_000_000,  "red partyhat",    1),
+        new StockEntry(1040, 60_000_000,  "yellow partyhat", 1),
+        new StockEntry(1042, 70_000_000,  "blue partyhat",   1),
+        new StockEntry(1044, 50_000_000,  "green partyhat",  1),
+        new StockEntry(1046, 90_000_000,  "purple partyhat", 1),
+        new StockEntry(1048, 75_000_000,  "white partyhat",  1),
+        // Halloween masks
+        new StockEntry(1053, 40_000_000,  "red h'ween mask",   1),
+        new StockEntry(1055, 30_000_000,  "blue h'ween mask",  1),
+        new StockEntry(1057, 35_000_000,  "green h'ween mask", 1),
+        // Santa hat
+        new StockEntry(1050, 25_000_000,  "santa hat",       1),
+        // Easter / seasonal
+        new StockEntry(1959, 5_000_000,   "pumpkin",          1),
+        new StockEntry(962,  8_000_000,   "christmas cracker", 1),
+        new StockEntry(7927, 3_000_000,   "easter ring",      1),
+        // Disk of returning (small holiday)
+        new StockEntry(7771, 500_000,     "disk of returning", 1),
+        // Yo-yo, scythe, hweenmask variants etc
+        new StockEntry(4566, 1_500_000,   "rubber chicken",  1),
+        new StockEntry(1052, 12_000_000,  "scythe",           1),
+        new StockEntry(4084, 800_000,     "yo-yo",            1),
     };
 
     /** Mixed legacy catalog - flattened union of the three tiers, used by
@@ -957,14 +1196,21 @@ public final class BotTradeHandler {
      *  so the same bot consistently uses the same color/animation - mirrors
      *  RS hosts who have a "signature look". */
     public static void sayBoth(AIPlayer bot, String text) {
-        // ForceTalk REMOVED. The user reported chat appearing with the
-        // effect (color/anim) then flickering back to plain yellow - that
-        // was ForceTalk's plain-text overhead bubble overwriting the
-        // PublicChatMessage's effected one a frame later. PublicChatMessage
-        // alone renders both the chat box entry AND the overhead bubble
-        // with effects intact.
+        sayBoth(bot, text, true);
+    }
+
+    /** Send public chat from a bot to nearby real players. If allowEffect
+     *  is true and the bot is a "host-like" archetype (gambler / trader),
+     *  applies the bot's signature color/animation effect. Casual chat
+     *  (bankstanders, idle chatter, panic) sends plain so the chat box
+     *  doesn't look like everyone is shouting in neon. User feedback:
+     *  "only gamblers, traders, etc should be using the chat effects". */
+    public static void sayBoth(AIPlayer bot, String text, boolean allowEffect) {
         try {
-            int effects = chatEffectFor(bot);
+            int effects = 0;
+            if (allowEffect && shouldUseChatEffect(bot)) {
+                effects = chatEffectFor(bot);
+            }
             com.rs.game.player.PublicChatMessage msg =
                 new com.rs.game.player.PublicChatMessage(text, effects);
             int botX = bot.getX(), botY = bot.getY(), botPlane = bot.getPlane();
@@ -980,6 +1226,20 @@ public final class BotTradeHandler {
                 catch (Throwable ignored2) {}
             }
         } catch (Throwable ignored) {}
+    }
+
+    /** True if this bot's archetype is a trader/gambler "host" type. Other
+     *  archetypes (bankstanders, skillers, combatants, minigamers) use
+     *  plain chat. */
+    private static boolean shouldUseChatEffect(AIPlayer bot) {
+        try {
+            if (bot.getBrain() instanceof CitizenBrain) {
+                AmbientArchetype a = ((CitizenBrain) bot.getBrain()).getArchetype();
+                if (a == null) return false;
+                return a == AmbientArchetype.SOCIALITE_GAMBLER || a.isTrader();
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     /** Per-bot stable chat effect. Rolled once per bot, cached.

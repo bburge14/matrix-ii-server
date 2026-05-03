@@ -1682,6 +1682,11 @@ public final class WorldPacketsDecoder extends Decoder {
 					}
 				} else
 					player.sendPublicChatMessage(new PublicChatMessage(message, effects));
+				// Bot chat listener - parses player chat for WTB/WTS and
+				// in-trade qty narrowing. Fires after the chat is delivered
+				// so the listener doesn't block normal chat flow.
+				try { com.rs.bot.ambient.BotChatListener.onPublicChat(player, message); }
+				catch (Throwable ignored) {}
 			}
 			if (Settings.DEBUG)
 				Logger.log(this, "Chat type: " + chatType);

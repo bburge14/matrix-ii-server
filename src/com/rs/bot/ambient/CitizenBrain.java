@@ -214,14 +214,20 @@ public class CitizenBrain extends BotBrain {
     // === Per-state behavior ===
 
     private void tickIdle(AIPlayer bot) {
+        // Drop any pending bot-to-bot conversation reply that's due.
+        try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
+
         if (Math.random() < CHATTER_PROBABILITY) {
             String line = archetype.randomChatter();
             if (line != null) {
-                // sayBoth = ForceTalk overhead + PublicChatMessage to nearby
-                // real players, so chatter appears in chat boxes (RS-style).
-                try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line); }
+                // sayBoth(plain) = no chat effect for casual chatter.
+                // Effects are reserved for trader/gambler hosts per user spec.
+                try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false); }
                 catch (Throwable ignored) {}
             }
+            // Sometimes a chatty bot kicks off a 2-line convo with a
+            // nearby citizen instead of just speaking solo.
+            try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
         }
     }
 
@@ -622,7 +628,7 @@ public class CitizenBrain extends BotBrain {
                 "noo!", "stop!", "back off!"
             };
             String line = lines[Utils.random(lines.length)];
-            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line); }
+            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false); }
             catch (Throwable ignored) {}
         }
     }
