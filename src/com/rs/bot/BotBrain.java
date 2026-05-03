@@ -1050,6 +1050,7 @@ public class BotBrain {
             case DIVINATION:     tryStartDivination(method); break;
             case DUNGEONEERING:  tryStartDungeoneering(method); break;
             case SMITHING_ANVIL: tryStartSmithingAnvil(method); break;
+            case MINIGAME:       tryStartMinigame(method); break;
         }
     }
 
@@ -1415,6 +1416,7 @@ public class BotBrain {
             case DIVINATION:     sayStep("harvesting wisps"); break;
             case DUNGEONEERING:  sayStep("dungeoneering"); break;
             case SMITHING_ANVIL: sayStep("smithing at anvil"); break;
+            case MINIGAME:       sayStep("queueing for " + method.description.replace("Minigame - ", "").replace(" lobby", "").replace(" outpost", "")); break;
         }
     }
 
@@ -1688,6 +1690,19 @@ public class BotBrain {
     }
     protected void tryStartSmithingAnvil(com.rs.bot.ai.TrainingMethods.Method method) {
         walkOrStallAtMethod(method, com.rs.game.player.Skills.SMITHING, "smith-anvil");
+    }
+    protected void tryStartMinigame(com.rs.bot.ai.TrainingMethods.Method method) {
+        // No skill gate - minigames are open to all levels. Walk-stall only;
+        // actual queue-up + play wiring is per-minigame and lands in a
+        // follow-up commit.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy > 16) {
+            BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+            lastDiagnostic = "minigame: walking to " + method.description;
+            return;
+        }
+        lastDiagnostic = "minigame: at " + method.description + " lobby";
     }
 
     protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {

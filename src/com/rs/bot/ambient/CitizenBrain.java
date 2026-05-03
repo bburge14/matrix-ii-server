@@ -321,6 +321,9 @@ public class CitizenBrain extends BotBrain {
         if (arch.isCombatant()) {
             set.add(com.rs.bot.ai.TrainingMethods.Kind.COMBAT);
         }
+        if (arch.isMinigamer()) {
+            set.add(com.rs.bot.ai.TrainingMethods.Kind.MINIGAME);
+        }
         return set;
     }
 

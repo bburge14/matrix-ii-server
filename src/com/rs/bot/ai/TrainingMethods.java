@@ -38,7 +38,7 @@ public final class TrainingMethods {
         // shows "method picked, 0 success" in audit.log so you can verify
         // locations before wiring.
         HERBLORE, AGILITY, RUNECRAFTING, HUNTER, SUMMONING, FARMING, CONSTRUCTION,
-        FLETCHING, DIVINATION, DUNGEONEERING, SMITHING_ANVIL
+        FLETCHING, DIVINATION, DUNGEONEERING, SMITHING_ANVIL, MINIGAME
     }
 
     public static final class Method {
@@ -773,6 +773,17 @@ public final class TrainingMethods {
         ALL.add(b("Slayer - TzHaar Fight Cave Jad", Kind.COMBAT)
             .skill(Skills.SLAYER).lvl(85, 99).at(2438, 5168).xp(180000).cb(110)
             .npcs(2745).dangerous().build());
+
+        // ---- Minigame lobbies (citizens stand at lobby tiles for visual
+        // population; per-minigame archetypes + actual queue-up logic is a
+        // follow-up. Soul Wars passBarrier is currently a stub - players
+        // join waiting list but the arena teleport is commented out.)
+        ALL.add(b("Minigame - Castle Wars lobby", Kind.MINIGAME)
+            .skill(-1).lvl(1, 99).at(2442, 3090).xp(0).gp(0).build());
+        ALL.add(b("Minigame - Soul Wars lobby", Kind.MINIGAME)
+            .skill(-1).lvl(1, 99).at(2210, 3056).xp(0).gp(0).build());
+        ALL.add(b("Minigame - Stealing Creation outpost", Kind.MINIGAME)
+            .skill(-1).lvl(1, 99).at(2860, 5567).xp(0).gp(0).build());
     }
 
     private static Builder b(String d, Kind k) { return new Builder(d, k); }
