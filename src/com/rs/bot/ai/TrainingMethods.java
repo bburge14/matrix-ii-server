@@ -765,7 +765,7 @@ public final class TrainingMethods {
             .skill(Skills.SLAYER).lvl(50, 75).at(3422, 3554, 1).xp(60000).cb(70)
             .npcs(1618, 1619).build());
         ALL.add(b("Slayer - Aberrant spectres Slayer Tower", Kind.COMBAT)
-            .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565, 2).xp(75000).cb(80)
+            .skill(Skills.SLAYER).lvl(60, 85).at(3441, 3565, 1).xp(75000).cb(80)
             .npcs(1604, 1605).build());
         ALL.add(b("Slayer - Dark beasts Mourner tunnels", Kind.COMBAT)
             .skill(Skills.SLAYER).lvl(75, 99).at(1648, 5292).xp(140000).cb(100)
