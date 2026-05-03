@@ -264,7 +264,17 @@ public class CitizenBrain extends BotBrain {
      */
     private WorldTile findInteractionDestination(AIPlayer bot) {
         // Try the TrainingMethods route first (shared with Legends)
-        if (currentMethod == null || ++methodCyclesElapsed >= METHOD_REPICK_CYCLES) {
+        // Re-pick only when (a) we have no method, OR (b) we've been AT
+        // the current method's destination (within ~12 tiles) for
+        // METHOD_REPICK_CYCLES cycles. Was previously incrementing every
+        // tick in TRAVERSING which forced a re-pick after ~6s, before bots
+        // could even walk to far targets like Catherby/Falador.
+        boolean atDest = currentMethod != null
+            && currentMethod.location != null
+            && Math.hypot(bot.getX() - currentMethod.location.getX(),
+                          bot.getY() - currentMethod.location.getY()) <= 12;
+        if (currentMethod == null
+                || (atDest && ++methodCyclesElapsed >= METHOD_REPICK_CYCLES)) {
             com.rs.bot.ai.TrainingMethods.Method old = currentMethod;
             currentMethod = pickRandomMethodForRole(bot);
             methodCyclesElapsed = 0;
@@ -416,6 +426,12 @@ public class CitizenBrain extends BotBrain {
                     // (cooking range / furnace / altar object scan can be added
                     // when method.requiredObjects is wired through.)
                     playAnim(bot);
+                    return true;
+                } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.MINIGAME) {
+                    // Minigame methods just need the citizen to stand at the
+                    // lobby tile - no resource scan, no animation. Return
+                    // true so the FSM doesn't drop to scanner fallback +
+                    // "no MINIGAME resource" log spam.
                     return true;
                 }
                 // currentMethod's resource not findable here - log + fall through

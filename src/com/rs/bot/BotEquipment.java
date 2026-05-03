@@ -276,6 +276,16 @@ public final class BotEquipment {
             // Bait stays in inventory - it's a stack consumable, not a toolbelt tool.
             if (fishingLvl >= 5 && !bot.getInventory().containsItem(313, 50))
                 bot.getInventory().addItem(313, 50);
+            // Basic teleport jewelry kit - so bots (Legends + Citizens) can
+            // actually use BotTeleporter for far targets instead of walking
+            // 200 tiles. Each item gives 4-8 charges; bot replaces from bank
+            // when depleted (BotEquipment.tryBuyTool style). Without these in
+            // inv, BotTeleporter.pickBest returns null and bots walk forever.
+            if (!bot.getInventory().containsItem(1712, 1))  bot.getInventory().addItem(1712, 1);  // Glory(4)        - Edge/Karamja/Draynor/AlKharid
+            if (!bot.getInventory().containsItem(3853, 1))  bot.getInventory().addItem(3853, 1);  // Games necklace(8) - Burthorpe/Barb/Corp/Wintertodt
+            if (!bot.getInventory().containsItem(2552, 1))  bot.getInventory().addItem(2552, 1);  // Ring of dueling(8) - CW/Duel arena/FoG
+            if (!bot.getInventory().containsItem(11118, 1)) bot.getInventory().addItem(11118, 1); // Combat bracelet(6) - Warriors/Champions/Monastery
+            if (!bot.getInventory().containsItem(11105, 1)) bot.getInventory().addItem(11105, 1); // Skills necklace(6) - Fishing/Mining/Crafting guilds
         } catch (Throwable t) {
             System.err.println("[BotEquipment] toolkit failed: " + t);
         }
