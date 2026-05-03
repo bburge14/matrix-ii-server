@@ -1140,6 +1140,18 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendPublicMessage(Player p, PublicChatMessage message) {
+		// Trade-screen chat isolation: when this player is mid-trade, only
+		// pass through chat from (a) themselves or (b) their trade partner.
+		// Mirrors RS dicing/trading where the trade UI silenced surrounding
+		// chat so the host's lines weren't drowned by 30 nearby gamblers.
+		try {
+			if (player != null && p != player
+					&& player.getTrade() != null
+					&& player.getTrade().isTrading()
+					&& player.getTrade().getTarget() != p) {
+				return;
+			}
+		} catch (Throwable ignored) {}
 		OutputStream stream = new OutputStream();
 		stream.writePacketVarByte(player, 65);
 		stream.writeShort(p.getIndex());

@@ -72,6 +72,20 @@ public final class BotFactory {
                 f.set(bot, name);
             } catch (Throwable ignored) {}
 
+            // Wire the player back-ref on every component that has a transient
+            // Player field. createOffline skips bot.init() (which is what does
+            // this on the online path), so each component's player ref stays
+            // null and downstream calls NPE. Inventory NPE caused the
+            // [BotEquipment] toolkit/accumulated-wealth failures; Appearence
+            // and CombatDefinitions caused the loud generateAppearenceData
+            // traces.
+            try { bot.getAppearence().setPlayer(bot); } catch (Throwable ignored) {}
+            try { bot.getCombatDefinitions().setPlayer(bot); } catch (Throwable ignored) {}
+            try { bot.getSkills().setPlayer(bot); } catch (Throwable ignored) {}
+            try { bot.getEquipment().setPlayer(bot); } catch (Throwable ignored) {}
+            try { bot.getPrayer().setPlayer(bot); } catch (Throwable ignored) {}
+            try { bot.getInventory().setPlayer(bot); } catch (Throwable ignored) {}
+
             // Generate appearance bytes so save-blob is complete
             try {
                 bot.getAppearence().generateAppearenceData();

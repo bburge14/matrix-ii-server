@@ -224,7 +224,12 @@ public final class EnvironmentScanner {
         List<WorldObject> out = new java.util.ArrayList<WorldObject>();
         for (int id : regionIds) {
             try {
-                Region r = World.getRegion(id, false);
+                // load=true: when the audit (or a bot scouting from far away)
+                // hits a region with no active player, getRegion(id,false) used
+                // to return null and the audit reported "no NORMAL in 24" for
+                // perfectly valid coords. Force-load triggers the cache region
+                // unpack + NPC spawn realisation so the scan sees what's there.
+                Region r = World.getRegion(id, true);
                 if (r == null) continue;
                 java.util.List<WorldObject> objs = r.getAllObjects();
                 if (objs == null) continue;

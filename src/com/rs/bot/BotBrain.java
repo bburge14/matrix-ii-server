@@ -763,7 +763,10 @@ public class BotBrain {
             moveTowards(treeX, treeY, currentX, currentY);
         } else {
             goalStack.updateCurrentGoal("chopping trees", 0.002);
-            if (Utils.random(100) < 20) bot.setNextAnimation(new Animation(879));
+            // No fake chopping anim - the real Woodcutting Action plays its
+            // own animation when adjacent to a tree. This branch only fires
+            // for the stale legacy goal-desc fallback above; bot just stands
+            // there until the real action picks up.
         }
     }
 
@@ -1023,20 +1026,35 @@ public class BotBrain {
         // bots are doing instead of generic goal descriptions.
         announceMethodStart(method);
         switch (method.kind) {
-            case WOODCUTTING: tryStartWoodcutting(method); break;
-            case MINING:      tryStartMining(method); break;
-            case FISHING:     tryStartFishing(method); break;
-            case COMBAT:      tryStartCombat(method); break;
-            case THIEVING:    tryStartThieving(method); break;
-            case FIREMAKING:  tryStartFiremaking(method); break;
-            case COOKING:     tryStartCooking(method); break;
-            case SMELTING:    tryStartSmelting(method); break;
-            case CRAFTING:    tryStartCrafting(method); break;
-            case PRAYER:      tryStartPrayer(method); break;
+            case WOODCUTTING:    tryStartWoodcutting(method); break;
+            case MINING:         tryStartMining(method); break;
+            case FISHING:        tryStartFishing(method); break;
+            case COMBAT:         tryStartCombat(method); break;
+            case THIEVING:       tryStartThieving(method); break;
+            case FIREMAKING:     tryStartFiremaking(method); break;
+            case COOKING:        tryStartCooking(method); break;
+            case SMELTING:       tryStartSmelting(method); break;
+            case CRAFTING:       tryStartCrafting(method); break;
+            case PRAYER:         tryStartPrayer(method); break;
+            // New skills - locations are wired, action implementations land
+            // skill-by-skill in pass B. Bots walk to the right tile and the
+            // stub logs "(action coming)" so audit shows it but doesn't crash.
+            case HERBLORE:       tryStartHerblore(method); break;
+            case AGILITY:        tryStartAgility(method); break;
+            case RUNECRAFTING:   tryStartRunecrafting(method); break;
+            case HUNTER:         tryStartHunter(method); break;
+            case SUMMONING:      tryStartSummoning(method); break;
+            case FARMING:        tryStartFarming(method); break;
+            case CONSTRUCTION:   tryStartConstruction(method); break;
+            case FLETCHING:      tryStartFletching(method); break;
+            case DIVINATION:     tryStartDivination(method); break;
+            case DUNGEONEERING:  tryStartDungeoneering(method); break;
+            case SMITHING_ANVIL: tryStartSmithingAnvil(method); break;
+            case MINIGAME:       tryStartMinigame(method); break;
         }
     }
 
-    private void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
             if (lvl < method.minLevel) {
@@ -1088,7 +1106,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("offering bones");
     }
 
-    private void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
             if (lvl < method.minLevel) {
@@ -1119,7 +1137,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("cutting some gems");
     }
 
-    private void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
             if (lvl < method.minLevel) {
@@ -1167,7 +1185,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("smelting bars");
     }
 
-    private void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
             if (lvl < method.minLevel) {
@@ -1218,7 +1236,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say("cooking up dinner");
     }
 
-    private void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
             if (lvl < method.minLevel) {
@@ -1377,11 +1395,28 @@ public class BotBrain {
         Goal g = goalStack.getCurrentGoal();
         if (g != null) sayGoal(g.getDescription());
         switch (method.kind) {
-            case WOODCUTTING: sayStep("chopping " + treeKindLabel(method)); break;
-            case MINING:      sayStep("mining " + rockKindLabel(method)); break;
-            case FISHING:     sayStep("fishing " + fishKindLabel(method)); break;
-            case THIEVING:    sayStep("pickpocketing " + method.description.replace("Pickpocket ", "").replace(" - Burthorpe", "")); break;
-            case COMBAT:      sayStep("combat training"); break;
+            case WOODCUTTING:    sayStep("chopping " + treeKindLabel(method)); break;
+            case MINING:         sayStep("mining " + rockKindLabel(method)); break;
+            case FISHING:        sayStep("fishing " + fishKindLabel(method)); break;
+            case THIEVING:       sayStep("pickpocketing " + method.description.replace("Pickpocket ", "")); break;
+            case COMBAT:         sayStep("combat training"); break;
+            case FIREMAKING:     sayStep("firemaking"); break;
+            case COOKING:        sayStep("cooking"); break;
+            case SMELTING:       sayStep("smelting bars"); break;
+            case CRAFTING:       sayStep("crafting"); break;
+            case PRAYER:         sayStep("training prayer"); break;
+            case HERBLORE:       sayStep("herblore"); break;
+            case AGILITY:        sayStep("running agility course"); break;
+            case RUNECRAFTING:   sayStep("crafting runes"); break;
+            case HUNTER:         sayStep("hunting"); break;
+            case SUMMONING:      sayStep("summoning"); break;
+            case FARMING:        sayStep("farming"); break;
+            case CONSTRUCTION:   sayStep("constructing"); break;
+            case FLETCHING:      sayStep("fletching"); break;
+            case DIVINATION:     sayStep("harvesting wisps"); break;
+            case DUNGEONEERING:  sayStep("dungeoneering"); break;
+            case SMITHING_ANVIL: sayStep("smithing at anvil"); break;
+            case MINIGAME:       sayStep("queueing for " + method.description.replace("Minigame - ", "").replace(" lobby", "").replace(" outpost", "")); break;
         }
     }
 
@@ -1398,7 +1433,7 @@ public class BotBrain {
         return m.fishDef.toString().toLowerCase().replace('_', ' ');
     }
 
-    private void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartThieving(com.rs.bot.ai.TrainingMethods.Method method) {
         if (method == null || method.npcIds == null || method.npcIds.length == 0) {
             lastDiagnostic = "thieving: no npc ids in method";
             return;
@@ -1444,7 +1479,7 @@ public class BotBrain {
         if (Utils.random(100) < 25) say("nicked another one");
     }
 
-    private void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
@@ -1494,7 +1529,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
 
-    private void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
@@ -1549,7 +1584,7 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(miningChatter());
     }
 
-    private void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+    protected void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
@@ -1596,7 +1631,129 @@ public class BotBrain {
         if (Utils.random(100) < 30) say(fishingChatter());
     }
 
-    private void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
+    /**
+     * Stubs for skills whose locations are wired in TrainingMethods but whose
+     * Action implementations land skill-by-skill. Each walks the bot to the
+     * method's tile then logs the "(action coming)" diagnostic. Audit log
+     * picks this up via SuccessTracker so we can verify the location is
+     * reachable before doing the harder action wiring.
+     */
+    private void walkOrStallAtMethod(com.rs.bot.ai.TrainingMethods.Method method,
+                                     int skillId, String label) {
+        try {
+            int lvl = bot.getSkills().getLevel(skillId);
+            if (lvl < method.minLevel) {
+                lastDiagnostic = label + ": my level " + lvl + " < required " + method.minLevel;
+                return;
+            }
+        } catch (Throwable ignored) {}
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy > 16) {
+            BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+            lastDiagnostic = label + ": walking to " + method.description;
+            return;
+        }
+        lastDiagnostic = label + ": at location, action not yet wired";
+        if (Utils.random(100) < 5) sayDebug(label + " action coming");
+    }
+
+    protected void tryStartHerblore(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.HERBLORE, "herblore");
+        // At destination: clean grimy herbs (real HerbCleaning XP/anim).
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            if (com.rs.bot.ai.BotSkillActions.cleanHerbs(bot)) {
+                lastDiagnostic = "herblore: cleaning a herb";
+            }
+        }
+    }
+    /** Stub skills (Agility / RC / Hunter / Summoning / Farming / Divination /
+     *  Smithing-anvil) - walk to destination, then gain XP each tick at the
+     *  spot. Same pattern as Construction / Dungeoneering. Real action wiring
+     *  per-skill is involved (course obstacles, altar enter+craft, trap
+     *  timers, patch growth) and lands incrementally. */
+    private void autoXpStubSkill(com.rs.bot.ai.TrainingMethods.Method method,
+                                 int skillId, String label, double xpPerTick) {
+        walkOrStallAtMethod(method, skillId, label);
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, skillId, xpPerTick);
+        }
+    }
+
+    protected void tryStartAgility(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.AGILITY, "agility", 1200);
+    }
+    protected void tryStartRunecrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.RUNECRAFTING, "rc", 800);
+    }
+    protected void tryStartHunter(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.HUNTER, "hunter", 1100);
+    }
+    protected void tryStartSummoning(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.SUMMONING, "summoning", 700);
+    }
+    protected void tryStartFarming(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.FARMING, "farming", 900);
+    }
+    protected void tryStartConstruction(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.CONSTRUCTION, "construction");
+        // POH building needs UI we don't simulate. Auto-XP at the portal so
+        // the bot still progresses (per user spec: "Construction doesn't need
+        // [a step process]. Legend bots can just gradually gain exp"). Caller
+        // is throttled inside autoXp.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, com.rs.game.player.Skills.CONSTRUCTION, 1500);
+        }
+    }
+    protected void tryStartFletching(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.FLETCHING, "fletching");
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            // Already cutting? Don't double-set the action.
+            if (bot.getActionManager().getAction() instanceof com.rs.game.player.actions.Fletching) return;
+            if (com.rs.bot.ai.BotSkillActions.fletchBow(bot)) {
+                lastDiagnostic = "fletching: cutting bow";
+            }
+        }
+    }
+    protected void tryStartDivination(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.DIVINATION, "divination", 1000);
+    }
+    protected void tryStartDungeoneering(com.rs.bot.ai.TrainingMethods.Method method) {
+        walkOrStallAtMethod(method, com.rs.game.player.Skills.DUNGEONEERING, "dungeoneering");
+        // Dungeon runs need real-player coupling we don't simulate yet.
+        // Auto-XP at Daemonheim entrance per user spec.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy <= 16) {
+            com.rs.bot.ai.BotSkillActions.autoXp(bot, com.rs.game.player.Skills.DUNGEONEERING, 2500);
+        }
+    }
+    protected void tryStartSmithingAnvil(com.rs.bot.ai.TrainingMethods.Method method) {
+        autoXpStubSkill(method, com.rs.game.player.Skills.SMITHING, "smith-anvil", 1300);
+    }
+    protected void tryStartMinigame(com.rs.bot.ai.TrainingMethods.Method method) {
+        // No skill gate - minigames are open to all levels. Walk-stall only;
+        // actual queue-up + play wiring is per-minigame and lands in a
+        // follow-up commit.
+        int dx = bot.getX() - method.location.getX();
+        int dy = bot.getY() - method.location.getY();
+        if (dx*dx + dy*dy > 16) {
+            BotPathing.walkTo(bot, method.location.getX(), method.location.getY());
+            lastDiagnostic = "minigame: walking to " + method.description;
+            return;
+        }
+        lastDiagnostic = "minigame: at " + method.description + " lobby";
+    }
+
+    protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
         // Retreat first if we're low on HP. Eat from inventory if we have
         // food, otherwise stop attacking and walk back to safety.
         if (handleLowHpRetreat()) return;

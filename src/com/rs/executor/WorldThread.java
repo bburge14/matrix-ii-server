@@ -24,8 +24,11 @@ public final class WorldThread extends Thread {
 			WORLD_CYCLE++; //made the cycle update at begin instead of end cuz at end theres 600ms then to next cycle
 			long currentTime = Utils.currentTimeMillis();
 			//     long debug = Utils.currentTimeMillis();
+			WorldTickProfiler.start("worldTasks");
 			WorldTasksManager.processTasks();
+			WorldTickProfiler.end("worldTasks");
 			try {
+				WorldTickProfiler.start("processEntity");
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
@@ -36,10 +39,12 @@ public final class WorldThread extends Thread {
 						continue;
 					npc.processEntity();
 				}
+				WorldTickProfiler.end("processEntity");
 			} catch (Throwable e) {
 				Logger.handle(e);
 			}
 			try {
+				WorldTickProfiler.start("processEntityUpdate");
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
@@ -50,6 +55,7 @@ public final class WorldThread extends Thread {
 						continue;
 					npc.processEntityUpdate();
 				}
+				WorldTickProfiler.end("processEntityUpdate");
 			} catch (Throwable e) {
 				Logger.handle(e);
 			}
@@ -57,7 +63,7 @@ public final class WorldThread extends Thread {
 				// //
 				// System.out.print(" ,NPCS PROCESS: "+(Utils.currentTimeMillis()-debug));
 				// debug = Utils.currentTimeMillis();
-
+				WorldTickProfiler.start("sendLocalUpdates");
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
@@ -67,6 +73,7 @@ public final class WorldThread extends Thread {
 					player.getPackets().sendLocalNPCsUpdate();
 					player.processProjectiles();//waits for player to walk and so on
 				}
+				WorldTickProfiler.end("sendLocalUpdates");
 			} catch (Throwable e) {
 				Logger.handle(e);
 			}
@@ -78,6 +85,7 @@ public final class WorldThread extends Thread {
 			try {
 				// System.out.print(" ,PLAYER UPDATE: "+(Utils.currentTimeMillis()-debug)+", "+World.getPlayers().size()+", "+World.getNPCs().size());
 				// debug = Utils.currentTimeMillis();
+				WorldTickProfiler.start("resetMasks");
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
@@ -88,11 +96,13 @@ public final class WorldThread extends Thread {
 						continue;
 					npc.resetMasks();
 				}
+				WorldTickProfiler.end("resetMasks");
 			} catch (Throwable e) {
 				Logger.handle(e);
 			}
 
 			try {
+				WorldTickProfiler.start("connectionCheck");
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
@@ -109,10 +119,12 @@ public final class WorldThread extends Thread {
 					if (!player.getSession().getChannel().isConnected())
 						player.finish(); //requests finish, wont do anything if already requested btw
 				}
+				WorldTickProfiler.end("connectionCheck");
 			} catch (Throwable e) {
 				Logger.handle(e);
 			}
 
+			WorldTickProfiler.onTickComplete();
 			// //
 			// Logger.log(this, "TOTAL: "+(Utils.currentTimeMillis()-currentTime));
 			long sleepTime = Settings.WORLD_CYCLE_TIME + currentTime - Utils.currentTimeMillis();

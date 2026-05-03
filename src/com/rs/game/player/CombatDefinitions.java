@@ -34,7 +34,9 @@ public final class CombatDefinitions implements Serializable {
 	private transient Player player;
 	private transient boolean usingSpecialAttack;
 	private transient int[] bonuses;
-	private transient int[] stats;
+	// Initialised eagerly so getStats() never returns null on bots whose
+	// refreshBonuses() hasn't fired yet (was crashing Combat.getHitChance).
+	private transient int[] stats = new int[16];
 
 	// saving stuff
 

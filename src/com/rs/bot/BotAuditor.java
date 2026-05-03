@@ -35,8 +35,37 @@ public final class BotAuditor {
             boolean ok = false;
             String reason = "";
             WorldTile from = m.location;
-            int radius = 24;
+            // Bumped 24 -> 36. Some canonical RS resource clusters span more
+            // than 24 tiles (mining guild, fishing guild guildhalls). Catches
+            // a few near-miss fails without flagging false positives.
+            int radius = 36;
             try {
+            // Force-load the method's region (and its 8 neighbours) before
+            // scanning. NPCs from spawn files are only realised into
+            // World.getNPCs() when their region loads via a player tick.
+            // The audit runs from coords with no nearby player, so without
+            // this preload every NPC check returns "no NPC [...]" and every
+            // object scan returns null - all 85 of the FAIL entries from
+            // the prior run were from this, not from bad coords.
+            try {
+                int rx = (from.getRegionId() >> 8) & 0xff;
+                int ry = from.getRegionId() & 0xff;
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        int nrx = rx + dx;
+                        int nry = ry + dy;
+                        if (nrx < 0 || nry < 0) continue;
+                        int rid = (nrx << 8) | nry;
+                        com.rs.game.World.getRegion(rid, true);
+                        // Region.load only unpacks cache map data - NPC spawns
+                        // are a separate file-driven step. Without this, NPCs
+                        // declared in spawnsList/customSpawnsList stay un-
+                        // realised until a real player enters their region.
+                        try { com.rs.utils.NPCSpawns.loadNPCSpawns(rid); }
+                        catch (Throwable ignored) {}
+                    }
+                }
+            } catch (Throwable ignored) {}
             switch (m.kind) {
                 case WOODCUTTING: {
                     EnvironmentScanner.TreeMatch tm =
@@ -111,7 +140,7 @@ public final class BotAuditor {
      * a continuous picture of what bots are doing right now.
      */
     public static void dumpOnlineBots() {
-        int total = 0, stuck = 0, working = 0, idle = 0;
+        int totalLegend = 0, totalCitizen = 0, stuck = 0, working = 0, idle = 0;
         AuditLog.log("--- bot state snapshot ---");
         try {
             for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
@@ -119,7 +148,27 @@ public final class BotAuditor {
                 AIPlayer bot = (AIPlayer) p;
                 BotBrain brain = bot.getBrain();
                 if (brain == null) continue;
-                total++;
+
+                // Citizens (CitizenBrain) and Legends (BotBrain) split here -
+                // they share the AIPlayer infrastructure but have very
+                // different state to dump.
+                if (brain instanceof com.rs.bot.ambient.CitizenBrain) {
+                    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) brain;
+                    totalCitizen++;
+                    com.rs.bot.ai.TrainingMethods.Method m = cb.getCurrentMethod();
+                    String mDesc = m == null ? "none"
+                        : m.description + " @" + m.location.getX() + "," + m.location.getY();
+                    AuditLog.log("citizen " + bot.getDisplayName()
+                        + " cb=" + bot.getSkills().getCombatLevel()
+                        + " @" + bot.getX() + "," + bot.getY() + "," + bot.getPlane()
+                        + " arch=" + (cb.getArchetype() == null ? "?" : cb.getArchetype().name())
+                        + " state=" + cb.getState()
+                        + " method=" + mDesc);
+                    continue;
+                }
+
+                // Legend bot dump - the original behaviour, unchanged.
+                totalLegend++;
                 String diag = brain.getLastDiagnostic() == null ? "" : brain.getLastDiagnostic();
                 String method = brain.getLastMethod() == null ? "none" : brain.getLastMethod().description;
                 com.rs.bot.ai.Goal g = brain.getCurrentGoal();
@@ -130,7 +179,7 @@ public final class BotAuditor {
                 if (isWorking) working++;
                 if (diag.contains("stuck") || diag.contains("no ") || diag.contains("broke")) stuck++;
                 if (method.equals("none") || diag.isEmpty()) idle++;
-                AuditLog.log("bot " + bot.getDisplayName()
+                AuditLog.log("legend " + bot.getDisplayName()
                     + " cb=" + bot.getSkills().getCombatLevel()
                     + " @" + bot.getX() + "," + bot.getY() + "," + bot.getPlane()
                     + " goal=" + goal
@@ -141,7 +190,8 @@ public final class BotAuditor {
         } catch (Throwable t) {
             AuditLog.log("dumpOnlineBots threw: " + t);
         }
-        AuditLog.log("--- end snapshot: " + total + " bots, " + working + " working, " + stuck + " stuck, " + idle + " idle ---");
+        AuditLog.log("--- end snapshot: legends=" + totalLegend + " (working=" + working
+            + " stuck=" + stuck + " idle=" + idle + "), citizens=" + totalCitizen + " ---");
     }
 
     /**

@@ -959,7 +959,24 @@ public class NPC extends Entity implements Serializable {
 	}
 
 	public HeadIcon[] getIcons() {
-		return new HeadIcon[0];
+		// Default impl: pull head icons from cache definition (opcode 102 -
+		// per-slot sprite + file IDs). Skill masters / shopkeepers get their
+		// floating skill icon automatically once NPCDefinitions.headIconSpriteIds
+		// is non-null. Subclasses (KalphiteQueen, TormentedDemon) still
+		// override for dynamic prayer-style icons.
+		try {
+			com.rs.cache.loaders.NPCDefinitions defs = getDefinitions();
+			if (defs == null || defs.headIconSpriteIds == null) return new HeadIcon[0];
+			int[] sprites = defs.headIconSpriteIds;
+			short[] files = defs.headIconFileIds;
+			HeadIcon[] icons = new HeadIcon[sprites.length];
+			for (int i = 0; i < sprites.length; i++) {
+				icons[i] = new HeadIcon(sprites[i], files == null ? -1 : files[i]);
+			}
+			return icons;
+		} catch (Throwable t) {
+			return new HeadIcon[0];
+		}
 	}
 
 	public void requestIconRefresh() {

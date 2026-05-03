@@ -1306,7 +1306,9 @@ public class Player extends Entity {
     }
 
     public WorldPacketsEncoder getPackets() {
-	return session.getWorldPackets();
+	// Offline-created bots (BotFactory.createOffline) never have a session
+	// wired - return null so existing null-checks downstream work properly.
+	return session == null ? null : session.getWorldPackets();
     }
 
     	public void setStarted(boolean started) {

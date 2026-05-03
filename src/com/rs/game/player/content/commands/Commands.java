@@ -1478,6 +1478,54 @@ public final class Commands {
 		}
 		return true;
 	    }
+	    case "objhere": {
+		// Lists nearby world objects with their cache IDs + names. Useful
+		// for figuring out which object IDs to wire into ObjectHandler
+		// (Castle Wars portals - clicked in-game but ObjectHandler only
+		// matched 4387/4388/4408 which may not be the real cache IDs).
+		int objRadius = 5;
+		if (cmd.length >= 2) {
+		    try { objRadius = Math.max(1, Math.min(15, Integer.parseInt(cmd[1]))); }
+		    catch (NumberFormatException ignore) {}
+		}
+		int objFound = 0;
+		try {
+		    player.getPackets().sendGameMessage("Nearby objects (radius " + objRadius + "):");
+		    int rx = (player.getRegionId() >> 8) & 0xff;
+		    int ry = player.getRegionId() & 0xff;
+		    outer: for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+			    int nrx = rx + dx, nry = ry + dy;
+			    if (nrx < 0 || nry < 0) continue;
+			    com.rs.game.Region reg = com.rs.game.World.getRegion((nrx << 8) | nry, true);
+			    if (reg == null) continue;
+			    java.util.List<com.rs.game.WorldObject> objs = reg.getAllObjects();
+			    if (objs == null) continue;
+			    for (com.rs.game.WorldObject o : objs) {
+				if (o == null) continue;
+				if (o.getPlane() != player.getPlane()) continue;
+				int ddx = o.getX() - player.getX();
+				int ddy = o.getY() - player.getY();
+				if (ddx * ddx + ddy * ddy > objRadius * objRadius) continue;
+				String nm = "?";
+				try {
+				    com.rs.cache.loaders.ObjectDefinitions defs =
+					com.rs.cache.loaders.ObjectDefinitions.getObjectDefinitions(o.getId());
+				    if (defs != null && defs.name != null) nm = defs.name;
+				} catch (Throwable ignored) {}
+				player.getPackets().sendGameMessage("  id=" + o.getId() + " '" + nm
+				    + "' at (" + o.getX() + "," + o.getY() + ") type=" + o.getType());
+				if (++objFound >= 30) break outer;
+			    }
+			}
+		    }
+		    if (objFound == 0)
+			player.getPackets().sendGameMessage("  (no objects within " + objRadius + " tiles)");
+		} catch (Throwable t) {
+		    player.getPackets().sendGameMessage("objhere error: " + t.getMessage());
+		}
+		return true;
+	    }
 	    case "ccoords":
 		selection = new StringSelection(player.getX() + ", " + player.getY() + ", " + player.getPlane());
 		clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
@@ -2384,6 +2432,101 @@ public final class Commands {
 	    case "auditstop": {
 		com.rs.bot.AuditLog.setStreaming(false);
 		player.getPackets().sendGameMessage("Audit streaming OFF.");
+		return true;
+	    }
+
+	    case "spawncitizen": {
+		// ::spawncitizen <count> [archetype]
+		// Spawns Citizen-tier (lightweight NPC-backed) bots near your tile.
+		// Archetype: skiller / combatant / socialite / minigamer / mixed
+		if (cmd.length < 2) {
+		    player.getPackets().sendPanelBoxMessage("Use: ::spawncitizen <count> [skiller|combatant|socialite|minigamer]");
+		    return true;
+		}
+		int count;
+		try { count = Integer.parseInt(cmd[1]); }
+		catch (NumberFormatException e) {
+		    player.getPackets().sendGameMessage("count must be a number");
+		    return true;
+		}
+		count = Math.max(1, Math.min(count, 200)); // cap at 200/call
+		String category = cmd.length >= 3 ? cmd[2].toLowerCase() : null;
+		java.util.List<com.rs.bot.AIPlayer> spawned =
+		    com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, player, 12);
+		player.getPackets().sendGameMessage("Spawned " + spawned.size()
+		    + " " + (category == null ? "mixed" : category) + " citizens"
+		    + " (live total: " + com.rs.bot.ambient.CitizenSpawner.liveCount() + ")");
+		return true;
+	    }
+
+	    case "clearcitizens": {
+		int removed = com.rs.bot.ambient.CitizenSpawner.clearAll();
+		player.getPackets().sendGameMessage("Cleared " + removed + " citizens.");
+		return true;
+	    }
+
+	    case "citizencount": {
+		player.getPackets().sendGameMessage("Live citizens: " + com.rs.bot.ambient.CitizenSpawner.liveCount());
+		return true;
+	    }
+
+	    case "citizeninfo": {
+		// Dump per-Citizen state to chat. Shows archetype, FSM state,
+		// current TrainingMethod (and its location), and proximity to it.
+		// Use this to verify the role->method picker is working.
+		java.util.List<com.rs.bot.AIPlayer> live = com.rs.bot.ambient.CitizenSpawner.getLive();
+		int max = cmd.length >= 2 ? Math.min(50, parseIntOr(cmd[1], 10)) : 10;
+		int shown = 0;
+		java.util.Map<String,Integer> archCount = new java.util.TreeMap<>();
+		java.util.Map<String,Integer> stateCount = new java.util.TreeMap<>();
+		java.util.Map<String,Integer> methodCount = new java.util.TreeMap<>();
+		int methodless = 0;
+		for (com.rs.bot.AIPlayer b : live) {
+		    if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
+		    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
+		    archCount.merge(cb.getArchetype() == null ? "?" : cb.getArchetype().name(), 1, Integer::sum);
+		    stateCount.merge(cb.getState() == null ? "?" : cb.getState().name(), 1, Integer::sum);
+		    com.rs.bot.ai.TrainingMethods.Method m = cb.getCurrentMethod();
+		    if (m == null) methodless++;
+		    else methodCount.merge(m.description, 1, Integer::sum);
+		    if (shown < max) {
+			String mDesc = m == null ? "none"
+			    : m.description + " @" + m.location.getX() + "," + m.location.getY();
+			player.getPackets().sendPanelBoxMessage("[Citizen] " + b.getDisplayName()
+			    + " arch=" + (cb.getArchetype() == null ? "?" : cb.getArchetype().name())
+			    + " state=" + cb.getState()
+			    + " method=" + mDesc
+			    + " @" + b.getX() + "," + b.getY());
+			shown++;
+		    }
+		}
+		player.getPackets().sendPanelBoxMessage("--- Citizens summary ---");
+		player.getPackets().sendPanelBoxMessage("by archetype: " + archCount);
+		player.getPackets().sendPanelBoxMessage("by state: " + stateCount);
+		player.getPackets().sendPanelBoxMessage("methodless: " + methodless
+		    + " (skip if archetype = socialite/minigamer)");
+		player.getPackets().sendPanelBoxMessage("top methods: "
+		    + topN(methodCount, 5));
+		return true;
+	    }
+
+	    case "profilestart": {
+		// Per-phase WorldThread timing - dumps to stdout every 100 ticks (~60s).
+		// Use this BEFORE multi-threading work so we know the actual hot loops.
+		com.rs.executor.WorldTickProfiler.enable();
+		player.getPackets().sendGameMessage("Tick profiler ON. Watch stdout - stats every ~60s.");
+		return true;
+	    }
+
+	    case "profilestop": {
+		com.rs.executor.WorldTickProfiler.disable();
+		player.getPackets().sendGameMessage("Tick profiler OFF.");
+		return true;
+	    }
+
+	    case "profiledump": {
+		com.rs.executor.WorldTickProfiler.dump();
+		player.getPackets().sendGameMessage("Profiler stats dumped to stdout.");
 		return true;
 	    }
 
@@ -3716,5 +3859,26 @@ public final class Commands {
      */
     private Commands() {
 
+    }
+
+    /** Parse a string as int with a fallback default. */
+    private static int parseIntOr(String s, int def) {
+        if (s == null) return def;
+        try { return Integer.parseInt(s.trim()); }
+        catch (Throwable t) { return def; }
+    }
+
+    /** Format the top N entries of a count map as "k=v, k=v" sorted desc by value. */
+    private static String topN(java.util.Map<String, Integer> counts, int n) {
+        java.util.List<java.util.Map.Entry<String, Integer>> sorted = new java.util.ArrayList<>(counts.entrySet());
+        sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (java.util.Map.Entry<String, Integer> e : sorted) {
+            if (i++ >= n) break;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.getKey()).append("=").append(e.getValue());
+        }
+        return sb.length() == 0 ? "(none)" : sb.toString();
     }
 }

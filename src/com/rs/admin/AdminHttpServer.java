@@ -91,6 +91,23 @@ public final class AdminHttpServer {
             server.createContext("/admin/server/reload",   auth(postOnly(new ServerReloadHandler())));
             server.createContext("/admin/snapshots/take",  auth(postOnly(new SnapshotsTakeHandler())));
 
+            // Citizen (AmbientBot/FSM) management
+            server.createContext("/admin/citizens",         auth(new CitizensListHandler()));
+            server.createContext("/admin/citizens/spawn",   auth(postOnly(new CitizensSpawnHandler())));
+            server.createContext("/admin/citizens/clear",   auth(postOnly(new CitizensClearHandler())));
+            // Citizen population budget (persistent config)
+            server.createContext("/admin/citizens/budget",       auth(new CitizensBudgetHandler()));
+            server.createContext("/admin/citizens/budget/apply", auth(postOnly(new CitizensBudgetApplyHandler())));
+            server.createContext("/admin/citizens/archetypes",   auth(new CitizensArchetypesHandler()));
+
+            // World tick profiler (Phase 1.C step 1)
+            server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
+            server.createContext("/admin/profiler/stop",    auth(postOnly(new ProfilerStopHandler())));
+            server.createContext("/admin/profiler/dump",    auth(postOnly(new ProfilerDumpHandler())));
+
+            // Cache status - which store loaded, which path
+            server.createContext("/admin/cache/status",     auth(new CacheStatusHandler()));
+
             server.start();
             System.out.println("[AdminHttpServer] Listening on :" + PORT + " - token written to " + TOKEN_FILE);
         } catch (Throwable t) {
@@ -1185,5 +1202,290 @@ public final class AdminHttpServer {
             }
         }
         return sb.toString();
+    }
+
+    // ===== Citizen handlers =====
+
+    private static class CitizensListHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                java.util.List<com.rs.bot.AIPlayer> live =
+                    com.rs.bot.ambient.CitizenSpawner.getLive();
+                // Per-archetype + per-state tally
+                java.util.Map<String, Integer> byArch = new java.util.TreeMap<>();
+                java.util.Map<String, Integer> byState = new java.util.TreeMap<>();
+                for (com.rs.bot.AIPlayer b : live) {
+                    if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
+                    com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
+                    String a = cb.getArchetype() == null ? "?" : cb.getArchetype().name();
+                    byArch.merge(a, 1, Integer::sum);
+                    String s = cb.getState() == null ? "?" : cb.getState().name();
+                    byState.merge(s, 1, Integer::sum);
+                }
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total);
+                sb.append(",\"byArchetype\":{");
+                boolean first = true;
+                for (java.util.Map.Entry<String,Integer> e : byArch.entrySet()) {
+                    if (!first) sb.append(","); first = false;
+                    sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
+                }
+                sb.append("},\"byState\":{");
+                first = true;
+                for (java.util.Map.Entry<String,Integer> e : byState.entrySet()) {
+                    if (!first) sb.append(","); first = false;
+                    sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
+                }
+                sb.append("}}");
+                sendText(ex, 200, sb.toString());
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    private static class CitizensSpawnHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            int count;
+            try { count = Integer.parseInt(body.getOrDefault("count", "10")); }
+            catch (NumberFormatException e) { sendText(ex, 400, "{\"ok\":false,\"error\":\"bad count\"}"); return; }
+            count = Math.max(1, Math.min(count, 500)); // cap
+            String category = body.get("category");
+            int x, y, plane;
+            try {
+                x = Integer.parseInt(body.getOrDefault("x", "3222"));
+                y = Integer.parseInt(body.getOrDefault("y", "3218"));
+                plane = Integer.parseInt(body.getOrDefault("plane", "0"));
+            } catch (NumberFormatException e) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"bad coords\"}"); return;
+            }
+            int scatter;
+            try { scatter = Integer.parseInt(body.getOrDefault("scatter", "12")); }
+            catch (NumberFormatException e) { scatter = 12; }
+            try {
+                com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(x, y, plane);
+                java.util.List<com.rs.bot.AIPlayer> spawned =
+                    com.rs.bot.ambient.CitizenSpawner.spawnBatch(count, category, anchor, scatter);
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                sendText(ex, 200, "{\"ok\":true,\"spawned\":" + spawned.size()
+                    + ",\"total\":" + total + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    private static class CitizensClearHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            int removed = com.rs.bot.ambient.CitizenSpawner.clearAll();
+            sendText(ex, 200, "{\"ok\":true,\"removed\":" + removed + "}");
+        }
+    }
+
+    /**
+     * GET  /admin/citizens/budget  - returns the slot list as JSON
+     * POST /admin/citizens/budget  - body is {"slots":[...]} - replaces config + saves
+     */
+    private static class CitizensBudgetHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            String method = ex.getRequestMethod();
+            if ("GET".equalsIgnoreCase(method)) {
+                java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> slots = com.rs.bot.ambient.CitizenBudget.getSlots();
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"slots\":[");
+                for (int i = 0; i < slots.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(slots.get(i).toJson());
+                }
+                sb.append("]}");
+                sendText(ex, 200, sb.toString());
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(method)) {
+                sendText(ex, 405, "{\"ok\":false,\"error\":\"GET or POST only\"}");
+                return;
+            }
+            // POST: replace slots with body content. Body format matches the GET output:
+            //   {"slots":[{"archetype":"X","count":N,"x":...,"y":...,"plane":...,"scatter":...,"autospawn":bool}, ...]}
+            String body = readBody(ex);
+            try {
+                java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> parsed = parseBudgetSlots(body);
+                com.rs.bot.ambient.CitizenBudget.setSlots(parsed);
+                sendText(ex, 200, "{\"ok\":true,\"saved\":" + parsed.size() + "}");
+            } catch (Throwable t) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /** POST /admin/citizens/budget/apply - spawn enough to hit each slot's target.
+     *  Optional body field "includeManual": true to also fill non-autospawn slots. */
+    private static class CitizensBudgetApplyHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Map<String,String> body = parseBody(ex);
+            boolean includeManual = "true".equalsIgnoreCase(body.getOrDefault("includeManual", "true"));
+            try {
+                int spawned = com.rs.bot.ambient.CitizenBudget.applyBudget(includeManual);
+                int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
+                sendText(ex, 200, "{\"ok\":true,\"spawned\":" + spawned + ",\"total\":" + total + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /** GET /admin/citizens/archetypes - returns the list of available archetype names
+     *  + their categories so the panel can populate dropdowns. */
+    private static class CitizensArchetypesHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"archetypes\":[");
+            com.rs.bot.ambient.AmbientArchetype[] all = com.rs.bot.ambient.AmbientArchetype.values();
+            for (int i = 0; i < all.length; i++) {
+                if (i > 0) sb.append(",");
+                com.rs.bot.ambient.AmbientArchetype a = all[i];
+                String cat = a.isSkiller() ? "skiller"
+                          : a.isCombatant() ? "combatant"
+                          : a.isSocialite() ? "socialite"
+                          : a.isMinigamer() ? "minigamer"
+                          : "other";
+                sb.append("{\"name\":\"").append(a.name())
+                  .append("\",\"label\":\"").append(jsonEscape(a.label))
+                  .append("\",\"category\":\"").append(cat).append("\"}");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+    }
+
+    /** Lightweight JSON parse for budget body: {"slots":[{...},{...}]}.
+     *  Reuses the same opportunistic parser style as CitizenBudget. */
+    private static java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> parseBudgetSlots(String json) {
+        java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> out = new java.util.ArrayList<>();
+        if (json == null) return out;
+        int arrStart = json.indexOf('[');
+        int arrEnd = json.lastIndexOf(']');
+        if (arrStart < 0 || arrEnd < 0 || arrEnd <= arrStart) return out;
+        String arr = json.substring(arrStart + 1, arrEnd);
+        int depth = 0;
+        StringBuilder cur = new StringBuilder();
+        for (int i = 0; i < arr.length(); i++) {
+            char c = arr.charAt(i);
+            if (c == '{') depth++;
+            if (c == '}') {
+                depth--;
+                cur.append(c);
+                if (depth == 0) {
+                    com.rs.bot.ambient.CitizenBudget.Slot s = parseOneSlot(cur.toString());
+                    if (s != null) out.add(s);
+                    cur.setLength(0);
+                }
+                continue;
+            }
+            if (depth == 0 && (c == ',' || Character.isWhitespace(c))) continue;
+            cur.append(c);
+        }
+        return out;
+    }
+
+    private static com.rs.bot.ambient.CitizenBudget.Slot parseOneSlot(String obj) {
+        com.rs.bot.ambient.CitizenBudget.Slot s = new com.rs.bot.ambient.CitizenBudget.Slot();
+        s.archetype = bExtractStr(obj, "archetype");
+        s.count   = bExtractInt(obj, "count", 0);
+        s.x       = bExtractInt(obj, "x", 0);
+        s.y       = bExtractInt(obj, "y", 0);
+        s.plane   = bExtractInt(obj, "plane", 0);
+        s.scatter = bExtractInt(obj, "scatter", 8);
+        s.autospawn = bExtractBool(obj, "autospawn", false);
+        return s.archetype == null ? null : s;
+    }
+
+    private static String bExtractStr(String obj, String key) {
+        String marker = "\"" + key + "\":\"";
+        int i = obj.indexOf(marker);
+        if (i < 0) return null;
+        i += marker.length();
+        int end = obj.indexOf('"', i);
+        return end < 0 ? null : obj.substring(i, end);
+    }
+
+    private static int bExtractInt(String obj, String key, int def) {
+        String marker = "\"" + key + "\":";
+        int i = obj.indexOf(marker);
+        if (i < 0) return def;
+        i += marker.length();
+        int end = i;
+        while (end < obj.length() && (obj.charAt(end) == '-' || Character.isDigit(obj.charAt(end)))) end++;
+        if (end == i) return def;
+        try { return Integer.parseInt(obj.substring(i, end)); }
+        catch (Throwable t) { return def; }
+    }
+
+    private static boolean bExtractBool(String obj, String key, boolean def) {
+        String marker = "\"" + key + "\":";
+        int i = obj.indexOf(marker);
+        if (i < 0) return def;
+        i += marker.length();
+        if (obj.startsWith("true", i)) return true;
+        if (obj.startsWith("false", i)) return false;
+        return def;
+    }
+
+    /** Read raw request body as a UTF-8 string. */
+    private static String readBody(HttpExchange ex) throws IOException {
+        java.io.InputStream is = ex.getRequestBody();
+        java.io.ByteArrayOutputStream bout = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[2048];
+        int n;
+        while ((n = is.read(buf)) > 0) bout.write(buf, 0, n);
+        return bout.toString("UTF-8");
+    }
+
+    // ===== Profiler handlers =====
+
+    private static class ProfilerStartHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.enable();
+            sendText(ex, 200, "{\"ok\":true,\"enabled\":true}");
+        }
+    }
+
+    private static class ProfilerStopHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.disable();
+            sendText(ex, 200, "{\"ok\":true,\"enabled\":false}");
+        }
+    }
+
+    private static class ProfilerDumpHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            com.rs.executor.WorldTickProfiler.dump();
+            sendText(ex, 200, "{\"ok\":true,\"dumped\":true}");
+        }
+    }
+
+    // ===== Cache status handler =====
+
+    private static class CacheStatusHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int primaryIdx = (com.rs.cache.Cache.STORE != null && com.rs.cache.Cache.STORE.getIndexes() != null)
+                    ? com.rs.cache.Cache.STORE.getIndexes().length : 0;
+                int dlcIdx = (com.rs.cache.Cache.STORE_DLC != null && com.rs.cache.Cache.STORE_DLC.getIndexes() != null)
+                    ? com.rs.cache.Cache.STORE_DLC.getIndexes().length : 0;
+                StringBuilder sb = new StringBuilder("{\"ok\":true");
+                sb.append(",\"primaryPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_PRIMARY == null ? "" : com.rs.Settings.CACHE_PATH_PRIMARY)).append("\"");
+                sb.append(",\"primaryLoaded\":").append(primaryIdx > 0);
+                sb.append(",\"primaryIndexes\":").append(primaryIdx);
+                sb.append(",\"legacyPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_LEGACY == null ? "" : com.rs.Settings.CACHE_PATH_LEGACY)).append("\"");
+                sb.append(",\"dlcPath\":\"").append(jsonEscape(com.rs.Settings.CACHE_PATH_DLC == null ? "" : com.rs.Settings.CACHE_PATH_DLC)).append("\"");
+                sb.append(",\"dlcLoaded\":").append(dlcIdx > 0);
+                sb.append(",\"dlcIndexes\":").append(dlcIdx);
+                sb.append(",\"dlcEnabled\":").append(com.rs.Settings.DLC_FALLBACK_ENABLED);
+                sb.append("}");
+                sendText(ex, 200, sb.toString());
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
     }
 }

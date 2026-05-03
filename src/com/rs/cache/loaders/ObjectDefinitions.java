@@ -769,7 +769,8 @@ public class ObjectDefinitions {
 	if (def == null) {
 	    def = new ObjectDefinitions();
 	    def.id = id;
-	    byte[] data = Cache.STORE.getIndexes()[16].getFile(getArchiveId(id), id & 0xff);
+	    // DLC fallback: try primary store first, fall through to DLC if set.
+	    byte[] data = Cache.getFileWithDlcFallback(16, getArchiveId(id), id & 0xff);
 	    if (data == null) {
 		// System.out.println("Failed loading Object " + id + ".");
 	    } else

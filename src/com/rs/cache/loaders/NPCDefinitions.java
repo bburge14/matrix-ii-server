@@ -53,6 +53,11 @@ public final class NPCDefinitions {
 	public int anInt875;
 	public int anInt876;
 	public int headIcons;
+	// Parsed from cache opcode 102: per-slot sprite + file IDs. Up to 8 icon
+	// slots (bitmask byte). null when NPC has no head icons. Loader wasn't
+	// storing these - they were read into local vars and discarded.
+	public int[] headIconSpriteIds;
+	public short[] headIconFileIds;
 	public int anInt879;
 	public short[] aShortArray880;
 	public int[][] anIntArrayArray882;
@@ -93,7 +98,8 @@ public final class NPCDefinitions {
 	if (def == null) {
 		def = new NPCDefinitions(id);
 		def.method694();
-		byte[] data = Cache.STORE.getIndexes()[18].getFile(id >>> 134238215, id & 0x7f);
+		// DLC fallback: try primary store first, fall through to DLC if set.
+		byte[] data = Cache.getFileWithDlcFallback(18, id >>> 134238215, id & 0x7f);
 		if (data == null) {
 		// System.out.println("Failed loading NPC " + id + ".");
 		}
@@ -216,6 +222,10 @@ public final class NPCDefinitions {
 					aShortArray5833[i_25_] = (short) stream.readSmart4();
 					}
 				}
+				// Persist them - opcode 102 = per-slot head icons (sprite+file).
+				// Without this, getIcons() can't render them.
+				headIconSpriteIds = anIntArray5869;
+				headIconFileIds = aShortArray5833;
 				}
 				else if (opcode != 103) {
 				if (opcode == 106 || opcode == 118) {
