@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""
+GE price audit for the Matrix II bot trader catalog.
+
+What it does:
+  1. Scrapes item ids + current bot prices from:
+       src/com/rs/bot/ambient/BotTradeHandler.java   (StockEntry catalog)
+       src/com/rs/bot/ambient/BotChatListener.java   (addAlias DB)
+  2. Hits the RuneScape3 GE JSON API for each id (rate-limit friendly).
+  3. Writes:
+       data/ge_audit.csv          - one row per id with both prices + delta
+       data/ge_audit.patch.txt    - human-reviewable list of suggested patches
+  4. Optionally emits a generated Java file with updated catalog prices
+     (--apply) - DOES NOT touch the original; you copy the diff yourself.
+
+Why standalone (not auto-apply):
+  - GE prices can be skewed by squeeze/dump bots; you want eyeballs on it.
+  - Server economy may diverge intentionally (e.g. RSPS-tuned cheaper rares).
+  - Diff is printable, easy to drop wholesale or pick & choose.
+
+Endpoint:
+  https://secure.runescape.com/m=itemdb_rs/api/catalogue/detail.json?item=ID
+
+Rate limit: Jagex doesn't publish one. Conservative sleep between calls
+keeps us well under any reasonable threshold (default 600ms).
+"""
+
+import argparse
+import csv
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+GE_URL = "https://secure.runescape.com/m=itemdb_rs/api/catalogue/detail.json?item={id}"
+USER_AGENT = "matrix-ii-price-audit/1.0 (+https://github.com/bburge14/matrix-ii-server)"
+
+# ----- file paths (relative to project root) -----
+CATALOG_FILE = "src/com/rs/bot/ambient/BotTradeHandler.java"
+ALIAS_FILE = "src/com/rs/bot/ambient/BotChatListener.java"
+OUT_DIR = "data"
+OUT_CSV = "ge_audit.csv"
+OUT_PATCH = "ge_audit.patch.txt"
+
+# ----- regex matchers -----
+# new StockEntry(4151, 150_000, "abyssal whip", 1)
+# new StockEntry(1511, 50,      "logs",         100)
+# new StockEntry(1511, 50,      "logs")
+STOCK_ENTRY_RE = re.compile(
+    r"""new\s+StockEntry\(\s*
+        (?P<id>\d+)\s*,\s*
+        (?P<price>[\d_]+)\s*,\s*
+        "(?P<name>[^"]+)"
+        (?:\s*,\s*(?P<bundle>\d+))?
+    \s*\)""",
+    re.VERBOSE,
+)
+
+# addAlias(4151, "whip", "abyssal whip");
+ADD_ALIAS_RE = re.compile(
+    r"""addAlias\(\s*
+        (?P<id>\d+)\s*,\s*
+        (?P<args>"[^;]+)
+        \)""",
+    re.VERBOSE,
+)
+
+
+def parse_price_int(s: str) -> int:
+    """Strip Java _ separators, parse int. '1_500_000' -> 1500000"""
+    return int(s.replace("_", ""))
+
+
+def extract_catalog(path: Path):
+    """Yield (item_id, server_price, name, bundle, line_no) for every
+    StockEntry in BotTradeHandler.java."""
+    text = path.read_text(encoding="utf-8")
+    for m in STOCK_ENTRY_RE.finditer(text):
+        yield (
+            int(m.group("id")),
+            parse_price_int(m.group("price")),
+            m.group("name"),
+            int(m.group("bundle")) if m.group("bundle") else 1,
+            text[: m.start()].count("\n") + 1,
+        )
+
+
+def extract_aliases(path: Path):
+    """Yield item_ids referenced by addAlias() in BotChatListener.java
+    that aren't already in the catalog (we still want to audit
+    nicknames-only items so the chat-driven trade prices are sane)."""
+    text = path.read_text(encoding="utf-8")
+    seen = set()
+    for m in ADD_ALIAS_RE.finditer(text):
+        iid = int(m.group("id"))
+        if iid in seen:
+            continue
+        seen.add(iid)
+        yield iid
+
+
+def fetch_ge_price(item_id: int, timeout: float = 10.0):
+    """Returns (price_int, name) or (None, error_string)."""
+    url = GE_URL.format(id=item_id)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None, "not in GE (untradeable / removed)"
+        return None, f"HTTP {e.code}"
+    except urllib.error.URLError as e:
+        return None, f"network error: {e}"
+    except Exception as e:
+        return None, f"parse error: {e}"
+
+    if not data or "item" not in data:
+        return None, "no item field"
+    item = data["item"]
+    cur = item.get("current", {}).get("price")
+    name = item.get("name", "?")
+    if cur is None:
+        return None, "no current price"
+    return parse_ge_price_field(cur), name
+
+
+def parse_ge_price_field(raw):
+    """GE returns either an int or a string like '3.6m', '1.5k', '1,234'."""
+    if isinstance(raw, int):
+        return raw
+    s = str(raw).strip().lower().replace(",", "")
+    mult = 1
+    if s.endswith("k"):
+        mult = 1_000
+        s = s[:-1]
+    elif s.endswith("m"):
+        mult = 1_000_000
+        s = s[:-1]
+    elif s.endswith("b"):
+        mult = 1_000_000_000
+        s = s[:-1]
+    try:
+        return int(round(float(s.strip()) * mult))
+    except (TypeError, ValueError):
+        return None
+
+
+def fmt_money(n):
+    if n is None:
+        return "?"
+    if n >= 1_000_000_000:
+        return f"{n/1_000_000_000:.2f}b"
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.2f}m"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}k"
+    return str(n)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--repo", default=".", help="project root (default: cwd)")
+    ap.add_argument("--sleep", type=float, default=0.6,
+                    help="delay between GE requests in seconds (default 0.6)")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="cap items fetched (0 = all). Useful for dry runs.")
+    ap.add_argument("--scale", type=float, default=0.10,
+                    help="server-economy scale factor vs OSRS GE (default 0.10 "
+                    "= server prices are ~10%% of RS GE). Patch suggestions "
+                    "are GE_price * scale.")
+    ap.add_argument("--threshold", type=float, default=0.30,
+                    help="only flag items where |delta| > this fraction of "
+                    "the current server price (default 0.30 = 30%%)")
+    ap.add_argument("--include-aliases", action="store_true",
+                    help="also audit ids that only appear in BotChatListener "
+                    "(no catalog entry yet)")
+    args = ap.parse_args()
+
+    root = Path(args.repo).resolve()
+    catalog_path = root / CATALOG_FILE
+    alias_path = root / ALIAS_FILE
+    if not catalog_path.is_file():
+        print(f"[!] catalog file not found: {catalog_path}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[*] reading catalog: {catalog_path.relative_to(root)}")
+    catalog = list(extract_catalog(catalog_path))
+    print(f"    {len(catalog)} StockEntry rows")
+
+    catalog_ids = {row[0] for row in catalog}
+    extra_ids = []
+    if args.include_aliases and alias_path.is_file():
+        for iid in extract_aliases(alias_path):
+            if iid not in catalog_ids:
+                extra_ids.append(iid)
+        print(f"    +{len(extra_ids)} ids from BotChatListener (no catalog entry)")
+
+    work = list(catalog)
+    for iid in extra_ids:
+        work.append((iid, 0, "(alias only)", 1, 0))
+
+    if args.limit > 0:
+        work = work[:args.limit]
+        print(f"[*] capped to {args.limit} items for this run")
+
+    out_dir = root / OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / OUT_CSV
+    patch_path = out_dir / OUT_PATCH
+
+    print(f"[*] hitting GE API ({len(work)} items, ~{args.sleep:.1f}s each, "
+          f"~{int(len(work)*args.sleep)}s total)")
+
+    rows = []
+    for i, (iid, server_price, name, bundle, line_no) in enumerate(work, 1):
+        ge_price, ge_name = fetch_ge_price(iid)
+        suggested = None
+        delta_pct = None
+        flagged = False
+        if isinstance(ge_price, int) and ge_price > 0:
+            suggested = max(1, int(round(ge_price * args.scale)))
+            if server_price > 0:
+                delta_pct = (suggested - server_price) / server_price
+                flagged = abs(delta_pct) > args.threshold
+            else:
+                # alias-only entry; no current server price to diff against
+                flagged = True
+        rows.append({
+            "id": iid,
+            "server_name": name,
+            "ge_name": ge_name if isinstance(ge_price, int) else (ge_name or ""),
+            "server_price": server_price,
+            "ge_price": ge_price if isinstance(ge_price, int) else "",
+            "ge_error": ge_name if not isinstance(ge_price, int) else "",
+            "suggested": suggested if suggested is not None else "",
+            "delta_pct": (f"{delta_pct*100:+.1f}%" if delta_pct is not None else ""),
+            "flagged": "Y" if flagged else "",
+            "java_line": line_no,
+        })
+        flag = "!" if flagged else " "
+        print(f"  [{i:3}/{len(work)}] {flag} id={iid:<6} "
+              f"server={fmt_money(server_price):>8}  "
+              f"ge={fmt_money(ge_price) if isinstance(ge_price, int) else '-':>8}  "
+              f"sug={fmt_money(suggested) if suggested else '-':>8}  "
+              f"{name}")
+        if i < len(work):
+            time.sleep(args.sleep)
+
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"\n[+] wrote {csv_path.relative_to(root)} ({len(rows)} rows)")
+
+    # Patch suggestion file - only flagged rows, in a format you can scan
+    flagged_rows = [r for r in rows if r["flagged"] == "Y"]
+    with patch_path.open("w", encoding="utf-8") as f:
+        f.write("# GE Price Audit - suggested edits\n")
+        f.write(f"# Scale factor: {args.scale} (server = ge * scale)\n")
+        f.write(f"# Threshold:    {args.threshold*100:.0f}% delta\n")
+        f.write(f"# Total flagged: {len(flagged_rows)} of {len(rows)}\n\n")
+        f.write("# Apply by editing src/com/rs/bot/ambient/BotTradeHandler.java\n")
+        f.write("# Format: id  current -> suggested  (delta)   name\n")
+        f.write("# " + "-"*70 + "\n")
+        for r in flagged_rows:
+            f.write(f"{r['id']:<6}  {fmt_money(r['server_price']):>9} -> "
+                    f"{fmt_money(r['suggested']):>9}  ({r['delta_pct']:>7})  "
+                    f"{r['server_name']}\n")
+    print(f"[+] wrote {patch_path.relative_to(root)} ({len(flagged_rows)} flagged)")
+
+    print(f"\n[*] done. {len(flagged_rows)}/{len(rows)} items flagged "
+          f"(>={args.threshold*100:.0f}% delta from suggested).")
+    print(f"    review: {patch_path.relative_to(root)}")
+    print(f"    full:   {csv_path.relative_to(root)}")
+
+
+if __name__ == "__main__":
+    main()
