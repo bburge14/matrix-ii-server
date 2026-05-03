@@ -181,6 +181,7 @@ public final class BotTradeHandler {
 
         // Player committed. Read their bet, roll, decide payout.
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
+        String pname = target.getDisplayName();
         if (playerGp < MIN_BET) {
             sayBoth(bot, "min bet " + MIN_BET + "gp - cancelling");
             bot.getTrade().cancelTrade();
@@ -192,19 +193,24 @@ public final class BotTradeHandler {
         int roll = Utils.random(100);
         boolean win = roll >= mode.winThreshold;
         try {
+            // Three-line "host announcement" pattern matching real RS
+            // dicing convention: who-bet-what, what-rolled, who-won-what.
+            sayBoth(bot, pname + " gave " + bet + "gp");
             if (win) {
                 ensureInvCoins(bot, payout);
                 if (bot.getInventory().getAmountOf(COINS) >= payout) {
                     bot.getTrade().addItem(new Item(COINS,
                         (int) Math.min(Integer.MAX_VALUE, payout)));
-                    sayBoth(bot, mode.name + " rolled " + roll + " - you win " + payout + "!");
+                    sayBoth(bot, mode.name + " rolled " + roll + " - WIN");
+                    sayBoth(bot, pname + " wins " + payout + "gp");
                 } else {
                     sayBoth(bot, "no funds, can't gamble that high");
                     bot.getTrade().cancelTrade();
                     return;
                 }
             } else {
-                sayBoth(bot, mode.name + " rolled " + roll + " - you lose");
+                sayBoth(bot, mode.name + " rolled " + roll + " - LOSE");
+                sayBoth(bot, "house wins " + bet + "gp");
             }
             // Now accept stage 1 (locks in our offer + payout).
             bot.getTrade().accept(true);
@@ -308,16 +314,52 @@ public final class BotTradeHandler {
             stock = pickStockForBot(bot);
             if (stock == null) return null;
             bot.getTemporaryAttributtes().put("BotTraderStock", stock);
-            // Initial stock: enough copies to last several sales. Materialised
-            // so the trader actually has the item in inventory.
-            int startQty = stock.bundleSize * 8; // 8 sales worth
-            try {
-                int already = bot.getInventory().getAmountOf(stock.itemId);
-                int give = Math.max(0, startQty - already);
-                if (give > 0) bot.getInventory().addItem(stock.itemId, give);
-            } catch (Throwable ignored) {}
+            stockBot(bot, stock);
         }
         return stock;
+    }
+
+    /** Spawn-time stock for SOCIALITE_GE_TRADER bots. Called by
+     *  CitizenSpawner.spawnOne so the trader actually has inventory before
+     *  any player initiates a trade. Pre-trade-time materialise was failing
+     *  silently because toolkit ran first and ate inventory slots. */
+    public static void preStockTrader(AIPlayer bot) {
+        StockEntry stock = pickStockForBot(bot);
+        if (stock == null) return;
+        bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+        stockBot(bot, stock);
+    }
+
+    /** Materialise stock into the bot's inventory. Stackable items get a big
+     *  pile in 1 slot; non-stackable get a few copies (limited by slots). */
+    private static void stockBot(AIPlayer bot, StockEntry stock) {
+        try {
+            boolean stackable = isStackable(stock.itemId);
+            int already = bot.getInventory().getAmountOf(stock.itemId);
+            int target;
+            if (stackable) {
+                // 8 bundles for stackables (logs, runes, fish, ore, etc.) -
+                // plenty of stock in 1 slot.
+                target = stock.bundleSize * 8;
+            } else {
+                // Non-stackable (weapons, armor): cap at 3 to avoid eating
+                // half the inventory. bundleSize is always 1 for these.
+                target = 3;
+            }
+            int give = Math.max(0, target - already);
+            if (give > 0) bot.getInventory().addItem(stock.itemId, give);
+        } catch (Throwable ignored) {}
+    }
+
+    private static boolean isStackable(int itemId) {
+        if (itemId == COINS) return true;
+        try {
+            com.rs.cache.loaders.ItemDefinitions def =
+                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId);
+            return def != null && def.isStackable();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Trader stock catalog. Each entry includes a bundleSize - how many

@@ -168,6 +168,16 @@ public final class CitizenSpawner {
                 System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
             }
 
+            // Pre-stock trader bots so they have inventory at first trade.
+            // Otherwise the trade handler tries to materialize at trade-time
+            // which silently failed (full inv from toolkit, non-stackable
+            // items > slots, etc) and traders cancelled "sold out".
+            if (arch == AmbientArchetype.SOCIALITE_GE_TRADER) {
+                try {
+                    com.rs.bot.ambient.BotTradeHandler.preStockTrader(bot);
+                } catch (Throwable ignored) {}
+            }
+
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
             System.out.println("[CitizenSpawner] spawned " + name + " (" + arch.name()
