@@ -109,6 +109,15 @@ public final class CitizenSpawner {
     public static AIPlayer spawnOne(String category, WorldTile anchor, int scatter) {
         if (anchor == null) return null;
         AmbientArchetype arch = AmbientArchetype.randomFor(category);
+        // Auto-migrate the legacy SOCIALITE_GE_TRADER archetype to a random
+        // new tier so old citizen_budget.json configs still get the proper
+        // tiered behavior + spawn anchors.
+        if (arch == AmbientArchetype.SOCIALITE_GE_TRADER) {
+            int r = Utils.random(100);
+            if (r < 50)      arch = AmbientArchetype.SOCIALITE_GE_TRADER_SKILL;
+            else if (r < 80) arch = AmbientArchetype.SOCIALITE_GE_TRADER_COMBAT;
+            else             arch = AmbientArchetype.SOCIALITE_GE_TRADER_RARE;
+        }
         // Per-minigame archetypes pin the spawn to their lobby tile regardless
         // of the caller's anchor. Lets admin panel spawn castlewars/soulwars/sc
         // citizens via category=castlewars etc and have them appear at the
@@ -127,26 +136,28 @@ public final class CitizenSpawner {
                 if (d <= 30) anchor = sanchor;
             }
         }
-        // Smaller scatter for socialites - they should cluster, not spread.
+        // Spread socialites across the whole quadrant so they don't stack
+        // on the anchor tile. Larger floor so a batch of 20 isn't all
+        // standing on top of each other - the user reported "4-5 bots
+        // standing on top of each other".
         if (arch != null && arch.isSocialite()) {
-            scatter = Math.min(scatter, 4);
+            scatter = Math.max(scatter, 12);
         }
         scatter = Math.max(2, scatter);
-        // Validate the picked spawn tile is walkable. Try up to 8 times - if
-        // the gaussian lands on a wall/object/water, retry. Falls back to the
-        // anchor itself (which should be a known-good tile by definition).
+        // Pick a spawn tile that's (a) walkable, (b) not stacked on another
+        // bot. Try up to 16 attempts; falls back to anchor on exhaustion.
         WorldTile spawn = null;
-        for (int attempt = 0; attempt < 8; attempt++) {
+        for (int attempt = 0; attempt < 16; attempt++) {
             int dx = gaussianOffset(scatter);
             int dy = gaussianOffset(scatter);
             WorldTile cand = new WorldTile(
                 anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
             try {
-                if (com.rs.game.World.isTileFree(cand.getPlane(),
-                        cand.getX(), cand.getY(), 1)) {
-                    spawn = cand;
-                    break;
-                }
+                if (!com.rs.game.World.isTileFree(cand.getPlane(),
+                        cand.getX(), cand.getY(), 1)) continue;
+                if (isTileOccupiedByBot(cand)) continue;
+                spawn = cand;
+                break;
             } catch (Throwable ignored) {}
         }
         if (spawn == null) spawn = new WorldTile(anchor);
@@ -269,6 +280,20 @@ public final class CitizenSpawner {
         String tail = Long.toString(n, 36);
         if (tail.length() > 6) tail = tail.substring(tail.length() - 6);
         return "Citizen-" + tail.toUpperCase();
+    }
+
+    /** True if a live citizen bot already stands on this tile (within 1
+     *  tile, since bots are size 1). Prevents spawn-stacking. */
+    private static boolean isTileOccupiedByBot(WorldTile tile) {
+        synchronized (liveCitizens) {
+            for (AIPlayer other : liveCitizens) {
+                if (other == null || other.hasFinished()) continue;
+                if (other.getPlane() != tile.getPlane()) continue;
+                if (other.getX() == tile.getX() && other.getY() == tile.getY())
+                    return true;
+            }
+        }
+        return false;
     }
 
     /** Symmetric Gaussian offset clamped to [-radius, radius]. */

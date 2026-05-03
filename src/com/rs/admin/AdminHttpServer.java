@@ -1212,17 +1212,37 @@ public final class AdminHttpServer {
                 int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
                 java.util.List<com.rs.bot.AIPlayer> live =
                     com.rs.bot.ambient.CitizenSpawner.getLive();
-                // Per-archetype + per-state tally
+                // Per-archetype + per-state tally + per-bot detail array.
                 java.util.Map<String, Integer> byArch = new java.util.TreeMap<>();
                 java.util.Map<String, Integer> byState = new java.util.TreeMap<>();
+                StringBuilder bots = new StringBuilder();
+                bots.append("[");
+                boolean firstBot = true;
                 for (com.rs.bot.AIPlayer b : live) {
+                    if (b == null) continue;
                     if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
                     com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
                     String a = cb.getArchetype() == null ? "?" : cb.getArchetype().name();
                     byArch.merge(a, 1, Integer::sum);
                     String s = cb.getState() == null ? "?" : cb.getState().name();
                     byState.merge(s, 1, Integer::sum);
+                    if (!firstBot) bots.append(",");
+                    firstBot = false;
+                    bots.append("{")
+                        .append("\"name\":\"").append(jsonEscape(b.getDisplayName() == null ? "?" : b.getDisplayName())).append("\",")
+                        .append("\"archetype\":\"").append(jsonEscape(a)).append("\",")
+                        .append("\"state\":\"").append(jsonEscape(s)).append("\",")
+                        .append("\"x\":").append(b.getX()).append(",")
+                        .append("\"y\":").append(b.getY()).append(",")
+                        .append("\"plane\":").append(b.getPlane()).append(",")
+                        .append("\"cb\":");
+                    int cbLvl = 3;
+                    try { cbLvl = b.getSkills().getCombatLevel(); } catch (Throwable ignored) {}
+                    bots.append(cbLvl);
+                    bots.append("}");
                 }
+                bots.append("]");
+
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total);
                 sb.append(",\"byArchetype\":{");
                 boolean first = true;
@@ -1236,7 +1256,8 @@ public final class AdminHttpServer {
                     if (!first) sb.append(","); first = false;
                     sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
                 }
-                sb.append("}}");
+                sb.append("},\"bots\":").append(bots);
+                sb.append("}");
                 sendText(ex, 200, sb.toString());
             } catch (Throwable t) {
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");

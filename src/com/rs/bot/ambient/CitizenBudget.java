@@ -30,6 +30,12 @@ public final class CitizenBudget {
 
     private static final String CONFIG_PATH = "data/citizen_budget.json";
 
+    /** Bumped whenever seedDefaults() changes. Old config files without
+     *  this version (or with a lower one) get auto-replaced with the new
+     *  defaults on load. Avoids requiring users to manually `rm` the file
+     *  every time we ship new GE socialite anchor coords. */
+    private static final int CURRENT_SCHEMA_VERSION = 2;
+
     public static final class Slot {
         public String archetype;     // AmbientArchetype enum name
         public int count;            // target alive count
@@ -79,11 +85,41 @@ public final class CitizenBudget {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = r.readLine()) != null) sb.append(line);
-            slots = parseSlots(sb.toString());
+            String json = sb.toString();
+            int diskVersion = parseSchemaVersion(json);
+            if (diskVersion < CURRENT_SCHEMA_VERSION) {
+                System.out.println("[CitizenBudget] config schema v" + diskVersion
+                    + " < current v" + CURRENT_SCHEMA_VERSION
+                    + " - reseeding defaults (old file backed up)");
+                try {
+                    java.nio.file.Files.copy(f.toPath(),
+                        new File(CONFIG_PATH + ".bak.v" + diskVersion).toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (Throwable ignored) {}
+                seedDefaults();
+                save();
+                return;
+            }
+            slots = parseSlots(json);
             System.out.println("[CitizenBudget] loaded " + slots.size() + " slots from " + CONFIG_PATH);
         } catch (Throwable t) {
             System.err.println("[CitizenBudget] load failed: " + t);
             seedDefaults();
+        }
+    }
+
+    /** Pulls "schema":N from the JSON, returns 0 if missing. */
+    private static int parseSchemaVersion(String json) {
+        try {
+            int i = json.indexOf("\"schema\":");
+            if (i < 0) return 0;
+            i += "\"schema\":".length();
+            int end = i;
+            while (end < json.length() && (json.charAt(end) == '-' || Character.isDigit(json.charAt(end)))) end++;
+            if (end == i) return 0;
+            return Integer.parseInt(json.substring(i, end));
+        } catch (Throwable t) {
+            return 0;
         }
     }
 
@@ -92,7 +128,7 @@ public final class CitizenBudget {
         File dir = f.getParentFile();
         if (dir != null) dir.mkdirs();
         try (PrintWriter w = new PrintWriter(f, "UTF-8")) {
-            w.print("{\"slots\":[");
+            w.print("{\"schema\":" + CURRENT_SCHEMA_VERSION + ",\"slots\":[");
             for (int i = 0; i < slots.size(); i++) {
                 if (i > 0) w.print(",");
                 w.print(slots.get(i).toJson());
@@ -167,18 +203,24 @@ public final class CitizenBudget {
      *    Gambler Edge - Edgeville bank (3094, 3491) [legacy spot] */
     private static void seedDefaults() {
         slots.clear();
-        // Bankstanders: random of 4 counters via socialiteAnchor()
-        slots.add(new Slot("SOCIALITE_BANKSTAND",            20, 3164, 3486, 0, 4, true));
+        // ===== GE socialites (most of the population) =====
+        // Bankstanders: random of 4 GE counters via socialiteAnchor() so
+        // they spread across all sides of the building, not stacked on one.
+        slots.add(new Slot("SOCIALITE_BANKSTAND",            30, 3164, 3486, 0, 12, true));
         // Tier 1: bulk skilling supplies traders (most common)
-        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",      15, 3157, 3477, 0, 4, true));
+        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",      20, 3157, 3477, 0, 12, true));
         // Tier 2: combat gear traders
-        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",     10, 3157, 3477, 0, 4, true));
+        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",     12, 3157, 3477, 0, 12, true));
         // Tier 3: rare/endgame traders (fewer, premium pricing)
-        slots.add(new Slot("SOCIALITE_GE_TRADER_RARE",        5, 3147, 3472, 0, 3, true));
+        slots.add(new Slot("SOCIALITE_GE_TRADER_RARE",        6, 3147, 3472, 0,  8, true));
         // Gamblers at GE - randomized between fountain/north anchor
-        slots.add(new Slot("SOCIALITE_GAMBLER",               8, 3142, 3487, 0, 4, true));
-        // Gamblers at Edgeville (legacy dicing spot)
-        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3094, 3491, 0, 4, false));
+        slots.add(new Slot("SOCIALITE_GAMBLER",              10, 3142, 3487, 0, 10, true));
+        // ===== Edgeville bank socialites (smaller crowd) =====
+        // A few traders + gamblers at Edge bank for variety.
+        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",       3, 3094, 3491, 0,  8, true));
+        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",      2, 3094, 3491, 0,  8, true));
+        slots.add(new Slot("SOCIALITE_BANKSTAND",             4, 3094, 3491, 0,  8, true));
+        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3094, 3491, 0,  6, true));
         // Lumbridge skillers
         slots.add(new Slot("SKILLER_NOOB",          15, 3222, 3218, 0, 10, false));
         slots.add(new Slot("SKILLER_CASUAL",        15, 3222, 3218, 0, 10, false));

@@ -82,6 +82,12 @@ public class CitizenBrain extends BotBrain {
         this.homeAnchor = new WorldTile(homeAnchor);
         this.homeRadius = Math.max(2, homeRadius);
         scheduleNextStateChange(State.IDLE);
+        // Per-bot phase offset so a batch spawned in the same tick doesn't
+        // all transition states on the same future tick. Without this, 20
+        // bots all idle for 60 ticks, then all simultaneously start
+        // wandering - looks like a sync'd dance. User: "I AM SEEING GROUPS
+        // MOVE IN SYNC".
+        stateTicksRemaining += Utils.random(40);
     }
 
     @Override
@@ -99,24 +105,18 @@ public class CitizenBrain extends BotBrain {
         // moves them away from the trade UI.
         try { BotTradeHandler.tick(bot, archetype); } catch (Throwable ignored) {}
 
-        // Real-player proximity -> PANICKING. Cooldown so we don't oscillate.
-        if (panicCooldownTicks > 0) panicCooldownTicks--;
-        if (panicCooldownTicks <= 0 && state != State.PANICKING) {
-            if (realPlayerNearby(bot)) {
-                transitionTo(State.PANICKING);
-                panicCooldownTicks = 50; // ~30s before re-panic allowed
-            }
-        }
+        // PANICKING removed by request - bots no longer flee from real
+        // players. Real players don't run away from each other in RS, and
+        // it was being triggered constantly at GE making bots look like
+        // shy NPCs instead of socialites.
 
-        // Random AFK / misclick (skip while panicking).
-        if (state != State.PANICKING) {
-            if (Math.random() < AFK_PROBABILITY) {
-                afkUntilMs = System.currentTimeMillis() + (long) gaussianRange(10000, 30000, 5000);
-                return;
-            }
-            if (Math.random() < MISCLICK_PROBABILITY) {
-                stepRandom(bot);
-            }
+        // Random AFK / misclick.
+        if (Math.random() < AFK_PROBABILITY) {
+            afkUntilMs = System.currentTimeMillis() + (long) gaussianRange(10000, 30000, 5000);
+            return;
+        }
+        if (Math.random() < MISCLICK_PROBABILITY) {
+            stepRandom(bot);
         }
 
         // FSM advance.
@@ -127,7 +127,7 @@ public class CitizenBrain extends BotBrain {
             case IDLE:        tickIdle(bot);        break;
             case TRAVERSING:  tickTraversing(bot);  break;
             case INTERACTING: tickInteracting(bot); break;
-            case PANICKING:   tickPanicking(bot);   break;
+            case PANICKING:   /* removed - leave as no-op */ break;
         }
     }
 
@@ -143,11 +143,12 @@ public class CitizenBrain extends BotBrain {
                 // probability. Skiller/combatant pursue their method's
                 // target so they do need to traverse more often.
                 if (archetype != null && archetype.isSocialite()) {
-                    // 95% stay idle, 3% short traverse, 2% interact. They're
-                    // fixtures - they stand at GE/Edge and chat/trade. User
-                    // feedback was "bots are moving WAY too much".
-                    if (r < 95) next = State.IDLE;
-                    else if (r < 98) next = State.TRAVERSING;
+                    // 98% stay idle. They're FIXTURES at GE - users want
+                    // them basically stationary, with rare position drift.
+                    // User: "they should not be moving that much anyways,
+                    // it is ABSOLUTELY annoying".
+                    if (r < 98) next = State.IDLE;
+                    else if (r < 99) next = State.TRAVERSING;
                     else next = State.INTERACTING;
                 } else {
                     // Default: 60 traverse / 30 interact / 10 idle (legacy)
