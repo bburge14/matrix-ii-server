@@ -116,7 +116,7 @@ public class CitizenBrain extends BotBrain {
 
         // FSM advance.
         if (--stateTicksRemaining <= 0) {
-            advanceState();
+            advanceState(bot);
         }
         switch (state) {
             case IDLE:        tickIdle(bot);        break;
@@ -128,7 +128,7 @@ public class CitizenBrain extends BotBrain {
 
     // === FSM transitions ===
 
-    private void advanceState() {
+    private void advanceState(AIPlayer bot) {
         State next;
         switch (state) {
             case IDLE: {
@@ -139,6 +139,19 @@ public class CitizenBrain extends BotBrain {
                 break;
             }
             case TRAVERSING:
+                // Don't bail on TRAVERSING if we're still far from the method's
+                // target tile - was wasting 10+ minutes shuffling 8 tiles then
+                // dropping back to INTERACTING in the wrong region. Stay in
+                // TRAVERSING until within ~12 tiles of the destination, then
+                // let the FSM transition to INTERACTING normally.
+                if (currentMethod != null && currentMethod.location != null && bot != null) {
+                    long dist = (long) Math.hypot(bot.getX() - currentMethod.location.getX(),
+                                                   bot.getY() - currentMethod.location.getY());
+                    if (dist > 12) {
+                        next = State.TRAVERSING;
+                        break;
+                    }
+                }
                 next = Utils.random(100) < 70 ? State.INTERACTING : State.IDLE;
                 break;
             case INTERACTING: next = State.IDLE; break;
@@ -180,7 +193,26 @@ public class CitizenBrain extends BotBrain {
         // wander if there's nothing scannable in the home radius.
         WorldTile target = findInteractionDestination(bot);
         if (target == null) target = pickWanderTarget();
-        bot.addWalkSteps(target.getX(), target.getY(), 8, true);
+        // Teleport-first for far targets: anything > ~40 tiles is realistically
+        // a teleport in real-player play (jewelry, standard spell). Without
+        // this, citizens spent 10+ minutes shuffling 8 tiles per traversing
+        // phase to reach Catherby/Falador/etc, hit INTERACTING in the wrong
+        // region, and just spammed "no X here". Citizens use the same
+        // BotTeleporter pickBest as Legends - chooses jewelry > spell, only
+        // returns a choice if it lands materially closer than walking.
+        long dist = (long) Math.hypot(bot.getX() - target.getX(),
+                                       bot.getY() - target.getY());
+        if (dist > 40) {
+            try {
+                com.rs.bot.ai.BotTeleporter.Choice c =
+                    com.rs.bot.ai.BotTeleporter.pickBest(bot, target.getX(), target.getY());
+                if (c != null && com.rs.bot.ai.BotTeleporter.cast(bot, c)) {
+                    debug(bot, "teleporting to " + target.getX() + "," + target.getY());
+                    return; // walk on next tick once tele lands
+                }
+            } catch (Throwable ignored) {}
+        }
+        bot.addWalkSteps(target.getX(), target.getY(), 25, true);
     }
 
     private void tickInteracting(AIPlayer bot) {
