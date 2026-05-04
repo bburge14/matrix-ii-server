@@ -50,11 +50,11 @@ public final class PhantomMarket {
     /** Per-tick fill probability when rolling on placement (within ~5s).
      *  This is the BASE; tier multipliers below apply on top so cheap
      *  items fill instantly more often than rares. */
-    private static volatile double fillRateOnPlace = 0.10;
+    private static volatile double fillRateOnPlace = 0.30;
 
     /** Per-30s-tick base fill rate for an aging offer. Multiplied by the
      *  per-tier rate. */
-    private static volatile double fillRatePerTick = 0.02;
+    private static volatile double fillRatePerTick = 0.10;
 
     /** Spread tolerance: phantom fills only if player's price is within
      *  +/- this fraction of the catalog reference. */

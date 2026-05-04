@@ -1526,20 +1526,56 @@ class PhantomGEFrame(ctk.CTkFrame):
         # Each knob: label + entry + apply button
         self.knob_vars = {}
         knobs = [
-            ("enabled", "Master kill-switch (true/false)"),
-            ("fillRateOnPlace", "On-placement fill chance base (× tier mult)"),
-            ("fillRatePerTick", "Per-30s base fill chance (× tier mult)"),
-            ("acceptableSpread", "Price spread tolerance (0.30 = ±30%)"),
-            ("minAgeBeforeFillMs", "Min offer age before fill (ms)"),
-            ("cheapMultiplier", "Cheap (<1k): mult vs base rate"),
-            ("bulkMultiplier", "Bulk (<10k): mult vs base rate"),
-            ("lowMultiplier", "Low (<100k): mult vs base rate"),
-            ("midMultiplier", "Mid (<1m): mult vs base rate"),
-            ("highMultiplier", "High (<10m): mult vs base rate"),
-            ("rareMultiplier", "Rare (≥10m): mult vs base rate"),
-            ("maxFillsPerPlayerPerHour", "Anti-abuse: per-player/hour cap"),
-            ("maxFillsPerItemPerHour", "Anti-abuse: per-item/hour cap"),
-            ("partialFillChance", "Chance to partial-fill (0.0-1.0)"),
+            ("enabled",
+                "Master toggle. true=phantom fills are active, false=disabled "
+                "entirely (no auto-fills, P2P matching still works)."),
+            ("fillRateOnPlace",
+                "Base chance an offer fills ~5s after placement. "
+                "Multiplied by the tier mult below. e.g. 0.30 with bulk 5x = "
+                "150% (capped at 100%) - bulk items insta-fill on placement."),
+            ("fillRatePerTick",
+                "Base chance per 30s tick that an aging offer fills. "
+                "Same tier-mult math. e.g. 0.10 with mid 1x = 10% per 30s, "
+                "so mid-tier offers usually fill within ~5 minutes."),
+            ("acceptableSpread",
+                "Price tolerance vs the GE reference. 0.30 = phantom only "
+                "fills if player's price is within ±30%. Rejects 'wtb phat 1gp' "
+                "trolls. Lower = stricter."),
+            ("minAgeBeforeFillMs",
+                "Offer must sit this long before any phantom fill. Lets "
+                "players cancel misclicks. 30000 = 30s default."),
+            ("cheapMultiplier",
+                "Items < 1k gp (eg copper ore, raw shrimps). Multiplier on "
+                "both base rates. 10x = effectively instant fills always."),
+            ("bulkMultiplier",
+                "Items < 10k gp (logs, ores, runes, raw fish). 5x default = "
+                "very fast fills, 1-2 min typically."),
+            ("lowMultiplier",
+                "Items < 100k gp (rune armor pieces, dragon scim, basic "
+                "amulets). 2x default = fills within a few minutes."),
+            ("midMultiplier",
+                "Items < 1m gp (whips, dragon weapons, mystic, mid jewelry). "
+                "1x default = base rate, ~5-10 min typical fill."),
+            ("highMultiplier",
+                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 0.5x "
+                "default = slow, 30+ min for full fill."),
+            ("rareMultiplier",
+                "Items ≥ 10m gp (partyhats, hween masks, christmas crackers, "
+                "phats). 0.1x default = days to fill - rare items shouldn't "
+                "auto-flip cheaply."),
+            ("maxFillsPerPlayerPerHour",
+                "Anti-abuse: max phantom fills any one player can receive per "
+                "hour. Stops sitting at GE flipping infinitely against the "
+                "phantom. Resets every hour. 50 default."),
+            ("maxFillsPerItemPerHour",
+                "Anti-abuse: max phantom fills total for any one item id per "
+                "hour. Stops draining 'phantom inventory' on a hot item. "
+                "20 default."),
+            ("partialFillChance",
+                "When phantom DOES fill, this is the chance it only fills "
+                "20-70% of the offer instead of all. Mimics multiple small "
+                "buyers/sellers vs one big match. 0.40 = 40% of fills are "
+                "partial."),
         ]
         for i, (key, helptxt) in enumerate(knobs):
             ctk.CTkLabel(cfg_frame, text=key + ":", anchor="w"
@@ -1551,9 +1587,9 @@ class PhantomGEFrame(ctk.CTkFrame):
             ctk.CTkButton(cfg_frame, text="Apply", width=60,
                 command=lambda k=key: self._apply_knob(k)
                 ).grid(row=i, column=2, padx=4, pady=2)
-            ctk.CTkLabel(cfg_frame, text=helptxt, anchor="w",
-                font=ctk.CTkFont(size=10), text_color="#888"
-                ).grid(row=i, column=3, sticky="w", padx=8, pady=2)
+            ctk.CTkLabel(cfg_frame, text=helptxt, anchor="w", wraplength=320,
+                justify="left", font=ctk.CTkFont(size=10), text_color="#888"
+                ).grid(row=i, column=3, sticky="nw", padx=8, pady=4)
 
         # ------- Right: live fill log -------
         log_frame = ctk.CTkFrame(body)
