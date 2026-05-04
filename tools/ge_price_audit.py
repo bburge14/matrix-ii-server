@@ -187,6 +187,16 @@ def main():
                     help="when --apply is set, only auto-update items with "
                     "|delta| > this fraction. 0.0 = update every flagged "
                     "row. Use 0.5 to skip small drifts.")
+    ap.add_argument("--max-price", type=int, default=2_000_000_000,
+                    help="cap suggested price at this value (default 2B - "
+                    "Java int max is 2.147B). Items where the GE-derived "
+                    "suggested price exceeds this get clamped + flagged "
+                    "with 'CAPPED' in the patch and SKIPPED by --apply.")
+    ap.add_argument("--max-raw-ge", type=int, default=10_000_000_000,
+                    help="if RS3 GE returns a price above this (default 10B), "
+                    "treat it as garbage (delisted item / max-cash report) "
+                    "and don't suggest a change. Phat raw prices on RS3 GE "
+                    "can be 60B+ which is meaningless.")
     args = ap.parse_args()
 
     root = Path(args.repo).resolve()
@@ -230,14 +240,27 @@ def main():
         suggested = None
         delta_pct = None
         flagged = False
+        capped = False
         if isinstance(ge_price, int) and ge_price > 0:
-            suggested = max(1, int(round(ge_price * args.scale)))
-            if server_price > 0:
-                delta_pct = (suggested - server_price) / server_price
-                flagged = abs(delta_pct) > args.threshold
+            # If RS3 GE reports an absurd price (delisted phats, max cash
+            # cap, etc), don't trust it. Skip the suggestion entirely.
+            if ge_price > args.max_raw_ge:
+                ge_name = (ge_name or "?") + " [GE garbage]"
             else:
-                # alias-only entry; no current server price to diff against
-                flagged = True
+                raw_suggested = max(1, int(round(ge_price * args.scale)))
+                # Cap at Java int safe ceiling so --apply doesn't write a
+                # value that overflows when stored as int in StockEntry.
+                if raw_suggested > args.max_price:
+                    suggested = args.max_price
+                    capped = True
+                else:
+                    suggested = raw_suggested
+                if server_price > 0:
+                    delta_pct = (suggested - server_price) / server_price
+                    flagged = abs(delta_pct) > args.threshold
+                else:
+                    # alias-only entry; no current server price to diff against
+                    flagged = True
         rows.append({
             "id": iid,
             "server_name": name,
@@ -250,14 +273,17 @@ def main():
             "delta_pct_float": delta_pct,         # numeric, for --apply
             "delta_pct": (f"{delta_pct*100:+.1f}%" if delta_pct is not None else ""),
             "flagged": "Y" if flagged else "",
+            "capped": "Y" if capped else "",      # auto-apply will skip these
             "java_line": line_no,
         })
         flag = "!" if flagged else " "
+        if capped:
+            flag = "C"  # capped marker
         print(f"  [{i:3}/{len(work)}] {flag} id={iid:<6} "
               f"server={fmt_money(server_price):>8}  "
               f"ge={fmt_money(ge_price) if isinstance(ge_price, int) else '-':>8}  "
               f"sug={fmt_money(suggested) if suggested else '-':>8}  "
-              f"{name}")
+              f"{name}{' [CAPPED]' if capped else ''}")
         if i < len(work):
             time.sleep(args.sleep)
 
@@ -303,6 +329,12 @@ def main():
                 continue
             if r.get("server_price", 0) == sp:
                 continue  # no change
+            # Skip rows where the suggestion was capped at --max-price.
+            # The audit caps so the patch is review-able, but auto-apply
+            # would write a misleading flat-cap value (e.g. every phat at
+            # exactly 2B). Better to leave the user's curated price alone.
+            if r.get("capped") == "Y":
+                continue
             d = r.get("delta_pct_float")
             if args.apply_min_delta > 0 and (d is None or abs(d) < args.apply_min_delta):
                 continue

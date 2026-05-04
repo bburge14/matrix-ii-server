@@ -1055,8 +1055,10 @@ public final class BotTradeHandler {
         new StockEntry(13740, 6_000_000, "divine spirit shield", 1),
         new StockEntry(13742, 5_000_000, "elysian spirit shield", 1),
         new StockEntry(13744, 4_000_000, "spectral spirit shield", 1),
-        // Tradeable rares (combat-ish)
-        new StockEntry(20000, 300_000,   "fire cape", 1),
+        // Tradeable rares (combat-ish) - fire cape is item id 6570 NOT 20000
+        // (20000 was a stray ID in the RS3 catalog that mapped to a 180gp
+        // throwaway item; audit kept "correcting" the price down).
+        new StockEntry(6570, 300_000,    "fire cape", 1),
     };
 
     /** Tier 3: HOLIDAY RARES. User spec: "rares are stuff that are over 100m

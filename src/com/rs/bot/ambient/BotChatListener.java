@@ -133,7 +133,7 @@ public final class BotChatListener {
         addAlias(6733, "archers ring", "a ring", "aring");
         addAlias(6731, "seers ring", "s ring", "sring");
         addAlias(2572, "ring of wealth", "row");
-        addAlias(20000, "fire cape", "fc", "firecape");
+        addAlias(6570, "fire cape", "fc", "firecape");
         // === Holiday rares ===
         addAlias(1038, "red partyhat", "red phat", "rphat");
         addAlias(1040, "yellow partyhat", "yellow phat", "yphat");
