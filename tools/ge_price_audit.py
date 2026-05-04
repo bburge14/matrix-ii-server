@@ -169,10 +169,10 @@ def main():
                     help="delay between GE requests in seconds (default 0.6)")
     ap.add_argument("--limit", type=int, default=0,
                     help="cap items fetched (0 = all). Useful for dry runs.")
-    ap.add_argument("--scale", type=float, default=0.10,
-                    help="server-economy scale factor vs OSRS GE (default 0.10 "
-                    "= server prices are ~10%% of RS GE). Patch suggestions "
-                    "are GE_price * scale.")
+    ap.add_argument("--scale", type=float, default=0.60,
+                    help="server-economy scale factor vs RS GE (default 0.60 "
+                    "= server prices are ~60%% of live RS GE). Patch "
+                    "suggestions are GE_price * scale.")
     ap.add_argument("--threshold", type=float, default=0.30,
                     help="only flag items where |delta| > this fraction of "
                     "the current server price (default 0.30 = 30%%)")
@@ -197,6 +197,13 @@ def main():
                     "treat it as garbage (delisted item / max-cash report) "
                     "and don't suggest a change. Phat raw prices on RS3 GE "
                     "can be 60B+ which is meaningless.")
+    ap.add_argument("--push-server", default=None, metavar="URL",
+                    help="POST suggested prices to the running server's "
+                    "/admin/ge/prices/bulk endpoint so the in-game GE shows "
+                    "them too. Example: --push-server http://localhost:8080")
+    ap.add_argument("--admin-token", default=None,
+                    help="value sent as 'X-Admin-Token' header for "
+                    "--push-server. Read from $MATRIX_ADMIN_TOKEN if unset.")
     args = ap.parse_args()
 
     root = Path(args.repo).resolve()
@@ -399,6 +406,47 @@ def main():
         print(f"    # restart server")
         print(f"  Revert (if needed):")
         print(f"    mv {bak.relative_to(root)} {catalog_path.relative_to(root)}")
+
+    # ---- --push-server: send prices to the running game server ----
+    if args.push_server:
+        push_to_server(args.push_server, args.admin_token, rows)
+
+
+def push_to_server(base_url: str, admin_token, rows):
+    """POST {"prices":{"id":price,...}} to /admin/ge/prices/bulk so the
+    in-game GE PRICES map is updated alongside the bot catalog. Skips
+    rows without a numeric suggestion or where the GE returned garbage."""
+    import os
+    if not admin_token:
+        admin_token = os.environ.get("MATRIX_ADMIN_TOKEN")
+    payload_prices = {}
+    for r in rows:
+        sp = r.get("suggested_int")
+        if not isinstance(sp, int) or sp <= 0:
+            continue
+        if r.get("capped") == "Y":
+            # Don't push the flat-cap value; let the user curate by hand.
+            continue
+        payload_prices[str(r["id"])] = sp
+    if not payload_prices:
+        print("\n[*] --push-server: nothing to push (no valid suggestions)")
+        return
+    body = '{"prices":{' + ",".join(
+        f'"{k}":{v}' for k, v in payload_prices.items()) + "}}"
+    url = base_url.rstrip("/") + "/admin/ge/prices/bulk"
+    print(f"\n[*] --push-server: POSTing {len(payload_prices)} prices to {url}")
+    req = urllib.request.Request(url, data=body.encode("utf-8"), method="POST")
+    req.add_header("Content-Type", "application/json")
+    if admin_token:
+        req.add_header("X-Admin-Token", admin_token)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = r.read().decode("utf-8")
+            print(f"    server response: {resp}")
+    except urllib.error.HTTPError as e:
+        print(f"[!] HTTP {e.code}: {e.read().decode('utf-8', errors='ignore')}")
+    except Exception as e:
+        print(f"[!] push failed: {e}")
 
 
 def format_int_literal(n: int) -> str:
