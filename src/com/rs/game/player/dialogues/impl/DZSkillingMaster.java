@@ -91,40 +91,69 @@ public class DZSkillingMaster extends Dialogue {
     }
 
     /** Find an untrimmed skillcape on the player + replace with trimmed.
-     *  Checks inventory first, then equipped cape slot. */
+     *  Plays a brief trim animation so it feels like a ceremony, not a
+     *  silent inventory swap. */
     private void trimCape() {
-        // Inventory pass
+        // Find what we'd trim before animating - if there's nothing, bail
+        // immediately rather than waste a 5s animation lock-in.
+        int untrimSlot = -1;
+        int untrimId = -1;
         for (int untrim : UNTRIMMED_CAPE_IDS) {
             if (player.getInventory().containsItem(untrim, 1)) {
-                player.getInventory().deleteItem(untrim, 1);
-                player.getInventory().addItem(new Item(untrim + 1, 1));
-                player.getPackets().sendGameMessage(
-                    "You have trimmed your skillcape.");
-                return;
+                untrimId = untrim;
+                untrimSlot = 0;  // marker: in inventory
+                break;
             }
         }
-        // Equipped cape slot
-        try {
-            Item cape = player.getEquipment().getItem(
-                com.rs.game.player.Equipment.SLOT_CAPE);
-            if (cape != null) {
-                int id = cape.getId();
-                for (int untrim : UNTRIMMED_CAPE_IDS) {
-                    if (id == untrim) {
-                        player.getEquipment().getItems().set(
-                            com.rs.game.player.Equipment.SLOT_CAPE,
-                            new Item(untrim + 1, 1));
-                        player.getEquipment().refresh(
-                            com.rs.game.player.Equipment.SLOT_CAPE);
-                        player.getAppearence().generateAppearenceData();
-                        player.getPackets().sendGameMessage(
-                            "You have trimmed your skillcape.");
-                        return;
+        if (untrimId == -1) {
+            try {
+                Item cape = player.getEquipment().getItem(
+                    com.rs.game.player.Equipment.SLOT_CAPE);
+                if (cape != null) {
+                    for (int untrim : UNTRIMMED_CAPE_IDS) {
+                        if (cape.getId() == untrim) {
+                            untrimId = untrim;
+                            untrimSlot = 1;  // marker: equipped
+                            break;
+                        }
                     }
                 }
-            }
+            } catch (Throwable ignored) {}
+        }
+        if (untrimId == -1) {
+            player.getPackets().sendGameMessage(
+                "I don't see an untrimmed skillcape on you.");
+            return;
+        }
+        // Animation 4276 = "trim cape" cast, GFX 818 = trim sparkle.
+        // Schedule the actual swap 4 ticks later so the animation plays.
+        try {
+            player.setNextAnimation(new com.rs.game.Animation(4276));
+            player.setNextGraphics(new com.rs.game.Graphics(818));
+            player.lock(4);
         } catch (Throwable ignored) {}
-        player.getPackets().sendGameMessage(
-            "I don't see an untrimmed skillcape on you.");
+        final int finalUntrim = untrimId;
+        final boolean inInv = untrimSlot == 0;
+        com.rs.game.tasks.WorldTasksManager.schedule(
+            new com.rs.game.tasks.WorldTask() {
+                @Override public void run() {
+                    try {
+                        if (inInv) {
+                            player.getInventory().deleteItem(finalUntrim, 1);
+                            player.getInventory().addItem(new Item(finalUntrim + 1, 1));
+                        } else {
+                            player.getEquipment().getItems().set(
+                                com.rs.game.player.Equipment.SLOT_CAPE,
+                                new Item(finalUntrim + 1, 1));
+                            player.getEquipment().refresh(
+                                com.rs.game.player.Equipment.SLOT_CAPE);
+                            player.getAppearence().generateAppearenceData();
+                        }
+                        player.getPackets().sendGameMessage(
+                            "You have trimmed your skillcape.");
+                    } catch (Throwable ignored) {}
+                    stop();
+                }
+            }, 4);
     }
 }

@@ -540,6 +540,12 @@ public final class Skills implements Serializable {
 			level[skill] += levelDiff;
 			sendLevelUpInterface(skill);
 			player.getAppearence().generateAppearenceData();
+			// Auto-trim untrimmed skillcape when the player gains a
+			// 2nd 99 (real RS implicit behaviour).
+			if (newLevel == 99 || newLevel == 120) {
+				try { com.rs.bot.SkillcapeAutoTrim.maybeTrim(player); }
+				catch (Throwable ignored) {}
+			}
 			if (combatSkill) {
 				if(oldCombatLevel != getCombatLevelWithSummoning())
 					sendCombatLevel();
