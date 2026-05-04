@@ -256,11 +256,29 @@ public final class PhantomMarket {
             fillAmount = amountLeft;
         }
 
-        // Fill price = player's price (no fancy spread math; the gating
-        // already ensured player's price is within tolerance of ref).
-        // For BUY: phantom sells AT the player's price (no change).
-        // For SELL: phantom buys AT the player's price.
-        int fillPrice = playerPrice;
+        // Realistic fill price: simulate matching against a counter-party
+        // who would never pay more / accept less than they have to. So:
+        //   BUY  : fillPrice in [refPrice, playerPrice] - player saves $$
+        //   SELL : fillPrice in [playerPrice, refPrice] - player gets $$
+        // User: "I put in a buy offer for like a few clicks of the 5% and
+        // it bought for exactly this price? that wouldn't happen, it would
+        // have bought for lower and I would've saved money".
+        int fillPrice;
+        if (offer.isBuying()) {
+            if (playerPrice > refPrice) {
+                int range = playerPrice - refPrice;
+                fillPrice = refPrice + (int) (Math.random() * (range + 1));
+            } else {
+                fillPrice = playerPrice;
+            }
+        } else {
+            if (playerPrice < refPrice) {
+                int range = refPrice - playerPrice;
+                fillPrice = playerPrice + (int) (Math.random() * (range + 1));
+            } else {
+                fillPrice = playerPrice;
+            }
+        }
         if (!offer.phantomFill(fillAmount, fillPrice)) return;
 
         // Update counters + log
