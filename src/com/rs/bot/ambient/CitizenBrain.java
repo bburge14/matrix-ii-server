@@ -100,6 +100,14 @@ public class CitizenBrain extends BotBrain {
             afkUntilMs = 0;
         }
 
+        // Keep run toggled on + energy topped up so bots actually run
+        // between waypoints. Engine drains energy as they move; without
+        // this they end up walking after ~30s of travel.
+        try {
+            if (!bot.getRun()) bot.setRun(true);
+            if (bot.getRunEnergy() < 30) bot.setRunEnergy(100);
+        } catch (Throwable ignored) {}
+
         // Trade lifecycle for socialite gambler/trader bots. Runs first so
         // they can accept inbound trade requests before any other behavior
         // moves them away from the trade UI.

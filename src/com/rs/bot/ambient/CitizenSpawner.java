@@ -209,6 +209,11 @@ public final class CitizenSpawner {
             // Match BotPool.spawn() order exactly: hydrate -> start -> setBrain.
             bot.hydrate(name); // single init() - same path Legends use
             bot.start();       // bot.start() finalizes the entry into world
+            // Bots default to walking. Toggle run on so they actually
+            // RUN to far-away training spots / GE / etc instead of
+            // shuffling. Player.run() ticks regenerate energy when
+            // not moving so they don't deplete permanently.
+            try { bot.setRun(true); } catch (Throwable ignored) {}
             try {
                 bot.setNextWorldTile(spawn);
             } catch (Throwable ignore) {}
