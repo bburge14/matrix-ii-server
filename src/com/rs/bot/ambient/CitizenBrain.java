@@ -217,6 +217,15 @@ public class CitizenBrain extends BotBrain {
         // Drop any pending bot-to-bot conversation reply that's due.
         try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
 
+        // "Dancing" socialites - small chance to take a step toward a
+        // nearby socialite leader so 2-3 of them appear to be following
+        // each other. Limited to socialites + only fires when the bot
+        // isn't already walking (so we don't fight the FSM).
+        if (archetype != null && archetype.isSocialite()
+                && !bot.hasWalkSteps() && Math.random() < 0.015) {
+            try { followNearbySocialite(bot); } catch (Throwable ignored) {}
+        }
+
         if (Math.random() < CHATTER_PROBABILITY) {
             String line = archetype.randomChatter();
             if (line != null) {
@@ -229,6 +238,41 @@ public class CitizenBrain extends BotBrain {
             // nearby citizen instead of just speaking solo.
             try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
         }
+    }
+
+    /** Find a nearby socialite citizen and step one tile toward them.
+     *  Creates the "small group dancing" effect the user asked for - a
+     *  cluster of 2-3 bots gradually shuffle toward each other rather
+     *  than standing perfectly still. Does NOT walk all the way over
+     *  (just a step) so the bot stays around its anchor. */
+    private void followNearbySocialite(AIPlayer bot) {
+        AIPlayer leader = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (Player p : World.getPlayers()) {
+            if (!(p instanceof AIPlayer)) continue;
+            AIPlayer other = (AIPlayer) p;
+            if (other == bot) continue;
+            if (other.hasFinished()) continue;
+            if (other.getPlane() != bot.getPlane()) continue;
+            if (!(other.getBrain() instanceof CitizenBrain)) continue;
+            AmbientArchetype oa = ((CitizenBrain) other.getBrain()).getArchetype();
+            if (oa == null || !oa.isSocialite()) continue;
+            int dx = other.getX() - bot.getX();
+            int dy = other.getY() - bot.getY();
+            int sq = dx * dx + dy * dy;
+            if (sq < 4 || sq > 36) continue;  // 2-6 tile sweet spot
+            if (sq < bestDist) { bestDist = sq; leader = other; }
+        }
+        if (leader == null) return;
+        int sx = Integer.signum(leader.getX() - bot.getX());
+        int sy = Integer.signum(leader.getY() - bot.getY());
+        if (sx == 0 && sy == 0) return;
+        int tx = bot.getX() + sx;
+        int ty = bot.getY() + sy;
+        try {
+            if (!com.rs.game.World.isTileFree(bot.getPlane(), tx, ty, 1)) return;
+        } catch (Throwable ignored) {}
+        bot.addWalkSteps(tx, ty, 1, true);
     }
 
     private void tickTraversing(AIPlayer bot) {

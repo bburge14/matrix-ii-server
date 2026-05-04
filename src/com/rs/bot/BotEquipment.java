@@ -532,13 +532,15 @@ public final class BotEquipment {
         // === Gloves === (only basic verified gloves)
         if (chance(40)) equip(bot, Equipment.SLOT_HANDS, 1059); // leather gloves
 
-        // === Weapon === (host props - staves/wands)
-        int[] hostWeapons = {
-            1389,    // mystic staff
-            1391,    // staff of air
-            1393,    // staff of water
-        };
-        if (chance(40)) equip(bot, Equipment.SLOT_WEAPON, pick(hostWeapons));
+        // === Weapon === picks a weapon matching the outfit theme:
+        //   Power gear / Torva / Pernix / Virtus / Malevolent etc.
+        //     get their canonical weapon (drygore, zaryte, seismic,
+        //     chaotic maul/cbow/staff)
+        //   Barrows brothers get their named weapon
+        //   Third Age gets the matching tier weapon
+        //   Generic outfits get a host staff/wand
+        int weaponId = weaponForOutfit(outfit[1], outfit[2]);
+        if (weaponId > 0) equip(bot, Equipment.SLOT_WEAPON, weaponId);
     }
 
     // ===== MELEE LOADOUTS =====
@@ -909,6 +911,57 @@ public final class BotEquipment {
     }
 
     // ===== Helpers =====
+
+    /** Map an outfit's chest+legs ids to the canonical weapon for that
+     *  set. Returns -1 = no weapon (skill outfits / casual robes get a
+     *  random host staff via the fallback below). User asked for power
+     *  gear to come with their themed weapon: drygore for malevolent,
+     *  zaryte for sirenic, seismic for tectonic, chaotic for nex armor. */
+    private static int weaponForOutfit(int chest, int legs) {
+        switch (chest) {
+            // Malevolent (Melee) - drygore mace
+            case 30008: return 26605;
+            // Sirenic (Range) - zaryte bow
+            case 29715: return 20171;
+            // Tectonic (Mage) - seismic wand
+            case 28611: return 28617;
+            // Torva (Melee) - chaotic maul
+            case 20139: return 18353;
+            // Pernix (Range) - chaotic crossbow
+            case 20151: return 18357;
+            // Virtus (Mage) - chaotic staff
+            case 20163: return 18355;
+            // Third Age druidic - 3a staff
+            case 19302: return 19308;
+            // Third Age melee - dragon longsword (no 3a sword in 718)
+            case 10348: return 1305;
+            // Barrows weapons (per brother)
+            case 4720: return 4718;   // Dharok greataxe
+            case 4728: return 4726;   // Guthan spear
+            case 4736: return 4734;   // Karil crossbow
+            case 4712: return 4710;   // Ahrim staff
+            case 4749: return 4747;   // Torag hammers
+            case 4757: return 4755;   // Verac flail
+            // Bandos - whip (canonical "Bandos + whip")
+            case 11724: return 4151;
+            // Armadyl - karil crossbow as range filler
+            case 11718: case 11720: return 4734;
+            // Skiller outfits - the matching tool
+            case 10939: return 6739; // Lumberjack -> Dragon hatchet
+            case 20791: return 15259; // Golden mining -> Dragon pickaxe
+            case 25186: return 311;   // Master fishing -> Harpoon
+            case 25196: return 1759; // Sous chef -> Wooden spoon (fallback)
+            case 22334: return 1387; // Wicked rc -> Staff of fire (fallback)
+            // Rune armor - rune scimitar
+            case 1127: return 1333;
+            // Dragon chain - dragon scimitar
+            case 3140: return 4587;
+            default:
+                // Casual / mystic / wizard - host wand or staff
+                int[] hostWeapons = { 1389, 1391, 1393, 6914 };
+                return chance(45) ? pick(hostWeapons) : -1;
+        }
+    }
 
     private static int pickMetalTier(int cb) {
         if (cb < 20) return 0;       // bronze

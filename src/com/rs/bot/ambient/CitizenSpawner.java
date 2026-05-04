@@ -168,6 +168,11 @@ public final class CitizenSpawner {
         int wanderRadius;
         if (arch != null && arch.isSocialite()) {
             wanderRadius = 2 + Utils.random(2);   // 2-3 tiles
+        } else if (arch != null && arch.isSkiller()) {
+            // Skillers travel further between resource pockets.
+            // Bigger radius means TRAVERSING phase actually carries them
+            // out of GE if the user manually spawned them there.
+            wanderRadius = 12 + Utils.random(20);  // 12-31 tiles
         } else {
             wanderRadius = 4 + Utils.random(8);   // 4-11 tiles
         }
