@@ -179,6 +179,14 @@ def main():
     ap.add_argument("--include-aliases", action="store_true",
                     help="also audit ids that only appear in BotChatListener "
                     "(no catalog entry yet)")
+    ap.add_argument("--apply", action="store_true",
+                    help="automatically rewrite BotTradeHandler.java with "
+                    "the suggested prices for every flagged item. Makes a "
+                    "timestamped .bak file before editing.")
+    ap.add_argument("--apply-min-delta", type=float, default=0.0,
+                    help="when --apply is set, only auto-update items with "
+                    "|delta| > this fraction. 0.0 = update every flagged "
+                    "row. Use 0.5 to skip small drifts.")
     args = ap.parse_args()
 
     root = Path(args.repo).resolve()
@@ -238,6 +246,8 @@ def main():
             "ge_price": ge_price if isinstance(ge_price, int) else "",
             "ge_error": ge_name if not isinstance(ge_price, int) else "",
             "suggested": suggested if suggested is not None else "",
+            "suggested_int": suggested,           # numeric, for --apply
+            "delta_pct_float": delta_pct,         # numeric, for --apply
             "delta_pct": (f"{delta_pct*100:+.1f}%" if delta_pct is not None else ""),
             "flagged": "Y" if flagged else "",
             "java_line": line_no,
@@ -251,11 +261,15 @@ def main():
         if i < len(work):
             time.sleep(args.sleep)
 
+    # Drop helper numeric fields from the CSV for readability.
+    csv_rows = [{k: v for k, v in r.items()
+                 if k not in ("suggested_int", "delta_pct_float")}
+                for r in rows]
     with csv_path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w = csv.DictWriter(f, fieldnames=list(csv_rows[0].keys()))
         w.writeheader()
-        w.writerows(rows)
-    print(f"\n[+] wrote {csv_path.relative_to(root)} ({len(rows)} rows)")
+        w.writerows(csv_rows)
+    print(f"\n[+] wrote {csv_path.relative_to(root)} ({len(csv_rows)} rows)")
 
     # Patch suggestion file - only flagged rows, in a format you can scan
     flagged_rows = [r for r in rows if r["flagged"] == "Y"]
@@ -277,6 +291,96 @@ def main():
           f"(>={args.threshold*100:.0f}% delta from suggested).")
     print(f"    review: {patch_path.relative_to(root)}")
     print(f"    full:   {csv_path.relative_to(root)}")
+
+    # ---- --apply: rewrite the catalog file in-place with new prices ----
+    if args.apply:
+        # Filter rows we'll actually rewrite: must be flagged, have a numeric
+        # suggested price, and (if --apply-min-delta set) exceed that threshold.
+        applicable = []
+        for r in flagged_rows:
+            sp = r.get("suggested_int")
+            if not isinstance(sp, int) or sp <= 0:
+                continue
+            if r.get("server_price", 0) == sp:
+                continue  # no change
+            d = r.get("delta_pct_float")
+            if args.apply_min_delta > 0 and (d is None or abs(d) < args.apply_min_delta):
+                continue
+            applicable.append(r)
+
+        if not applicable:
+            print("\n[*] --apply: no rows to rewrite (all suggestions skipped)")
+            return
+
+        print(f"\n[*] --apply: rewriting {len(applicable)} prices in "
+              f"{catalog_path.relative_to(root)}")
+        # Backup first.
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        bak = catalog_path.with_suffix(catalog_path.suffix + f".bak.{ts}")
+        bak.write_bytes(catalog_path.read_bytes())
+        print(f"    backed up to {bak.relative_to(root)}")
+
+        text = catalog_path.read_text(encoding="utf-8")
+        applied = 0
+        skipped = []
+        for r in applicable:
+            iid = r["id"]
+            old_price = r["server_price"]
+            new_price = r["suggested_int"]
+            new_lit = format_int_literal(new_price)
+            # Match the StockEntry line for this id with its current price.
+            # Anchored to id+old-price so we never bump the wrong row even
+            # if two entries share an id (shouldn't happen but be safe).
+            row_re = re.compile(
+                r"(new\s+StockEntry\(\s*" + str(iid) + r"\s*,\s*)"
+                + re.escape(re.sub(r"\B(?=(\d{3})+(?!\d))", "_", str(old_price)).rstrip("_"))
+                + r"(\s*,)"
+            )
+            # The old_price in source might or might not have underscores.
+            # Try with and without separators.
+            old_lit_plain = str(old_price)
+            old_lit_sep = format_int_literal(old_price)
+            row_re2 = re.compile(
+                r"(new\s+StockEntry\(\s*" + str(iid) + r"\s*,\s*)"
+                + r"(?:" + re.escape(old_lit_plain) + r"|" + re.escape(old_lit_sep) + r")"
+                + r"(\s*,)"
+            )
+            new_text, count = row_re2.subn(r"\g<1>" + new_lit + r"\g<2>", text, count=1)
+            if count == 0:
+                skipped.append((iid, r["server_name"], "no match"))
+                continue
+            text = new_text
+            applied += 1
+            print(f"    [{applied:>3}] id={iid:<6} {fmt_money(old_price):>9} "
+                  f"-> {fmt_money(new_price):<9}  {r['server_name']}")
+
+        catalog_path.write_text(text, encoding="utf-8")
+        print(f"\n[+] applied {applied} price changes to "
+              f"{catalog_path.relative_to(root)}")
+        if skipped:
+            print(f"[!] skipped {len(skipped)} (regex didn't match):")
+            for iid, name, why in skipped[:10]:
+                print(f"    id={iid:<6} {name}  ({why})")
+        print(f"\n  Next:")
+        print(f"    javac -encoding ISO-8859-1 -cp 'data/libs/*:src' -d bin "
+              f"$(find src -name '*.java')")
+        print(f"    # restart server")
+        print(f"  Revert (if needed):")
+        print(f"    mv {bak.relative_to(root)} {catalog_path.relative_to(root)}")
+
+
+def format_int_literal(n: int) -> str:
+    """Render an int as a Java numeric literal with _ separators every 3
+    digits: 1500000 -> '1_500_000'."""
+    s = str(n)
+    if len(s) <= 3:
+        return s
+    out = []
+    for i, c in enumerate(reversed(s)):
+        if i and i % 3 == 0:
+            out.append("_")
+        out.append(c)
+    return "".join(reversed(out))
 
 
 if __name__ == "__main__":

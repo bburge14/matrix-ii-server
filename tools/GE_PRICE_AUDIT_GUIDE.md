@@ -90,11 +90,58 @@ Example output:
 ...
 ```
 
-### 4. Apply changes (manual)
+### 4. Apply changes
+
+#### Option A: auto-apply (recommended)
+
+Run the audit again with `--apply`:
+
+```bash
+python3 tools/ge_price_audit.py --apply
+```
+
+This:
+1. Runs the audit fresh (so you're rewriting against current GE prices).
+2. Backs up `src/com/rs/bot/ambient/BotTradeHandler.java` to a
+   timestamped `.bak.YYYYMMDD-HHMMSS` file.
+3. Rewrites every flagged `StockEntry` line in place with the new price.
+4. Prints each change as it goes:
+
+```
+[*] --apply: rewriting 14 prices in src/com/rs/bot/ambient/BotTradeHandler.java
+    backed up to src/com/rs/bot/ambient/BotTradeHandler.java.bak.20260504-143015
+    [  1] id=4151    150.00k -> 240.00k    abyssal whip
+    [  2] id=11696   1.80m   -> 2.50m      armadyl godsword
+    ...
+[+] applied 14 price changes
+```
+
+To skip small drifts, set a minimum delta:
+
+```bash
+# Only auto-apply changes where the delta is at least 50%
+python3 tools/ge_price_audit.py --apply --apply-min-delta 0.5
+```
+
+If something goes wrong, revert to the backup:
+
+```bash
+mv src/com/rs/bot/ambient/BotTradeHandler.java.bak.<timestamp> \
+   src/com/rs/bot/ambient/BotTradeHandler.java
+```
+
+Then rebuild + restart:
+
+```bash
+javac -encoding ISO-8859-1 -cp "data/libs/*:src" -d bin $(find src -name "*.java")
+# restart your server
+```
+
+#### Option B: edit manually
 
 Open `src/com/rs/bot/ambient/BotTradeHandler.java`, find each flagged
 `StockEntry`, and update the price column. The CSV's `java_line` column
-tells you the exact line number to jump to:
+tells you the exact line number:
 
 ```bash
 # Quick way to grep one
