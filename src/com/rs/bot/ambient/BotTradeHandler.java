@@ -192,7 +192,7 @@ public final class BotTradeHandler {
 
         switch (phase) {
             case 0:
-                sayBoth(bot, pname + " gave " + fmtGp(bet) + "gp");
+                sayBoth(bot, pname + " gave " + fmtGp(bet));
                 bot.getTemporaryAttributtes().put("GambleAnnouncePhase", 1);
                 bot.getTemporaryAttributtes().put("GambleAnnounceNextMs", now + ANNOUNCE_STEP_MS);
                 return true;
@@ -213,9 +213,9 @@ public final class BotTradeHandler {
                 return true;
             case 3:
                 if (win) {
-                    sayBoth(bot, pname + " WINS " + fmtGp(payout) + "gp!");
+                    sayBoth(bot, pname + " WINS " + fmtGp(payout) + "!");
                 } else {
-                    sayBoth(bot, "house wins " + fmtGp(bet) + "gp - better luck next time");
+                    sayBoth(bot, "house wins " + fmtGp(bet) + " - better luck next time");
                 }
                 bot.getTemporaryAttributtes().put("GambleAnnouncePhase", 4);
                 bot.getTemporaryAttributtes().put("GambleAnnounceNextMs", now + ANNOUNCE_STEP_MS);
@@ -367,7 +367,7 @@ public final class BotTradeHandler {
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         String pname = target.getDisplayName();
         if (playerGp < MIN_BET) {
-            sayBoth(bot, "min bet is " + fmtGp(MIN_BET) + "gp - try again");
+            sayBoth(bot, "min bet is " + fmtGp(MIN_BET) + " - try again");
             bot.getTrade().cancelTrade();
             return;
         }
@@ -376,7 +376,7 @@ public final class BotTradeHandler {
             // 100m internally. Player drops their gp and re-trades within
             // the limit. User feedback: "I gave 50m, bot said 10m, kept
             // the rest" - that was the silent cap doing exactly this.
-            sayBoth(bot, "max bet is " + fmtGp(MAX_BET) + "gp - reduce and retry");
+            sayBoth(bot, "max bet is " + fmtGp(MAX_BET) + " - reduce and retry");
             bot.getTrade().cancelTrade();
             return;
         }
@@ -411,7 +411,7 @@ public final class BotTradeHandler {
             // to see what's being offered to decide whether to accept.
             ensureInvCoins(bot, payout);
             if (bot.getInventory().getAmountOf(COINS) < payout) {
-                sayBoth(bot, "can't cover " + fmtGp(payout) + "gp - sorry");
+                sayBoth(bot, "can't cover " + fmtGp(payout) + " - sorry");
                 bot.getTrade().cancelTrade();
                 bot.getTemporaryAttributtes().remove("BotIsPayoutTrade");
                 bot.getTemporaryAttributtes().remove("BotPayoutAmount");
@@ -420,7 +420,7 @@ public final class BotTradeHandler {
             try {
                 bot.getTrade().addItem(new Item(COINS,
                     (int) Math.min(Integer.MAX_VALUE, payout)));
-                sayBoth(bot, "here's your " + fmtGp(payout) + "gp - hit accept");
+                sayBoth(bot, "here's your " + fmtGp(payout) + " - hit accept");
                 bot.getTemporaryAttributtes().put("BotPayoutOffered", Boolean.TRUE);
             } catch (Throwable ignored) {}
             return;
@@ -635,8 +635,8 @@ public final class BotTradeHandler {
                 initialQty = 1;
             }
             sayBoth(bot, "selling " + initialQty + "x " + stock.name + " at "
-                + fmtGp(stock.priceGp) + "gp each, total "
-                + fmtGp((long) initialQty * stock.priceGp) + "gp - add gp + accept");
+                + fmtGp(stock.priceGp) + " each, total "
+                + fmtGp((long) initialQty * stock.priceGp) + " - add gp + accept");
             try {
                 bot.getTrade().addItem(new Item(stock.itemId, initialQty));
                 bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", initialQty);
@@ -684,7 +684,7 @@ public final class BotTradeHandler {
         // player knows how much to add).
         Integer announcedQty = (Integer) bot.getTemporaryAttributtes().get("BotTraderAnnouncedQty");
         if (reqQtyObj != null && (announcedQty == null || announcedQty != units)) {
-            sayBoth(bot, units + "x " + stock.name + " = " + fmtGp(requiredGp) + "gp - add it and accept");
+            sayBoth(bot, units + "x " + stock.name + " = " + fmtGp(requiredGp) + " - add it and accept");
             bot.getTemporaryAttributtes().put("BotTraderAnnouncedQty", units);
         }
         Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotTradeUnitsOffered");
@@ -714,15 +714,15 @@ public final class BotTradeHandler {
         // Validate player paid enough for the SELL qty (not the display qty).
         // This is what stops the "paid 500m for a 750m phat" bug.
         if (sellUnits <= 0) {
-            sayBoth(bot, "need at least " + fmtGp(stock.priceGp) + "gp for 1 " + stock.name);
+            sayBoth(bot, "need at least " + fmtGp(stock.priceGp) + " for 1 " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
         if (playerGp < requiredGp) {
             // Could happen if reqQtyObj is set but player hasn't added enough,
             // OR if displayUnits > sellUnits and player accepts mid-add.
-            sayBoth(bot, "need " + fmtGp(requiredGp) + "gp for " + sellUnits + "x "
-                + stock.name + " - you've only put in " + fmtGp(playerGp) + "gp");
+            sayBoth(bot, "need " + fmtGp(requiredGp) + " for " + sellUnits + "x "
+                + stock.name + " - you've only put in " + fmtGp(playerGp));
             return; // wait for player to add more, or to pull back
         }
 
@@ -731,7 +731,7 @@ public final class BotTradeHandler {
         // don't make change. Player can pull excess before accepting.)
         try {
             long total = (long) sellUnits * stock.priceGp;
-            sayBoth(bot, "deal! " + sellUnits + "x " + stock.name + " for " + fmtGp(total) + "gp");
+            sayBoth(bot, "deal! " + sellUnits + "x " + stock.name + " for " + fmtGp(total));
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
             bot.getTemporaryAttributtes().put("BotTradeSaleQty", sellUnits);
@@ -769,7 +769,7 @@ public final class BotTradeHandler {
 
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
-            sayBoth(bot, "buying " + chatIntent.itemName + " at " + fmtGp(unitPrice) + "gp each - put it in");
+            sayBoth(bot, "buying " + chatIntent.itemName + " at " + fmtGp(unitPrice) + " each - put it in");
             bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
         }
 
@@ -809,7 +809,7 @@ public final class BotTradeHandler {
             return;
         }
         try {
-            sayBoth(bot, "deal! " + playerOffered + "x " + chatIntent.itemName + " for " + fmtGp(total) + "gp");
+            sayBoth(bot, "deal! " + playerOffered + "x " + chatIntent.itemName + " for " + fmtGp(total));
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
         } catch (Throwable ignored) {}
@@ -1279,11 +1279,11 @@ public final class BotTradeHandler {
             }
             if (stock != null) {
                 String[] templates = new String[] {
-                    "selling " + stock.name + " " + fmtGp(stock.priceGp) + "gp each",
-                    "wts " + stock.name + " " + fmtGp(stock.priceGp) + "gp",
-                    stock.name + " for sale - " + fmtGp(stock.priceGp) + "gp ea",
-                    "got " + stock.name + " - " + fmtGp(stock.priceGp) + "gp",
-                    "buy " + stock.name + " " + fmtGp(stock.priceGp) + "gp"
+                    "selling " + stock.name + " " + fmtGp(stock.priceGp) + " each",
+                    "wts " + stock.name + " " + fmtGp(stock.priceGp),
+                    stock.name + " for sale - " + fmtGp(stock.priceGp) + " ea",
+                    "got " + stock.name + " - " + fmtGp(stock.priceGp),
+                    "buy " + stock.name + " " + fmtGp(stock.priceGp)
                 };
                 line = templates[Utils.random(templates.length)];
             }
@@ -1322,8 +1322,10 @@ public final class BotTradeHandler {
      *  so the same bot consistently uses the same color/animation - mirrors
      *  RS hosts who have a "signature look". */
     /** Format a gp amount as a human-readable string. Mirrors RS host
-     *  shorthand: "800m", "50k", "1.5b". Used in all bot chat lines so
-     *  players don't have to count zeros. User explicitly asked for this. */
+     *  shorthand: "800m", "50k", "1.5b". When the value fits in a
+     *  shorthand suffix the suffix REPLACES the "gp" - bots say "800m"
+     *  not "800m gp". Only raw integers (< 10k, no suffix) get a "gp"
+     *  appended, matching real player chat. */
     public static String fmtGp(long n) {
         if (n < 0) return "-" + fmtGp(-n);
         if (n >= 1_000_000_000L) {
@@ -1344,7 +1346,7 @@ public final class BotTradeHandler {
                                   : String.format("%.1f", v).replaceAll("\\.0$", ""))
                    + "k";
         }
-        return Long.toString(n);
+        return Long.toString(n) + "gp";
     }
 
     public static String fmtGp(int n) { return fmtGp((long) n); }

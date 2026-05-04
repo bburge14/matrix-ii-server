@@ -111,6 +111,10 @@ public final class AdminHttpServer {
             // and 'catalog=1' is set). Reads through GrandExchange.getPrice()
             // which falls back to ItemDefinitions value when no price is set.
             server.createContext("/admin/ge/prices", auth(new GePricesGetHandler()));
+            // GET /admin/gear/sets - returns all externalised outfit pools.
+            // POST /admin/gear/sets - replaces a pool ({"key":"socialite","outfits":[...]})
+            //   and persists to data/gear_sets.json.
+            server.createContext("/admin/gear/sets", auth(new GearSetsHandler()));
 
             // World tick profiler (Phase 1.C step 1)
             server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
@@ -1471,6 +1475,108 @@ public final class AdminHttpServer {
             } catch (Throwable ignored) {}
         }
         return out;
+    }
+
+    /** GET  /admin/gear/sets        - lists all pools as JSON
+     *  POST /admin/gear/sets        - body {"key":"socialite","outfits":[...]}
+     *                                replaces ONE pool and persists.
+     *  Outfit JSON: {"name":"...","hat":579,"chest":577,"legs":1013} */
+    private static class GearSetsHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                if ("POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    handlePost(ex);
+                } else {
+                    handleGet(ex);
+                }
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                    + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+        private void handleGet(HttpExchange ex) throws IOException {
+            java.util.Map<String, java.util.List<com.rs.bot.GearSets.Outfit>> all
+                = com.rs.bot.GearSets.getAll();
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"pools\":{");
+            boolean firstPool = true;
+            for (java.util.Map.Entry<String, java.util.List<com.rs.bot.GearSets.Outfit>> e : all.entrySet()) {
+                if (!firstPool) sb.append(",");
+                firstPool = false;
+                sb.append("\"").append(jsonEscape(e.getKey())).append("\":[");
+                boolean firstOut = true;
+                for (com.rs.bot.GearSets.Outfit o : e.getValue()) {
+                    if (!firstOut) sb.append(",");
+                    firstOut = false;
+                    sb.append("{\"name\":\"").append(jsonEscape(o.name == null ? "" : o.name))
+                      .append("\",\"hat\":").append(o.hat)
+                      .append(",\"chest\":").append(o.chest)
+                      .append(",\"legs\":").append(o.legs).append("}");
+                }
+                sb.append("]");
+            }
+            sb.append("}}");
+            sendText(ex, 200, sb.toString());
+        }
+        private void handlePost(HttpExchange ex) throws IOException {
+            // Read body
+            java.io.InputStream in = ex.getRequestBody();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            String body = new String(out.toByteArray(), "UTF-8");
+            String key = extractStringField(body, "key");
+            if (key == null) {
+                sendText(ex, 400, "{\"ok\":false,\"error\":\"missing key\"}");
+                return;
+            }
+            // Parse outfits array
+            int arrStart = body.indexOf('[', body.indexOf("\"outfits\""));
+            int arrEnd = body.lastIndexOf(']');
+            java.util.List<com.rs.bot.GearSets.Outfit> outfits = new java.util.ArrayList<>();
+            if (arrStart > 0 && arrEnd > arrStart) {
+                String arr = body.substring(arrStart + 1, arrEnd);
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                    "\\{[^}]*\\}").matcher(arr);
+                while (m.find()) {
+                    String entry = m.group();
+                    String name = extractStringField(entry, "name");
+                    int hat = extractIntField(entry, "hat", -1);
+                    int chest = extractIntField(entry, "chest", -1);
+                    int legs = extractIntField(entry, "legs", -1);
+                    outfits.add(new com.rs.bot.GearSets.Outfit(
+                        name == null ? "" : name, hat, chest, legs));
+                }
+            }
+            com.rs.bot.GearSets.setOutfits(key, outfits);
+            sendText(ex, 200, "{\"ok\":true,\"key\":\"" + jsonEscape(key)
+                + "\",\"saved\":" + outfits.size() + "}");
+        }
+        private static String extractStringField(String json, String key) {
+            int i = json.indexOf("\"" + key + "\"");
+            if (i < 0) return null;
+            int colon = json.indexOf(':', i);
+            if (colon < 0) return null;
+            int q1 = json.indexOf('"', colon);
+            if (q1 < 0) return null;
+            int q2 = json.indexOf('"', q1 + 1);
+            if (q2 < 0) return null;
+            return json.substring(q1 + 1, q2);
+        }
+        private static int extractIntField(String json, String key, int def) {
+            int i = json.indexOf("\"" + key + "\"");
+            if (i < 0) return def;
+            int colon = json.indexOf(':', i);
+            if (colon < 0) return def;
+            int p = colon + 1;
+            while (p < json.length() && Character.isWhitespace(json.charAt(p))) p++;
+            int start = p;
+            if (p < json.length() && json.charAt(p) == '-') p++;
+            while (p < json.length() && Character.isDigit(json.charAt(p))) p++;
+            if (p == start || (p == start + 1 && json.charAt(start) == '-')) return def;
+            try { return Integer.parseInt(json.substring(start, p)); }
+            catch (Throwable t) { return def; }
+        }
     }
 
     /** POST /admin/ge/prices/bulk - body {"prices":{"id":price,...}}.

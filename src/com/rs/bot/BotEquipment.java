@@ -399,7 +399,17 @@ public final class BotEquipment {
             // Bare-headed plain wizard (variety - no hat at all)
             { -1,   1005, 1095 },
         };
-        int[] outfit = outfits[Utils.random(outfits.length)];
+        // GearSets externalised pool overrides hardcoded array if present.
+        // Lets admin panel edit outfits without recompiling. Falls back to
+        // the hardcoded list when no JSON config exists.
+        int[] outfit;
+        java.util.List<GearSets.Outfit> jsonPool = GearSets.getOutfits("socialite");
+        if (jsonPool != null && !jsonPool.isEmpty()) {
+            GearSets.Outfit picked = jsonPool.get(Utils.random(jsonPool.size()));
+            outfit = new int[] { picked.hat, picked.chest, picked.legs };
+        } else {
+            outfit = outfits[Utils.random(outfits.length)];
+        }
 
         // 5% chance: holiday rare hat overrides whatever the outfit's hat
         // would be. Phats / hween masks are themselves the fashion focus.

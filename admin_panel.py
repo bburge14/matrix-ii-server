@@ -132,6 +132,12 @@ class MatrixAPI:
         return self._post("/admin/citizens/budget/apply",
                           {"includeManual": "true" if include_manual else "false"})
 
+    # Gear sets
+    def gear_sets_get(self):         return self._get("/admin/gear/sets")
+    def gear_sets_save(self, key, outfits):
+        # outfits = [{"name":..,"hat":..,"chest":..,"legs":..}, ...]
+        return self._post("/admin/gear/sets", {"key": key, "outfits": outfits})
+
     # GE prices
     def ge_prices_catalog(self):     return self._get("/admin/ge/prices?catalog=1")
     def ge_prices_for(self, ids):
@@ -200,10 +206,15 @@ class App(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
         ctk.CTkLabel(self.sidebar, text="Matrix Admin",
-                     font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
+                     font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(20, 2))
+        # Build marker so you can confirm you're running the latest panel.
+        # If "GE Prices" tab isn't visible below, you're on an old build -
+        # `git pull` on this machine and re-run admin_panel.py.
+        ctk.CTkLabel(self.sidebar, text="build 2026-05",
+                     font=ctk.CTkFont(size=9), text_color="#666").pack(pady=(0, 14))
 
         self.tabs = {}
-        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "GE Prices", "Players", "Server", "Backups", "Log", "Settings"):
+        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Gear Sets", "GE Prices", "Players", "Server", "Backups", "Log", "Settings"):
             btn = ctk.CTkButton(self.sidebar, text=name, height=36,
                                 command=lambda n=name: self.show(n))
             btn.pack(fill="x", padx=10, pady=4)
@@ -222,6 +233,7 @@ class App(ctk.CTk):
         self.tabs["Bots"]["frame"]      = BotsFrame(self.content, self.api)
         self.tabs["Bot AI"]["frame"]    = BotAIFrame(self.content, self.api)
         self.tabs["Citizens"]["frame"]  = CitizensFrame(self.content, self.api)
+        self.tabs["Gear Sets"]["frame"] = GearSetsFrame(self.content, self.api)
         self.tabs["GE Prices"]["frame"] = GePricesFrame(self.content, self.api)
         self.tabs["Players"]["frame"]   = PlayersFrame(self.content, self.api)
         self.tabs["Server"]["frame"]    = ServerFrame(self.content, self.api)
@@ -1232,6 +1244,221 @@ class SlotEditor(ctk.CTkToplevel):
             return
         if self.on_save:
             self.on_save(self.idx, updated)
+        self.destroy()
+
+
+# ----- Gear Sets tab -----
+
+class GearSetsFrame(ctk.CTkFrame):
+    """View / add / edit / delete bot outfit presets per archetype.
+
+    Reads server-side via /admin/gear/sets, writes back the full pool
+    on Save. Each row is one outfit (hat/chest/legs ids + a name). The
+    Java side reads data/gear_sets.json on startup + on every save.
+    """
+    def __init__(self, master, api):
+        super().__init__(master)
+        self.api = api
+        self.pools = {}      # key -> [outfit dicts]
+        self.current_key = "socialite"
+        self.dirty = False
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=20, pady=(20, 5))
+        ctk.CTkLabel(top, text="Gear Sets",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        self.dirty_label = ctk.CTkLabel(top, text="",
+            font=ctk.CTkFont(size=11), text_color="#e0a93f")
+        self.dirty_label.pack(side="left", padx=20)
+
+        actions = ctk.CTkFrame(self)
+        actions.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(actions, text="Pool:").pack(side="left", padx=4)
+        self.pool_var = tk.StringVar(value=self.current_key)
+        self.pool_menu = ctk.CTkOptionMenu(actions, values=[self.current_key],
+            variable=self.pool_var, width=140,
+            command=self._switch_pool)
+        self.pool_menu.pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Refresh", width=90,
+                      command=self.refresh).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Save", width=90, fg_color="#1b6e3a",
+                      command=self._save).pack(side="left", padx=4)
+        ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
+        ctk.CTkButton(actions, text="+ Add Outfit", width=110,
+                      command=self._add).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="− Delete Selected", width=140,
+                      fg_color="#aa3030",
+                      command=self._delete_selected).pack(side="left", padx=4)
+
+        ctk.CTkLabel(self,
+            text="Each outfit = name + 3 item ids (hat/chest/legs). Use -1 for "
+                 "no hat. IDs verified against the cache; double-click a row "
+                 "to edit. Save to push the whole pool back to the server.",
+            font=ctk.CTkFont(size=11), justify="left", text_color="#888"
+            ).pack(fill="x", padx=20, pady=(0, 4))
+
+        tree_frame = ctk.CTkFrame(self)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        cols = ("idx", "name", "hat", "chest", "legs")
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                  selectmode="browse")
+        widths = {"idx": 50, "name": 240, "hat": 80, "chest": 80, "legs": 80}
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=widths.get(c, 80), anchor="w")
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical",
+                             command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<Double-1>", self._edit_selected)
+
+    def on_show(self):
+        self.refresh()
+
+    def refresh(self):
+        def do():
+            try:
+                resp = self.api.gear_sets_get()
+                self.after(0, lambda: self._apply(resp))
+            except Exception as e:
+                self.after(0, lambda: self.dirty_label.configure(
+                    text=f"refresh failed: {e}", text_color="#cc3030"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply(self, resp):
+        self.pools = (resp or {}).get("pools", {}) or {}
+        keys = list(self.pools.keys()) or ["socialite"]
+        if self.current_key not in self.pools:
+            self.current_key = keys[0]
+        self.pool_var.set(self.current_key)
+        self.pool_menu.configure(values=keys)
+        self.dirty = False
+        self.dirty_label.configure(text="")
+        self._render()
+
+    def _switch_pool(self, key):
+        if self.dirty:
+            if not messagebox.askyesno("Unsaved changes",
+                "Discard unsaved changes and switch?"):
+                self.pool_var.set(self.current_key)
+                return
+        self.current_key = key
+        self.dirty = False
+        self.dirty_label.configure(text="")
+        self._render()
+
+    def _render(self):
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        outfits = self.pools.get(self.current_key, [])
+        for i, o in enumerate(outfits):
+            self.tree.insert("", "end", iid=str(i), values=(
+                i, o.get("name", "?"), o.get("hat", -1),
+                o.get("chest", -1), o.get("legs", -1)))
+
+    def _mark_dirty(self):
+        self.dirty = True
+        self.dirty_label.configure(text="● unsaved", text_color="#e0a93f")
+
+    def _add(self):
+        name = simpledialog.askstring("New outfit", "Name:",
+            initialvalue=f"new outfit {len(self.pools.get(self.current_key, []))}")
+        if name is None: return
+        new_o = {"name": name, "hat": -1, "chest": 1005, "legs": 1013}
+        self.pools.setdefault(self.current_key, []).append(new_o)
+        self._mark_dirty()
+        self._render()
+        # Open editor for the new entry
+        last = len(self.pools[self.current_key]) - 1
+        self.tree.selection_set(str(last))
+        self._edit_selected()
+
+    def _delete_selected(self):
+        sel = self.tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        outs = self.pools.get(self.current_key, [])
+        if 0 <= idx < len(outs):
+            del outs[idx]
+            self._mark_dirty()
+            self._render()
+
+    def _edit_selected(self, _evt=None):
+        sel = self.tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        outs = self.pools.get(self.current_key, [])
+        if not (0 <= idx < len(outs)): return
+        OutfitEditor(self, outs[idx], self._on_outfit_edited, idx).load()
+
+    def _on_outfit_edited(self, idx, updated):
+        outs = self.pools.get(self.current_key, [])
+        if 0 <= idx < len(outs):
+            outs[idx] = updated
+            self._mark_dirty()
+            self._render()
+
+    def _save(self):
+        outs = self.pools.get(self.current_key, [])
+        def do():
+            try:
+                resp = self.api.gear_sets_save(self.current_key, outs)
+                saved = resp.get("saved", "?")
+                self.after(0, lambda: messagebox.showinfo(
+                    "Saved", f"Server saved {saved} outfits in '{self.current_key}'"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Save failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
+class OutfitEditor(ctk.CTkToplevel):
+    """Modal editor for one outfit row."""
+    def __init__(self, parent, outfit, on_save, idx):
+        super().__init__(parent)
+        self.title("Edit Outfit")
+        self.geometry("420x260")
+        self.outfit = dict(outfit)
+        self.on_save = on_save
+        self.idx = idx
+
+        ctk.CTkLabel(self, text="Name:").pack(anchor="w", padx=20, pady=(20, 2))
+        self.name_var = tk.StringVar(value=outfit.get("name", ""))
+        ctk.CTkEntry(self, textvariable=self.name_var, width=380).pack(padx=20)
+
+        for label, key in [("Hat ID (-1 for none):", "hat"),
+                           ("Chest ID:", "chest"),
+                           ("Legs ID:", "legs")]:
+            ctk.CTkLabel(self, text=label).pack(anchor="w", padx=20, pady=(8, 0))
+            v = tk.StringVar(value=str(outfit.get(key, -1)))
+            setattr(self, f"{key}_var", v)
+            ctk.CTkEntry(self, textvariable=v, width=120).pack(anchor="w", padx=20)
+
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(side="bottom", fill="x", pady=10)
+        ctk.CTkButton(btns, text="Save", width=80, fg_color="#1b6e3a",
+                      command=self._save).pack(side="right", padx=10)
+        ctk.CTkButton(btns, text="Cancel", width=80,
+                      command=self.destroy).pack(side="right")
+
+    def load(self):
+        self.transient(self.master)
+        self.grab_set()
+
+    def _save(self):
+        try:
+            updated = {
+                "name": self.name_var.get().strip(),
+                "hat": int(self.hat_var.get()),
+                "chest": int(self.chest_var.get()),
+                "legs": int(self.legs_var.get()),
+            }
+        except ValueError:
+            messagebox.showerror("Bad input",
+                "Hat / Chest / Legs must be integers (-1 for none on hat).")
+            return
+        self.on_save(self.idx, updated)
         self.destroy()
 
 
