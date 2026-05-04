@@ -198,6 +198,11 @@ public final class BotTradeHandler {
                 return true;
             case 1:
                 sayBoth(bot, "rolling " + mode.name + "...");
+                // Real RS dice animation (same one Dicing.java uses for the
+                // /m=dice items 15086-15098). Bot looks like it's actually
+                // shaking dice when announcing the roll.
+                try { bot.setNextAnimation(new com.rs.game.Animation(11900)); }
+                catch (Throwable ignored) {}
                 bot.getTemporaryAttributtes().put("GambleAnnouncePhase", 2);
                 bot.getTemporaryAttributtes().put("GambleAnnounceNextMs", now + ANNOUNCE_STEP_MS);
                 return true;
@@ -616,8 +621,19 @@ public final class BotTradeHandler {
         // each') or by chat ('i want 25 logs').
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
-            // Initial offer: full stack for stackable; single for non-stack.
-            int initialQty = isStackable(stock.itemId) ? onHand : 1;
+            // Initial offer: full stack for stackable. For non-stackable,
+            // show as many as we have in stock (capped at 10) so cheap items
+            // like magic shortbows / staves / rune pieces are offered as a
+            // bundle, not 1-at-a-time. User: "the trader should not only
+            // just offer one" for items < 10k each.
+            int initialQty;
+            if (isStackable(stock.itemId)) {
+                initialQty = onHand;
+            } else if (stock.priceGp < 100_000) {
+                initialQty = Math.min(10, onHand);
+            } else {
+                initialQty = 1;
+            }
             sayBoth(bot, "selling " + initialQty + "x " + stock.name + " at "
                 + fmtGp(stock.priceGp) + "gp each, total "
                 + fmtGp((long) initialQty * stock.priceGp) + "gp - add gp + accept");
@@ -630,26 +646,40 @@ public final class BotTradeHandler {
             return;
         }
 
-        // Decide units to offer:
-        //   - Player chat-narrowed ("i want 25 logs") -> EXACTLY that qty,
-        //     capped at onHand. Bot then announces required gp and waits.
-        //   - No narrow + player has gp -> scale qty by gp added.
-        //   - No narrow + 0 gp -> show FULL stack as preview.
-        // User: "I want to buy less than what they put in / bank sales"
-        // - chat narrow is the bank-sale narrowing path.
+        // Decide units to offer + units to actually sell:
+        //   - Player chat-narrowed ("i want 25 logs") -> sell EXACTLY that qty,
+        //     capped at onHand. Bot demands sellUnits * price gp.
+        //   - Player added gp -> sell qty derived from gp (unitsFromGp).
+        //   - 0gp preview -> SHOW a stack/bundle in the trade window so
+        //     player sees what's available, but DON'T sell at that qty.
+        //     Sale only fires once player has paid for at least 1 unit.
+        // User reported: "bot accepted me paying 500m for a 750m partyhat".
+        // Bug was the 0gp preview qty being treated as the sell qty -
+        // bot would announce "deal 1x phat" and accept regardless of how
+        // much gp the player actually put in. Fixed by tracking display
+        // and sell separately.
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         int unitsFromGp = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
         Integer reqQtyObj = (Integer) bot.getTemporaryAttributtes().get("BotTraderRequestedQty");
-        int units;
+        int sellUnits;       // what we'd actually sell on accept
+        int displayUnits;    // what to show in the trade window
         if (reqQtyObj != null) {
-            units = Math.min(reqQtyObj, onHand);
-        } else if (unitsFromGp == 0) {
-            units = isStackable(stock.itemId) ? onHand : 1;
+            sellUnits = Math.min(reqQtyObj, onHand);
+            displayUnits = sellUnits;
         } else {
-            units = Math.min(unitsFromGp, onHand);
+            sellUnits = Math.min(unitsFromGp, onHand);
+            if (sellUnits == 0) {
+                // 0gp preview: show full stack/bundle as a teaser.
+                if (isStackable(stock.itemId)) displayUnits = onHand;
+                else if (stock.priceGp < 100_000) displayUnits = Math.min(10, onHand);
+                else displayUnits = 1;
+            } else {
+                displayUnits = sellUnits;
+            }
         }
         // Track expected price so we can validate at accept time.
-        long requiredGp = (long) units * stock.priceGp;
+        long requiredGp = (long) sellUnits * stock.priceGp;
+        int units = displayUnits;  // legacy alias for the in-window addItem block
         // Announce price change when chat-narrow first applies (so the
         // player knows how much to add).
         Integer announcedQty = (Integer) bot.getTemporaryAttributtes().get("BotTraderAnnouncedQty");
@@ -681,27 +711,30 @@ public final class BotTradeHandler {
 
         // Wait for player to commit by clicking Accept.
         if (!playerTrade.hasAccepted()) return;
-        if (units <= 0 || playerGp <= 0) {
+        // Validate player paid enough for the SELL qty (not the display qty).
+        // This is what stops the "paid 500m for a 750m phat" bug.
+        if (sellUnits <= 0) {
             sayBoth(bot, "need at least " + fmtGp(stock.priceGp) + "gp for 1 " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
-        // For chat-narrowed trades, require the EXACT gp - otherwise the
-        // player ends up overpaying (excess goes to bot) or underpaying
-        // (and we can't downgrade qty without breaking accept flow).
-        if (reqQtyObj != null && playerGp < requiredGp) {
-            sayBoth(bot, "need " + fmtGp(requiredGp) + "gp for " + units + "x " + stock.name
-                + " - you've only put in " + fmtGp(playerGp) + "gp");
-            return; // wait for player to add more
+        if (playerGp < requiredGp) {
+            // Could happen if reqQtyObj is set but player hasn't added enough,
+            // OR if displayUnits > sellUnits and player accepts mid-add.
+            sayBoth(bot, "need " + fmtGp(requiredGp) + "gp for " + sellUnits + "x "
+                + stock.name + " - you've only put in " + fmtGp(playerGp) + "gp");
+            return; // wait for player to add more, or to pull back
         }
 
-        // Player accepted with enough gp. Bot accepts.
+        // Player accepted with enough gp. Bot accepts the SELL qty - if
+        // player overpaid, the excess gp goes to bot. (RS GE-style trades
+        // don't make change. Player can pull excess before accepting.)
         try {
-            long total = (long) units * stock.priceGp;
-            sayBoth(bot, "deal! " + units + "x " + stock.name + " for " + fmtGp(total) + "gp");
+            long total = (long) sellUnits * stock.priceGp;
+            sayBoth(bot, "deal! " + sellUnits + "x " + stock.name + " for " + fmtGp(total) + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
-            bot.getTemporaryAttributtes().put("BotTradeSaleQty", units);
+            bot.getTemporaryAttributtes().put("BotTradeSaleQty", sellUnits);
         } catch (Throwable ignored) {}
     }
 
@@ -877,10 +910,32 @@ public final class BotTradeHandler {
                 "BotTraderStockPickedMs", now - stagger);
             stockBot(bot, stock);
         }
-        // Re-stock if depleted (bot sold everything between trades).
+        // Restock policy:
+        //   priceGp <  1m  -> auto-replenish (cheap bulk consumables, infinite)
+        //   priceGp >= 1m  -> bot is genuinely out. Don't sell another phat
+        //                     after one's been sold. Force a rotation to a
+        //                     different catalog entry so it picks something
+        //                     it actually has on hand.
+        // User: "I should not be able to buy a partyhat from a bot, then
+        //  it keeps selling it - they should be out of that item".
         try {
             if (bot.getInventory().getAmountOf(stock.itemId) <= 0) {
-                stockBot(bot, stock);
+                if (stock.priceGp < 1_000_000) {
+                    stockBot(bot, stock);
+                } else {
+                    // High-tier item sold out - rotate to a different stock.
+                    bot.getTemporaryAttributtes().put("StockSalt",
+                        ((Integer) bot.getTemporaryAttributtes()
+                            .getOrDefault("StockSalt", 0)) + 1);
+                    StockEntry newStock = pickStockForBot(bot);
+                    if (newStock != null && newStock.itemId != stock.itemId) {
+                        bot.getTemporaryAttributtes().put("BotTraderStock", newStock);
+                        bot.getTemporaryAttributtes().put("BotTraderStockPickedMs", now);
+                        bot.getTemporaryAttributtes().remove("BotTradeBroadcastMs");
+                        stockBot(bot, newStock);
+                        stock = newStock;
+                    }
+                }
             }
         } catch (Throwable ignored) {}
         return stock;
@@ -921,10 +976,19 @@ public final class BotTradeHandler {
                 // 8 bundles for stackables (logs, runes, fish, ore, etc.) -
                 // plenty of stock in 1 slot.
                 target = stock.bundleSize * 8;
+            } else if (stock.priceGp < 10_000) {
+                // Cheap non-stackable singles (msb, mlb, low-tier staves):
+                // user wants traders to offer multiple, not just 1. 10 copies
+                // takes 10 inv slots which is fine - bots have 28 free.
+                target = 10;
+            } else if (stock.priceGp < 100_000) {
+                // Mid-tier singles (rune armor pieces, dragon scim) - small
+                // bundle so the bot can sell to a few players before rotating.
+                target = 5;
             } else {
-                // Non-stackable (weapons, armor): cap at 3 to avoid eating
-                // half the inventory. bundleSize is always 1 for these.
-                target = 3;
+                // High-tier (godswords, bandos, fury): one in stock. Sells
+                // out fast on purpose so the bot rotates.
+                target = 1;
             }
             int give = Math.max(0, target - already);
             if (give > 0) bot.getInventory().addItem(stock.itemId, give);

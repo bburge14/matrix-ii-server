@@ -377,6 +377,27 @@ public final class BotEquipment {
             { -1,   4111, 4113 },
             // Robin hood + black robes (a "rogue host" look)
             { 2581, 1005, 1013 },
+            // Druidic robes (top 1011, legs 1013)
+            { -1,   1011, 1013 },
+            { 579,  1011, 1013 },
+            // Priest gown (white)
+            { -1,   1015, 1017 },
+            // Monk's robe (542 top, 544 bottom)
+            { -1,   542,  544 },
+            // Adventurer mix - robin hood + wizard top + skirt
+            { 2581, 577,  1095 },
+            // Sleeping cap + black robes (sleepy host vibe)
+            { 10398, 1005, 1013 },
+            // Mystic blue top + dark legs (deliberate two-tone)
+            { 4089, 4091, 4103 },
+            // Dark mystic top + light legs
+            { 4099, 4101, 4113 },
+            // Wizard hat + mystic blue (hybrid)
+            { 579,  4091, 4093 },
+            // Black wizard + mystic dark (hybrid)
+            { 1037, 4101, 4103 },
+            // Bare-headed plain wizard (variety - no hat at all)
+            { -1,   1005, 1095 },
         };
         int[] outfit = outfits[Utils.random(outfits.length)];
 

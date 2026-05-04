@@ -72,6 +72,53 @@ public final class BotConversations {
         {"soul wars zeal grind", "saving for capes"},
         {"pest control still active?", "yeah but slow tbh"},
         {"barbarian assault xp", "best xp/hr if you have a team"},
+        {"stealing creation worth?", "tools are op for skilling"},
+        {"fight pits earlier", "obby cape time"},
+        {"mage training arena", "just for the cape"},
+        // Bosses / pvm
+        {"corp tonight?", "im in if we get 4 more"},
+        {"king black dragon farm", "easy money + dbones"},
+        {"dag kings duo?", "supreme prime rex sure"},
+        {"nex spliting?", "got the team yet?"},
+        {"vorago tries", "p1 still kills me"},
+        {"gwd grind", "sara is the best for solo"},
+        {"slayer tower trip", "gargs still meta"},
+        // Quests
+        {"any easy 99 grind?", "fletching - flying"},
+        {"recipe for disaster", "best cooking xp gauntlets"},
+        {"while guthix sleeps", "max combat req brutal"},
+        {"nomad reborn done?", "rip my prayer"},
+        {"questing for cape", "few more to go"},
+        // Real talk / lore-ish
+        {"jagex when update", "soon tm"},
+        {"this server been up long?", "couple years yeah"},
+        {"who's the strongest pker", "depends on the day"},
+        {"any clan recruiting", "pst me your stats"},
+        {"sat at edge for 3 hrs", "no one came"},
+        {"dxp weekend incoming", "i can feel it"},
+        {"lobby is dead", "always after dxp"},
+        // GE / market - more variety
+        {"selling 99 fishing", "gz on the cape"},
+        {"buying torstols 4k", "sold mine yesterday"},
+        {"prices going crazy", "always before holidays"},
+        {"got scammed for 50m", "report and forget"},
+        {"who buys yew logs?", "fletchers do, ge always"},
+        // Gambling / hosting (gambler-flavored)
+        {"hot streak today", "let it ride"},
+        {"never gambling again", "till next paycheck"},
+        {"tilted off 100m", "rebuild grind starts"},
+        {"saw a 500m drop", "lucky bastard"},
+        // Skiller-flavored
+        {"divination is mind numbing", "podcast time"},
+        {"rune crafting cape", "3 weeks of abyss"},
+        {"farming runs every 5 hours", "set an alarm"},
+        {"summoning is so expensive", "war tortoise master"},
+        // Casual / random
+        {"who else loves agility", "lol no one"},
+        {"my pet won't drop", "rng gonna rng"},
+        {"got 99 cooking finally", "you been cooking lobs?"},
+        {"buying angler outfit", "fishing trawler grind"},
+        {"i love this game", "same been playing forever"},
     };
 
     /** How often a casual idle tick rolls into a conversation start.
