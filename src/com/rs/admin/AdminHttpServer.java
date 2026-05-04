@@ -115,6 +115,10 @@ public final class AdminHttpServer {
             // POST /admin/gear/sets - replaces a pool ({"key":"socialite","outfits":[...]})
             //   and persists to data/gear_sets.json.
             server.createContext("/admin/gear/sets", auth(new GearSetsHandler()));
+            // Phantom GE shadow market: GET returns config + recent fill log.
+            // POST {key:value,...} updates config knobs (enabled / rates /
+            // caps). See com.rs.bot.economy.PhantomMarket.
+            server.createContext("/admin/phantom-ge", auth(new PhantomGeHandler()));
 
             // World tick profiler (Phase 1.C step 1)
             server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
@@ -1481,6 +1485,81 @@ public final class AdminHttpServer {
      *  POST /admin/gear/sets        - body {"key":"socialite","outfits":[...]}
      *                                replaces ONE pool and persists.
      *  Outfit JSON: {"name":"...","hat":579,"chest":577,"legs":1013} */
+    /** GET  /admin/phantom-ge          - config + recent fill log
+     *  POST /admin/phantom-ge          - partial config update (any key).
+     *  Numeric body fields can be int / double / bool. Unknown keys ignored. */
+    private static class PhantomGeHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                if ("POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    handlePost(ex);
+                } else {
+                    handleGet(ex);
+                }
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                    + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+        private void handleGet(HttpExchange ex) throws IOException {
+            java.util.Map<String, Object> cfg = com.rs.bot.economy.PhantomMarket.getConfig();
+            java.util.List<com.rs.bot.economy.PhantomMarket.FillEvent> log
+                = com.rs.bot.economy.PhantomMarket.getRecentFills(50);
+            StringBuilder sb = new StringBuilder("{\"ok\":true,\"config\":{");
+            boolean first = true;
+            for (java.util.Map.Entry<String, Object> e : cfg.entrySet()) {
+                if (!first) sb.append(",");
+                first = false;
+                sb.append("\"").append(jsonEscape(e.getKey())).append("\":");
+                Object v = e.getValue();
+                if (v instanceof Boolean) sb.append(v);
+                else if (v instanceof Number) sb.append(v);
+                else sb.append("\"").append(jsonEscape(String.valueOf(v))).append("\"");
+            }
+            sb.append("},\"recentFills\":[");
+            first = true;
+            for (com.rs.bot.economy.PhantomMarket.FillEvent f : log) {
+                if (!first) sb.append(",");
+                first = false;
+                sb.append("{\"ts\":").append(f.timestamp)
+                  .append(",\"player\":\"").append(jsonEscape(f.playerName == null ? "" : f.playerName))
+                  .append("\",\"itemId\":").append(f.itemId)
+                  .append(",\"amount\":").append(f.amount)
+                  .append(",\"price\":").append(f.unitPrice)
+                  .append(",\"buy\":").append(f.buy)
+                  .append("}");
+            }
+            sb.append("]}");
+            sendText(ex, 200, sb.toString());
+        }
+        private void handlePost(HttpExchange ex) throws IOException {
+            // Read body
+            java.io.InputStream in = ex.getRequestBody();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            String body = new String(out.toByteArray(), "UTF-8");
+            // Strip outer { } and parse "key": value pairs (numeric or boolean).
+            java.util.Map<String, Object> updates = new java.util.HashMap<>();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"([a-zA-Z_]+)\"\\s*:\\s*(true|false|-?\\d+(?:\\.\\d+)?)").matcher(body);
+            while (m.find()) {
+                String k = m.group(1);
+                String v = m.group(2);
+                if ("true".equals(v) || "false".equals(v)) {
+                    updates.put(k, Boolean.parseBoolean(v));
+                } else if (v.contains(".")) {
+                    updates.put(k, Double.parseDouble(v));
+                } else {
+                    updates.put(k, Long.parseLong(v));
+                }
+            }
+            com.rs.bot.economy.PhantomMarket.updateConfig(updates);
+            sendText(ex, 200, "{\"ok\":true,\"applied\":" + updates.size() + "}");
+        }
+    }
+
     private static class GearSetsHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) throws IOException {
             try {
