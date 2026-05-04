@@ -29,14 +29,30 @@ public class ItemExamines {
 	}
 
 	public static final String getExamine(Item item) {
+		String base;
 		if (item.getAmount() >= 100000)
-			return Utils.getFormattedNumber(item.getAmount()) + " x " + item.getDefinitions().getName() + ".";
-		if (item.getDefinitions().isNoted())
-			return "Swamp this note at any bank for the equivalent item.";
-		String examine = itemExamines.get(item.getId());
-		if (examine != null)
-			return examine;
-		return "It's an " + item.getDefinitions().getName() + ".";
+			base = Utils.getFormattedNumber(item.getAmount()) + " x " + item.getDefinitions().getName() + ".";
+		else if (item.getDefinitions().isNoted())
+			base = "Swamp this note at any bank for the equivalent item.";
+		else {
+			String stored = itemExamines.get(item.getId());
+			base = stored != null ? stored
+				: "It's an " + item.getDefinitions().getName() + ".";
+		}
+		// Append GE price for tradeable items so players can see market
+		// value at a glance. Skips noted (covered by base item), 0-priced
+		// items (no listing yet), and untradeable items.
+		try {
+			if (com.rs.game.player.content.ItemConstants.isTradeable(item)) {
+				int gePrice = com.rs.game.player.content.grandExchange
+					.GrandExchange.getPrice(item.getId());
+				if (gePrice > 0) {
+					base += " GE: "
+						+ com.rs.bot.ambient.BotTradeHandler.fmtGp(gePrice);
+				}
+			}
+		} catch (Throwable ignored) {}
+		return base;
 	}
 
 	private static void loadPackedItemExamines() {

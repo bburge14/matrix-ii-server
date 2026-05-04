@@ -250,6 +250,13 @@ public final class CitizenSpawner {
                 } catch (Throwable ignored) {}
             }
 
+            // Pet spawn roll - 12% of citizens get a pet following them around.
+            // Pulls from the same Pets enum real players use; pet npc spawns
+            // adjacent to the bot. User asked for ALL bots to have a chance.
+            try {
+                if (Utils.random(100) < 12) maybeSpawnPet(bot);
+            } catch (Throwable ignored) {}
+
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
             System.out.println("[CitizenSpawner] spawned " + name + " (" + arch.name()
@@ -302,6 +309,42 @@ public final class CitizenSpawner {
         String tail = Long.toString(n, 36);
         if (tail.length() > 6) tail = tail.substring(tail.length() - 6);
         return "Citizen-" + tail.toUpperCase();
+    }
+
+    /** A curated set of pet NPC ids that work standalone (no item-required
+     *  spawn flow, no growth stages we have to track for an ephemeral bot).
+     *  Index 0=npcId. Pets follow the bot via the standard owner mechanic. */
+    private static final int[] PET_NPC_IDS = new int[] {
+        // Cats / kittens
+        761, 762, 763, 764, 765, 766, 767, 768,
+        // Dogs (terrier/labrador/etc - all the npcid range from Pets.java)
+        6958, 6960, 6962, 6964, 6966, 6968,
+        // Skill pets - small subset that work
+        7644, // Baby kalphite
+        8619, // Creeping hand
+        8624, // Abyssal minion
+        // Holiday - common ones
+        6951, // Penguin pet
+    };
+
+    /** Spawn a randomly-picked pet NPC adjacent to the bot, owned by it.
+     *  No stat reqs - pets are decorative for citizens. */
+    private static void maybeSpawnPet(AIPlayer bot) {
+        try {
+            int npcId = PET_NPC_IDS[Utils.random(PET_NPC_IDS.length)];
+            // Spawn one tile south of the bot so they don't overlap.
+            com.rs.game.WorldTile petTile = new com.rs.game.WorldTile(
+                bot.getX(), bot.getY() - 1, bot.getPlane());
+            // Item id is just a placeholder - pet won't follow respawn rules
+            // since the owner is ephemeral; despawns when bot finishes.
+            com.rs.game.player.content.pet.PetDetails details =
+                new com.rs.game.player.content.pet.PetDetails(100.0);
+            com.rs.game.npc.others.Pet pet =
+                new com.rs.game.npc.others.Pet(npcId, -1, bot, petTile, details);
+            bot.setPet(pet);
+        } catch (Throwable t) {
+            System.err.println("[CitizenSpawner] pet spawn failed: " + t);
+        }
     }
 
     /** True if a live citizen bot already stands on this tile (within 1

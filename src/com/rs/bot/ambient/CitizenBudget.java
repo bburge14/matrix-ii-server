@@ -34,7 +34,7 @@ public final class CitizenBudget {
      *  this version (or with a lower one) get auto-replaced with the new
      *  defaults on load. Avoids requiring users to manually `rm` the file
      *  every time we ship new GE socialite anchor coords. */
-    private static final int CURRENT_SCHEMA_VERSION = 2;
+    private static final int CURRENT_SCHEMA_VERSION = 3;
 
     public static final class Slot {
         public String archetype;     // AmbientArchetype enum name
@@ -216,11 +216,13 @@ public final class CitizenBudget {
         // Gamblers at GE - randomized between fountain/north anchor
         slots.add(new Slot("SOCIALITE_GAMBLER",              10, 3142, 3487, 0, 10, true));
         // ===== Edgeville bank socialites (smaller crowd) =====
-        // A few traders + gamblers at Edge bank for variety.
-        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",       3, 3094, 3491, 0,  8, true));
-        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",      2, 3094, 3491, 0,  8, true));
-        slots.add(new Slot("SOCIALITE_BANKSTAND",             4, 3094, 3491, 0,  8, true));
-        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3094, 3491, 0,  6, true));
+        // Anchor moved to 3087,3490 - just OUTSIDE the bank entrance per
+        // user spec. Was 3094,3491 (inside the bank counter area which
+        // ended up looking weird with traders standing on bankers).
+        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",       3, 3087, 3490, 0,  6, true));
+        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",      2, 3087, 3490, 0,  6, true));
+        slots.add(new Slot("SOCIALITE_BANKSTAND",             4, 3087, 3490, 0,  6, true));
+        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3087, 3490, 0,  5, true));
         // Lumbridge skillers
         slots.add(new Slot("SKILLER_NOOB",          15, 3222, 3218, 0, 10, false));
         slots.add(new Slot("SKILLER_CASUAL",        15, 3222, 3218, 0, 10, false));

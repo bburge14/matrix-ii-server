@@ -1,0 +1,270 @@
+package com.rs.bot;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Externalised bot gear sets. Loaded from data/gear_sets.json on first
+ * use. If the file is absent we fall back to the hardcoded socialite
+ * outfit array in BotEquipment - this lets the admin panel manage the
+ * pool through a UI without recompiling Java.
+ *
+ * Schema (JSON):
+ * {
+ *   "schema": 1,
+ *   "outfits": {
+ *     "socialite": [
+ *       {"name": "wizard blue", "hat": 579, "chest": 577, "legs": 1013},
+ *       {"name": "robin hood + black", "hat": 2581, "chest": 1005, "legs": 1013}
+ *     ]
+ *   }
+ * }
+ *
+ * `hat`/`chest`/`legs` use -1 for "no item". Only the keys defined in
+ * the schema are read; unknown keys are preserved on save (forward-compat).
+ *
+ * Admin panel reads/writes via /admin/gear/sets endpoints (added when the
+ * editor UI ships). Java reads at startup + after each save.
+ */
+public final class GearSets {
+
+    private static final String CONFIG_PATH = "data/gear_sets.json";
+    public static final int CURRENT_SCHEMA_VERSION = 1;
+
+    public static final class Outfit {
+        public String name;
+        public int hat;
+        public int chest;
+        public int legs;
+        public Outfit(String name, int hat, int chest, int legs) {
+            this.name = name; this.hat = hat;
+            this.chest = chest; this.legs = legs;
+        }
+    }
+
+    private static final Map<String, List<Outfit>> POOLS = new LinkedHashMap<>();
+    private static boolean loaded = false;
+
+    private GearSets() {}
+
+    /** Get the outfit pool for an archetype key (e.g. "socialite").
+     *  Returns null if no pool defined - caller should fall back. */
+    public static synchronized List<Outfit> getOutfits(String archetypeKey) {
+        load();
+        List<Outfit> p = POOLS.get(archetypeKey);
+        return p == null || p.isEmpty() ? null : p;
+    }
+
+    /** Replace the outfit pool for an archetype + persist to disk. Used by
+     *  the admin panel's gear-set editor. */
+    public static synchronized void setOutfits(String archetypeKey, List<Outfit> outfits) {
+        load();
+        POOLS.put(archetypeKey, new ArrayList<>(outfits == null ? java.util.Collections.<Outfit>emptyList() : outfits));
+        save();
+    }
+
+    /** Snapshot all pools (immutable copy). */
+    public static synchronized Map<String, List<Outfit>> getAll() {
+        load();
+        Map<String, List<Outfit>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Outfit>> e : POOLS.entrySet()) {
+            out.put(e.getKey(), new ArrayList<>(e.getValue()));
+        }
+        return out;
+    }
+
+    public static synchronized void load() {
+        if (loaded) return;
+        loaded = true;
+        File f = new File(CONFIG_PATH);
+        if (!f.isFile()) {
+            seedDefaults();
+            save();
+            return;
+        }
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line);
+            parse(sb.toString());
+        } catch (Throwable t) {
+            System.err.println("[GearSets] load failed: " + t);
+            seedDefaults();
+        }
+    }
+
+    public static synchronized void save() {
+        File f = new File(CONFIG_PATH);
+        File dir = f.getParentFile();
+        if (dir != null) dir.mkdirs();
+        try (PrintWriter w = new PrintWriter(f, "UTF-8")) {
+            w.print("{\"schema\":" + CURRENT_SCHEMA_VERSION + ",\"outfits\":{");
+            boolean firstPool = true;
+            for (Map.Entry<String, List<Outfit>> e : POOLS.entrySet()) {
+                if (!firstPool) w.print(",");
+                firstPool = false;
+                w.print("\"" + jsonEscape(e.getKey()) + "\":[");
+                boolean firstOut = true;
+                for (Outfit o : e.getValue()) {
+                    if (!firstOut) w.print(",");
+                    firstOut = false;
+                    w.print("{\"name\":\"" + jsonEscape(o.name == null ? "" : o.name)
+                        + "\",\"hat\":" + o.hat
+                        + ",\"chest\":" + o.chest
+                        + ",\"legs\":" + o.legs + "}");
+                }
+                w.print("]");
+            }
+            w.println("}}");
+        } catch (Throwable t) {
+            System.err.println("[GearSets] save failed: " + t);
+        }
+    }
+
+    private static void seedDefaults() {
+        POOLS.clear();
+        // Mirrors BotEquipment.applySocialite preset list as of the
+        // 23-outfit revision. Editing the JSON file overrides these.
+        int[][] socialite = {
+            { 579, 577, 1013 },
+            { 579, 577, 1095 },
+            { -1,  577, 1013 },
+            { -1,  577, 1095 },
+            { 1037, 1005, 1013 },
+            { 1037, 1005, 1095 },
+            { 4089, 4091, 4093 },
+            { -1,   4091, 4093 },
+            { 4099, 4101, 4103 },
+            { -1,   4101, 4103 },
+            { 4109, 4111, 4113 },
+            { -1,   4111, 4113 },
+            { 2581, 1005, 1013 },
+            { -1,   1011, 1013 },
+            { 579,  1011, 1013 },
+            { -1,   1015, 1017 },
+            { -1,   542,  544 },
+            { 2581, 577,  1095 },
+            { 10398, 1005, 1013 },
+            { 4089, 4091, 4103 },
+            { 4099, 4101, 4113 },
+            { 579,  4091, 4093 },
+            { 1037, 4101, 4103 },
+            { -1,   1005, 1095 },
+        };
+        List<Outfit> list = new ArrayList<>();
+        for (int[] r : socialite) {
+            list.add(new Outfit(autoName(r[0], r[1], r[2]), r[0], r[1], r[2]));
+        }
+        POOLS.put("socialite", list);
+    }
+
+    /** Cheap "wizard blue / mystic dark" naming for seed entries. Admin
+     *  panel can rename via setOutfits. */
+    private static String autoName(int hat, int chest, int legs) {
+        String prefix;
+        if (chest == 577 || chest == 1005) prefix = "wizard";
+        else if (chest >= 4089 && chest <= 4117) prefix = "mystic";
+        else if (chest == 1011) prefix = "druidic";
+        else if (chest == 1015) prefix = "priest";
+        else if (chest == 542) prefix = "monk";
+        else prefix = "outfit";
+        String suffix = hat == -1 ? " (no hat)" : "";
+        return prefix + " " + chest + "/" + legs + suffix;
+    }
+
+    /** Minimal hand-rolled JSON parser - mirrors CitizenBudget's style. */
+    private static void parse(String json) {
+        POOLS.clear();
+        int outfitsKey = json.indexOf("\"outfits\"");
+        if (outfitsKey < 0) return;
+        int braceStart = json.indexOf('{', outfitsKey);
+        if (braceStart < 0) return;
+        int depth = 0;
+        int braceEnd = -1;
+        for (int i = braceStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) { braceEnd = i; break; }
+            }
+        }
+        if (braceEnd < 0) return;
+        String body = json.substring(braceStart + 1, braceEnd);
+        // Match: "key":[ {...},{...} ]
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL).matcher(body);
+        while (m.find()) {
+            String key = m.group(1);
+            String arr = m.group(2);
+            List<Outfit> list = new ArrayList<>();
+            java.util.regex.Matcher om = java.util.regex.Pattern.compile(
+                "\\{[^}]*\\}").matcher(arr);
+            while (om.find()) {
+                String entry = om.group();
+                String name = extractStr(entry, "name");
+                int hat = extractInt(entry, "hat", -1);
+                int chest = extractInt(entry, "chest", -1);
+                int legs = extractInt(entry, "legs", -1);
+                list.add(new Outfit(name == null ? "" : name, hat, chest, legs));
+            }
+            POOLS.put(key, list);
+        }
+    }
+
+    private static String extractStr(String obj, String key) {
+        String marker = "\"" + key + "\"";
+        int i = obj.indexOf(marker);
+        if (i < 0) return null;
+        int colon = obj.indexOf(':', i);
+        if (colon < 0) return null;
+        int q1 = obj.indexOf('"', colon);
+        if (q1 < 0) return null;
+        int q2 = obj.indexOf('"', q1 + 1);
+        if (q2 < 0) return null;
+        return obj.substring(q1 + 1, q2);
+    }
+
+    private static int extractInt(String obj, String key, int def) {
+        String marker = "\"" + key + "\"";
+        int i = obj.indexOf(marker);
+        if (i < 0) return def;
+        int colon = obj.indexOf(':', i);
+        if (colon < 0) return def;
+        int p = colon + 1;
+        while (p < obj.length() && Character.isWhitespace(obj.charAt(p))) p++;
+        int start = p;
+        if (p < obj.length() && obj.charAt(p) == '-') p++;
+        while (p < obj.length() && Character.isDigit(obj.charAt(p))) p++;
+        if (p == start || (p == start + 1 && obj.charAt(start) == '-')) return def;
+        try { return Integer.parseInt(obj.substring(start, p)); }
+        catch (Throwable t) { return def; }
+    }
+
+    private static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 4);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+}
