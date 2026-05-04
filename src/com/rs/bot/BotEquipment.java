@@ -930,6 +930,22 @@ public final class BotEquipment {
                     + " but its real slot is " + realSlot + " - skipping");
                 return;
             }
+            // Worn-model check: the item has equipment stats but no visible
+            // model on the bot's body for the gender we render as. Was the
+            // cause of "ui shows the item but body is naked" - some 12000+
+            // / 20000+ items in the catalog don't have 718-cache wear models.
+            // Only check non-jewelry slots (rings/necks render on the
+            // tooltip not the body so absent wear models are OK).
+            if (slot < com.rs.game.player.Equipment.SLOT_RING) {
+                boolean botIsMale = true;
+                try { botIsMale = bot.getAppearence().isMale(); } catch (Throwable ignored) {}
+                if (!def.isWearItem(botIsMale)) {
+                    System.err.println("[BotEquipment] NO WORN MODEL item " + itemId
+                        + " (" + def.getName() + ") for "
+                        + (botIsMale ? "male" : "female") + " - cache lacks render");
+                    return;
+                }
+            }
             // Stat gate: bots can't wear gear above their level.
             if (!EquipmentReqs.canWear(bot, itemId)) return;
             bot.getEquipment().getItems().set(slot, new Item(itemId, 1));
