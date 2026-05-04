@@ -438,7 +438,7 @@ def push_to_server(base_url: str, admin_token, rows):
     req = urllib.request.Request(url, data=body.encode("utf-8"), method="POST")
     req.add_header("Content-Type", "application/json")
     if admin_token:
-        req.add_header("X-Admin-Token", admin_token)
+        req.add_header("Authorization", "Bearer " + admin_token)
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             resp = r.read().decode("utf-8")

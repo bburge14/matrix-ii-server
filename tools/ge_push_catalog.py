@@ -90,7 +90,7 @@ def main():
     print(f"[*] POSTing to {url}")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
-    req.add_header("X-Admin-Token", token)
+    req.add_header("Authorization", "Bearer " + token)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             resp = r.read().decode()
