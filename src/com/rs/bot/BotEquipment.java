@@ -392,7 +392,35 @@ public final class BotEquipment {
             { 20137, 20141, 20145 },// torva (top-end melee)
             { 20161, 20165, 20169 },// virtus (top-end mage)
             { 13896, 13884, 13890 },// statius (PvP top tank)
-            // === Hybrid two-piece + bare hat ===
+            // === Elegant costumes (verified IDs from TreasureTrailsManager) ===
+            // Each costume is chest + matching legs. Some are skirts.
+            { -1,   10404, 10424 }, // red elegant (m)
+            { -1,   10406, 10426 }, // red elegant (f)
+            { -1,   10408, 10428 }, // blue elegant (m)
+            { -1,   10410, 10430 }, // blue elegant (f)
+            { -1,   10412, 10432 }, // green elegant (m)
+            { -1,   10414, 10434 }, // green elegant (f)
+            { -1,   10400, 10420 }, // black elegant
+            { -1,   10402, 10422 }, // white elegant
+            { -1,   10416, 10436 }, // purple elegant (m)
+            { -1,   10418, 10438 }, // purple elegant (f)
+            // Elegant + headband / boater for variety
+            { 2645, 10404, 10424 }, // red elegant + red headband
+            { 2647, 10408, 10428 }, // blue elegant + blue headband
+            { 2649, 10412, 10432 }, // green elegant + green headband
+            { 7319, 10402, 10422 }, // white elegant + boater
+            { 7325, 10400, 10420 }, // black elegant + boater
+            // === Vestment robes (saradomin/guthix/zamorak - god outfits) ===
+            { 10452, 10458, 10460 }, // saradomin mitre + vestment
+            { 10454, 10462, 10464 }, // guthix mitre + vestment
+            { 10456, 10466, 10468 }, // zamorak mitre + vestment
+            // === Bob the cat shirts (5 colors, paired with wizard skirt) ===
+            { -1,   10316, 1095 },  // red bob shirt
+            { -1,   10318, 1095 },  // blue bob shirt
+            { -1,   10320, 1095 },  // green bob shirt
+            { -1,   10322, 1095 },  // pink bob shirt
+            { -1,   10324, 1095 },  // black bob shirt
+            // === Hybrid / mixed ===
             { 2581, 577,  1095 },   // robin hood + wizard top
             { 1037, 4101, 4103 },   // black wizard hat + mystic dark
             { 579,  4091, 4093 },   // wizard hat + mystic blue
@@ -442,15 +470,23 @@ public final class BotEquipment {
         equip(bot, Equipment.SLOT_LEGS, outfit[2]);
 
         // === Cape (skill capes + fire cape - canWear gates on stat) ===
+        // Capes are independent of outfit. Skill cape canWear gates on 99
+        // of the matching skill so only bots with that 99 actually wear it.
+        // God cloaks (10446-10450) verified from clue scroll rewards.
         int[] capes = {
-            9747, 9748, 9749,  // skill cape (attack) + trim + hood
-            9756, 9757,        // skill cape (ranged)
-            9760, 9761,        // skill cape (magic)
-            9762, 9763,        // skill cape (cooking)
-            9764, 9765,        // skill cape (woodcutting)
-            9774, 9775,        // skill cape (fishing)
-            9780, 9781,        // skill cape (mining)
-            6570,              // fire cape
+            // Skill capes (untrim/trim) - 99 stat gated
+            9747, 9748, 9750, 9751, 9753, 9754, 9756, 9757, 9759, 9760,
+            9762, 9763, 9765, 9766, 9768, 9769, 9771, 9772, 9774, 9775,
+            9777, 9778, 9780, 9781, 9783, 9784, 9786, 9787, 9789, 9790,
+            9792, 9793, 9795, 9796, 9798, 9799, 9801, 9802, 9804, 9805,
+            9807, 9808, 9810, 9811,
+            9948, 9949,             // hunter
+            12169, 12170,           // summoning
+            // Combat / achievement capes
+            6570,                   // fire cape
+            9813,                   // quest cape
+            // God cloaks (saradomin / guthix / zamorak - clue rewards)
+            10446, 10448, 10450,
         };
         if (chance(60)) equip(bot, Equipment.SLOT_CAPE, pick(capes));
 

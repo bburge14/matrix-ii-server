@@ -37,7 +37,7 @@ import java.util.Map;
 public final class GearSets {
 
     private static final String CONFIG_PATH = "data/gear_sets.json";
-    public static final int CURRENT_SCHEMA_VERSION = 2;
+    public static final int CURRENT_SCHEMA_VERSION = 3;
 
     public static final class Outfit {
         public String name;
@@ -182,16 +182,27 @@ public final class GearSets {
             // Dragon
             { 1149, 3140, 4087 },
             // Barrows brothers (full sets)
-            { 4716, 4720, 4722 },   // Dharok
-            { 4724, 4728, 4730 },   // Guthan
-            { 4745, 4749, 4751 },   // Torag
-            { 4753, 4757, 4759 },   // Verac
-            { 4732, 4736, 4738 },   // Karil's
-            { 4708, 4712, 4714 },   // Ahrim's
+            { 4716, 4720, 4722 },   { 4724, 4728, 4730 },
+            { 4745, 4749, 4751 },   { 4753, 4757, 4759 },
+            { 4732, 4736, 4738 },   { 4708, 4712, 4714 },
             // Bandos / Armadyl / endgame
             { 11718, 11724, 11726 },   { 11718, 11720, 11722 },
             { 20149, 20153, 20157 },   { 20137, 20141, 20145 },
             { 20161, 20165, 20169 },   { 13896, 13884, 13890 },
+            // Elegant costumes (verified - clue scroll rewards)
+            { -1, 10404, 10424 },   { -1, 10406, 10426 },   // red (m/f)
+            { -1, 10408, 10428 },   { -1, 10410, 10430 },   // blue (m/f)
+            { -1, 10412, 10432 },   { -1, 10414, 10434 },   // green (m/f)
+            { -1, 10400, 10420 },   { -1, 10402, 10422 },   // black/white
+            { -1, 10416, 10436 },   { -1, 10418, 10438 },   // purple (m/f)
+            // Elegant + headband / boater
+            { 2645, 10404, 10424 }, { 2647, 10408, 10428 }, { 2649, 10412, 10432 },
+            { 7319, 10402, 10422 }, { 7325, 10400, 10420 },
+            // God vestments
+            { 10452, 10458, 10460 }, { 10454, 10462, 10464 }, { 10456, 10466, 10468 },
+            // Bob the cat shirts
+            { -1, 10316, 1095 },    { -1, 10318, 1095 },    { -1, 10320, 1095 },
+            { -1, 10322, 1095 },    { -1, 10324, 1095 },
             // Hybrid / mixed
             { 2581, 577,  1095 },   { 1037, 4101, 4103 },   { 579,  4091, 4093 },
             { -1,   1005, 1095 },
