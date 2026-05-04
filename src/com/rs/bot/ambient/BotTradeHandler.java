@@ -1295,11 +1295,12 @@ public final class BotTradeHandler {
             };
             line = templates[Utils.random(templates.length)];
         } else if (isTrader) {
-            StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
-            if (stock == null) {
-                stock = pickStockForBot(bot);
-                if (stock != null) bot.getTemporaryAttributtes().put("BotTraderStock", stock);
-            }
+            // Always go through ensureBotStockAssigned so stock is the
+            // SAME instance the next handleTrader run reads. Was previously
+            // duplicating the pick logic here which could drift if salt
+            // changed mid-broadcast cycle (causing the "advertises X then
+            // says Y" bug).
+            StockEntry stock = ensureBotStockAssigned(bot);
             if (stock != null) {
                 String[] templates = new String[] {
                     "selling " + stock.name + " " + fmtGp(stock.priceGp) + " each",

@@ -281,6 +281,26 @@ public class CitizenBrain extends BotBrain {
         // wander if there's nothing scannable in the home radius.
         WorldTile target = findInteractionDestination(bot);
         if (target == null) target = pickWanderTarget();
+        // Skillers at the GE: if they end up here (user mass-spawn at GE,
+        // wander into it, etc) but their method is somewhere else, fire
+        // an EARLY teleport instead of standing around. Without this they
+        // shuffle around GE pretending to chop trees that don't exist.
+        boolean isSkiller = archetype != null && archetype.isSkiller();
+        boolean atGE = bot.getX() >= 3160 && bot.getX() <= 3170
+                    && bot.getY() >= 3480 && bot.getY() <= 3500;
+        if (isSkiller && atGE && target != null
+                && (target.getX() < 3155 || target.getX() > 3175
+                    || target.getY() < 3478 || target.getY() > 3500)) {
+            try {
+                com.rs.bot.ai.BotTeleporter.Choice c =
+                    com.rs.bot.ai.BotTeleporter.pickBest(bot, target.getX(), target.getY());
+                if (c != null && com.rs.bot.ai.BotTeleporter.cast(bot, c)) {
+                    debug(bot, "skiller-at-GE: teleporting to "
+                        + target.getX() + "," + target.getY());
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
         // Teleport-first for far targets: anything > ~40 tiles is realistically
         // a teleport in real-player play (jewelry, standard spell). Without
         // this, citizens spent 10+ minutes shuffling 8 tiles per traversing
