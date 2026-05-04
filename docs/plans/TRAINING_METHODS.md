@@ -1,9 +1,7 @@
 # Bot Training Method Locations
 Auto-generated from `src/com/rs/bot/ai/TrainingMethods.java`.
 
-Total methods: **171** across **21** skills.
-
-Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the dump script when you identify them.
+Total methods: **176** across **21** skills.
 
 ---
 
@@ -12,11 +10,12 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 | Levels | Location | Coords | XP/h | GP/h |
 |---|---|---|---|---|
 | 1-9 | (2476, 3438) | 2476, 3438 | 8,000 | 0 |
-| 10-19 | (3103, 3279) | 3103, 3279 | 10,500 | 0 |
-| 20-29 | (3273, 3193) | 3273, 3193 | 13,500 | 0 |
-| 30-39 | (3221, 3414) | 3221, 3414 | 16,500 | 0 |
-| 40-49 | (3506, 3489) | 3506, 3489 | 20,000 | 0 |
-| 50-59 | (3036, 3341) | 3036, 3341 | 24,000 | 0 |
+| 1-30 | Burthorpe lodestone | 2906, 3540 | 11,000 | 0 |
+| 10-19 | Draynor agility course | 3103, 3279 | 10,500 | 0 |
+| 20-29 | Al Kharid agility course | 3273, 3193 | 13,500 | 0 |
+| 30-39 | Varrock rooftop course | 3221, 3414 | 16,500 | 0 |
+| 40-49 | Canifis rooftop course | 3506, 3489 | 20,000 | 0 |
+| 50-59 | Falador rooftop course | 3036, 3341 | 24,000 | 0 |
 | 52-99 | (3004, 3937) | 3004, 3937 | 45,000 | 0 |
 | 60-99 | (3543, 9852) | 3543, 9852 | 31,000 | 0 |
 | 60-69 | (2729, 3489) | 2729, 3489 | 28,000 | 0 |
@@ -28,7 +27,7 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 
 | Levels | Location | Coords | XP/h | GP/h |
 |---|---|---|---|---|
-| 1-30 | (3027, 3307) | 3027, 3307 | 10,000 | 180,000 |
+| 1-30 | Lumbridge cows | 3027, 3307 | 10,000 | 180,000 |
 | 65-95 | (3309, 9376) | 3309, 9376 | 55,000 | 80,000 |
 | 70-99 | (2864, 5354) | 2864, 5354 | 75,000 | 2,000,000 |
 | 70-99 | (2839, 5296) | 2839, 5296 | 75,000 | 2,500,000 |
@@ -50,9 +49,10 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 
 | Levels | Location | Coords | XP/h | GP/h |
 |---|---|---|---|---|
-| 1-99 | (3211, 3215) | 3211, 3215 | 40,000 | 0 |
-| 1-99 | (2818, 3443) | 2818, 3443 | 40,000 | 0 |
-| 1-99 | (3271, 3180) | 3271, 3180 | 40,000 | 0 |
+| 1-99 | Lumbridge kitchen | 3211, 3215 | 40,000 | 0 |
+| 1-99 | Catherby kitchen | 2818, 3443 | 40,000 | 0 |
+| 1-99 | Al Kharid kitchen | 3271, 3180 | 40,000 | 0 |
+| 1-99 | Burthorpe Beer Inn | 2912, 3540 | 40,000 | 0 |
 
 ## Crafting
 
@@ -105,6 +105,7 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 | 1-99 | GE firemaking spot | 3164, 3487 | 45,000 | 0 |
 | 1-99 | Edgeville bank firemaking | 3094, 3491 | 45,000 | 0 |
 | 1-99 | Varrock west bank | 3185, 3436 | 45,000 | 0 |
+| 1-99 | Burthorpe lodestone | 2906, 3540 | 45,000 | 0 |
 
 ## Fishing
 
@@ -112,7 +113,7 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 |---|---|---|---|---|
 | 1-20 | Lumbridge fishing spot | 3242, 3151 | 10,000 | 2,000 |
 | 1-20 | Draynor fishing | 3086, 3232 | 10,000 | 2,000 |
-| 1-20 | Al Kharib fishing | 3266, 3154 | 10,000 | 2,000 |
+| 1-20 | Al Kharid fishing | 3266, 3154 | 10,000 | 2,000 |
 | 20-40 | Barbarian Village fishing | 3105, 3434 | 30,000 | 8,000 |
 | 20-40 | Shilo Village fishing | 2853, 2967 | 30,000 | 8,000 |
 | 40-76 | Karamja fishing | 2924, 3179 | 45,000 | 40,000 |
@@ -186,8 +187,9 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 
 | Levels | Location | Coords | XP/h | GP/h |
 |---|---|---|---|---|
-| 1-99 | Edgeville altar (?) | 3056, 3484 | 35,000 | 0 |
-| 1-99 | Falador east altar | 2995, 3372 | 35,000 | 0 |
+| 1-99 | Edgeville monastery altar | 3056, 3484 | 35,000 | 0 |
+| 1-99 | Falador church altar | 2995, 3372 | 35,000 | 0 |
+| 1-99 | Burthorpe Saradomin altar | 2918, 3486 | 35,000 | 0 |
 
 ## Runecrafting
 
@@ -219,7 +221,8 @@ Locations marked with raw coords didn't have a label - add to `LOC_NAMES` in the
 |---|---|---|---|---|
 | 1-99 | (3110, 3499) | 3110, 3499 | 50,000 | 0 |
 | 1-99 | (2974, 3370) | 2974, 3370 | 50,000 | 0 |
-| 1-99 | (3275, 3186) | 3275, 3186 | 50,000 | 0 |
+| 1-99 | Al Kharid furnace | 3275, 3186 | 50,000 | 0 |
+| 1-99 | Burthorpe furnace | 2912, 3552 | 50,000 | 0 |
 | 1-14 | Lumbridge swamp trees | 3225, 3220 | 5,000 | 2,000 |
 | 15-29 | (3186, 3424) | 3186, 3424 | 10,000 | 4,000 |
 | 30-49 | (3186, 3424) | 3186, 3424 | 20,000 | 8,000 |
