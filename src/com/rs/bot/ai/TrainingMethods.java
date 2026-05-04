@@ -323,6 +323,9 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Burthorpe", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(2906, 3540).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
 
         // ---- Prayer (process-skill: bones on altar) ----
         // Bot needs bones in inventory and an altar object. 4x XP via altar
@@ -332,6 +335,9 @@ public final class TrainingMethods {
             .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
         ALL.add(b("Bones on altar - Falador church", Kind.PRAYER)
             .skill(Skills.PRAYER).lvl(1, 99).at(2995, 3372).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
+        ALL.add(b("Bones on altar - Burthorpe Saradomin altar", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(2918, 3486).xp(35000).gp(0)
             .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
 
         // ---- Crafting (process-skill: cut uncut gems with chisel) ----
@@ -424,6 +430,18 @@ public final class TrainingMethods {
         ALL.add(b("Train combat - Stronghold rats lvl 1", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 15).at(2155, 5092).xp(8000).cb(1)
             .npcs(2854, 2855, 2856).build());
+        // Burthorpe combat starter spots - Trolls / Imps / Goblins around
+        // the city + the Death Plateau area. Anchors in the city itself
+        // so bots aggro the right pack on arrival.
+        ALL.add(b("Train combat - Burthorpe imps", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 20).at(2898, 3554).xp(7000).cb(1)
+            .npcs(414, 7878).build());
+        ALL.add(b("Train combat - Burthorpe goblins", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 25).at(2880, 3546).xp(9000).cb(1)
+            .npcs(4481, 4482, 4485, 4486, 4488, 4491, 4493).build());
+        ALL.add(b("Train combat - Death Plateau trolls", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 99).at(2853, 3582).xp(35000).cb(60)
+            .npcs(941, 942, 943, 944, 945).build());
 
         // Tier 2 (cb 30-60): guards, knights, hill giants
         ALL.add(b("Train combat - Falador guards", Kind.COMBAT)

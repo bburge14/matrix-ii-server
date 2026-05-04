@@ -357,74 +357,93 @@ public final class BotEquipment {
         // Each row is a matching set so we don't end up with mystic-blue
         // top + mystic-dark legs (user: "weird shit" outfit). -1 hat means
         // the set is bare-headed; holiday rare roll (5%) overrides.
+        // === Modular weighted pool. Per user spec - ~50 unique looks
+        // by mixing high-tier power gear with iconic legacy items + skill
+        // outfits + fashionscape rares. canWear gate filters out anything
+        // bot can't equip (e.g. cb 30 bot won't wear Malevolent). Retry
+        // loop above re-rolls until top + legs both pass canWear. ===
         int[][] outfits = {
-            // === Wizard / robe family (a quarter of the pool, not most) ===
-            { 579, 577, 1013 },     // blue wizard hat + top + bottom
-            { 1037, 1005, 1013 },   // black wizard
-            { -1,  577, 1095 },     // wizard top + skirt
-            // === Mystic mage robes (3 colors) ===
-            { 4089, 4091, 4093 },   // mystic blue full
-            { 4099, 4101, 4103 },   // mystic dark full
-            { 4109, 4111, 4113 },   // mystic light full
-            // === Casual / themed (RS classic) ===
-            { 2581, 1005, 1013 },   // robin hood + black robes (rogue host)
-            { -1,   1011, 1013 },   // druidic
-            { -1,   1015, 1017 },   // priest gown
-            { -1,   542,  544 },    // monk's robe
-            { 10398, 1005, 1013 },  // sleeping cap (chill host vibe)
-            // === Rune armor (mid-tier combat fashion) ===
-            { 1163, 1127, 1079 },   // full rune (helm/plate/legs)
-            { -1,   1127, 1079 },   // bare-headed rune
-            { 1163, 1115, 1075 },   // rune chain + plate legs
-            // === Dragon armor pieces ===
-            { 1149, 3140, 4087 },   // dragon med + chain + plate legs
-            // === Barrows sets (matched colors per brother) ===
-            { 4716, 4720, 4722 },   // Dharok (full melee)
-            { 4724, 4728, 4730 },   // Guthan (warrior priest look)
-            { 4745, 4749, 4751 },   // Torag (heavy infantry)
-            { 4753, 4757, 4759 },   // Verac (priest of war)
-            { 4732, 4736, 4738 },   // Karil's (range barrows)
-            { 4708, 4712, 4714 },   // Ahrim's (mage barrows)
-            // === Bandos / Armadyl / Pernix (high-tier "show off" gear) ===
-            { 11718, 11724, 11726 },// armadyl helm + bandos top + tassets
-            { 11718, 11720, 11722 },// full armadyl
-            { 20149, 20153, 20157 },// pernix (cb 60+ ranger look)
-            { 20137, 20141, 20145 },// torva (top-end melee)
-            { 20161, 20165, 20169 },// virtus (top-end mage)
-            { 13896, 13884, 13890 },// statius (PvP top tank)
-            // === Elegant costumes (verified IDs from TreasureTrailsManager) ===
-            // Each costume is chest + matching legs. Some are skirts.
-            { -1,   10404, 10424 }, // red elegant (m)
-            { -1,   10406, 10426 }, // red elegant (f)
-            { -1,   10408, 10428 }, // blue elegant (m)
-            { -1,   10410, 10430 }, // blue elegant (f)
-            { -1,   10412, 10432 }, // green elegant (m)
-            { -1,   10414, 10434 }, // green elegant (f)
-            { -1,   10400, 10420 }, // black elegant
-            { -1,   10402, 10422 }, // white elegant
-            { -1,   10416, 10436 }, // purple elegant (m)
-            { -1,   10418, 10438 }, // purple elegant (f)
-            // Elegant + headband / boater for variety
-            { 2645, 10404, 10424 }, // red elegant + red headband
-            { 2647, 10408, 10428 }, // blue elegant + blue headband
-            { 2649, 10412, 10432 }, // green elegant + green headband
-            { 7319, 10402, 10422 }, // white elegant + boater
-            { 7325, 10400, 10420 }, // black elegant + boater
-            // === Vestment robes (saradomin/guthix/zamorak - god outfits) ===
-            { 10452, 10458, 10460 }, // saradomin mitre + vestment
-            { 10454, 10462, 10464 }, // guthix mitre + vestment
-            { 10456, 10466, 10468 }, // zamorak mitre + vestment
-            // === Bob the cat shirts (5 colors, paired with wizard skirt) ===
-            { -1,   10316, 1095 },  // red bob shirt
-            { -1,   10318, 1095 },  // blue bob shirt
-            { -1,   10320, 1095 },  // green bob shirt
-            { -1,   10322, 1095 },  // pink bob shirt
-            { -1,   10324, 1095 },  // black bob shirt
-            // === Hybrid / mixed ===
-            { 2581, 577,  1095 },   // robin hood + wizard top
-            { 1037, 4101, 4103 },   // black wizard hat + mystic dark
-            { 579,  4091, 4093 },   // wizard hat + mystic blue
-            { -1,   1005, 1095 },   // bare-headed black + wizard skirt
+            // ===== HIGH-TIER POWER (T80-90) - status symbols =====
+            { 30005, 30008, 30011 },   // Malevolent (Melee)
+            { 29712, 29715, 29718 },   // Sirenic (Range)
+            { 28608, 28611, 28614 },   // Tectonic (Mage)
+            { 20135, 20139, 20143 },   // Torva (Melee)
+            { 20147, 20151, 20155 },   // Pernix (Range)
+            { 20159, 20163, 20167 },   // Virtus (Mage)
+
+            // ===== THIRD AGE (ultimate flex) =====
+            { 19301, 19302, 19305 },   // Third Age Druidic (wreath/top/legs)
+            { 10350, 10348, 10346 },   // Third Age Melee (helm/body/legs)
+
+            // ===== BARROWS (classic) =====
+            { 4716, 4720, 4722 },      // Dharok
+            { 4724, 4728, 4730 },      // Guthan
+            { 4732, 4736, 4738 },      // Karil's
+            { 4708, 4712, 4714 },      // Ahrim's
+            { 4745, 4749, 4751 },      // Torag
+            { 4753, 4757, 4759 },      // Verac
+
+            // ===== GOD WARS (Bandos / Armadyl) =====
+            { -1,    11724, 11726 },   // Bandos (no helm in set)
+            { 11722, 11718, 11720 },   // Armadyl (helm/chest/legs per user spec)
+
+            // ===== SKILLER EFFICIENCY OUTFITS =====
+            { 10941, 10939, 10940 },   // Lumberjack
+            { 20789, 20791, 20790 },   // Golden mining
+            { 25185, 25186, 25187 },   // Master fishing
+            { 25195, 25196, 25197 },   // Sous chef cooking
+            { 22332, 22334, 22336 },   // Wicked runecrafting
+
+            // ===== ELEGANT COSTUMES (verified clue rewards) =====
+            { -1, 10404, 10424 },      // red elegant (m)
+            { -1, 10406, 10426 },      // red elegant (f)
+            { -1, 10408, 10428 },      // blue elegant (m)
+            { -1, 10410, 10430 },      // blue elegant (f)
+            { -1, 10412, 10432 },      // green elegant (m)
+            { -1, 10414, 10434 },      // green elegant (f)
+            { -1, 10400, 10420 },      // black elegant
+            { -1, 10402, 10422 },      // white elegant
+            { -1, 10416, 10436 },      // purple elegant (m)
+            { -1, 10418, 10438 },      // purple elegant (f)
+
+            // Elegant + headband / boater
+            { 2645, 10404, 10424 },
+            { 2647, 10408, 10428 },
+            { 2649, 10412, 10432 },
+            { 7319, 10402, 10422 },
+            { 7325, 10400, 10420 },
+
+            // ===== GOD VESTMENTS =====
+            { 10452, 10458, 10460 },   // saradomin
+            { 10454, 10462, 10464 },   // guthix
+            { 10456, 10466, 10468 },   // zamorak
+
+            // ===== BOB THE CAT SHIRTS + WIZARD SKIRT =====
+            { -1, 10316, 1095 }, { -1, 10318, 1095 }, { -1, 10320, 1095 },
+            { -1, 10322, 1095 }, { -1, 10324, 1095 },
+
+            // ===== WIZARD / MYSTIC / CASUAL FILLER =====
+            { 579, 577, 1013 },        // wizard blue
+            { 1037, 1005, 1013 },      // black wizard
+            { -1, 577, 1095 },         // wizard top + skirt
+            { 4089, 4091, 4093 },      // mystic blue
+            { 4099, 4101, 4103 },      // mystic dark
+            { 4109, 4111, 4113 },      // mystic light
+            { 2581, 1005, 1013 },      // robin hood + black robes
+            { -1, 1011, 1013 },        // druidic
+            { -1, 1015, 1017 },        // priest gown
+            { -1, 542, 544 },          // monk's robe
+            { 10398, 1005, 1013 },     // sleeping cap
+
+            // ===== RUNE / DRAGON (mid-tier filler) =====
+            { 1163, 1127, 1079 },      // full rune
+            { 1149, 3140, 4087 },      // dragon med + chain + plate
+
+            // ===== HYBRID =====
+            { 2581, 577, 1095 },
+            { 1037, 4101, 4103 },
+            { 579, 4091, 4093 },
+            { -1, 1005, 1095 },
         };
         // GearSets externalised pool overrides hardcoded array if present.
         // Lets admin panel edit outfits without recompiling. Falls back to
