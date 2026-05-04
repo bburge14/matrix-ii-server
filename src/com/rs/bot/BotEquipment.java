@@ -759,8 +759,12 @@ public final class BotEquipment {
     // ===== ACCESSORIES (rings, amulets, capes) =====
 
     private static void applyAccessories(Player bot, String archetype, int cb) {
-        // Skip if archetype handles its own accessories (skiller has cape, maxed has ring/cape/ammy already)
-        if ("skiller".equals(archetype) || "maxed".equals(archetype)) return;
+        // Skip if archetype handles its own accessories - socialites was the
+        // culprit for "wild combos": applyAccessories was layering team capes
+        // (14641/14642) and iron boots (4121) over the curated wizard /
+        // mystic outfit set, breaking the look. Socialite owns its slots.
+        if ("skiller".equals(archetype) || "maxed".equals(archetype)
+                || "socialite".equals(archetype)) return;
 
         // Amulet - 60% chance
         if (chance(60) && bot.getEquipment().getItem(Equipment.SLOT_AMULET) == null) {

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 import requests
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 # ----- Config -----
 
@@ -132,6 +132,16 @@ class MatrixAPI:
         return self._post("/admin/citizens/budget/apply",
                           {"includeManual": "true" if include_manual else "false"})
 
+    # GE prices
+    def ge_prices_catalog(self):     return self._get("/admin/ge/prices?catalog=1")
+    def ge_prices_for(self, ids):
+        if not ids: return {"prices": {}, "names": {}}
+        return self._get("/admin/ge/prices?ids=" + ",".join(str(i) for i in ids))
+    def ge_prices_bulk_set(self, prices):
+        # prices is {int_id: int_price}; server expects {"id_str": int_price}
+        return self._post("/admin/ge/prices/bulk",
+                          {"prices": {str(k): int(v) for k, v in prices.items()}})
+
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
     def profiler_stop(self):         return self._post("/admin/profiler/stop")
@@ -193,7 +203,7 @@ class App(ctk.CTk):
                      font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
 
         self.tabs = {}
-        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Players", "Server", "Backups", "Log", "Settings"):
+        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "GE Prices", "Players", "Server", "Backups", "Log", "Settings"):
             btn = ctk.CTkButton(self.sidebar, text=name, height=36,
                                 command=lambda n=name: self.show(n))
             btn.pack(fill="x", padx=10, pady=4)
@@ -212,6 +222,7 @@ class App(ctk.CTk):
         self.tabs["Bots"]["frame"]      = BotsFrame(self.content, self.api)
         self.tabs["Bot AI"]["frame"]    = BotAIFrame(self.content, self.api)
         self.tabs["Citizens"]["frame"]  = CitizensFrame(self.content, self.api)
+        self.tabs["GE Prices"]["frame"] = GePricesFrame(self.content, self.api)
         self.tabs["Players"]["frame"]   = PlayersFrame(self.content, self.api)
         self.tabs["Server"]["frame"]    = ServerFrame(self.content, self.api)
         self.tabs["Backups"]["frame"]   = BackupsFrame(self.content, self.api)
@@ -1222,6 +1233,236 @@ class SlotEditor(ctk.CTkToplevel):
         if self.on_save:
             self.on_save(self.idx, updated)
         self.destroy()
+
+
+# ----- GE Prices tab -----
+
+def _fmt_gp(n):
+    """Match the Java BotTradeHandler.fmtGp - 800m / 50k / 1.5b."""
+    try: n = int(n)
+    except (TypeError, ValueError): return "?"
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    if n >= 1_000_000_000:
+        v = n / 1_000_000_000
+        return sign + (f"{int(v)}b" if v == int(v) else f"{v:.1f}b".rstrip("0").rstrip("."))
+    if n >= 1_000_000:
+        v = n / 1_000_000
+        return sign + (f"{int(v)}m" if v == int(v) else f"{v:.1f}m".rstrip("0").rstrip("."))
+    if n >= 10_000:
+        v = n / 1_000
+        return sign + (f"{int(v)}k" if v == int(v) else f"{v:.1f}k".rstrip("0").rstrip("."))
+    return sign + str(n)
+
+
+def _parse_gp(s):
+    """Parse '800m', '50k', '1.5b', '12345' -> int. Returns None if junk."""
+    if s is None: return None
+    s = str(s).strip().lower().replace(",", "").replace("gp", "").strip()
+    if not s: return None
+    mult = 1
+    if s.endswith("k"): mult = 1_000;        s = s[:-1]
+    elif s.endswith("m"): mult = 1_000_000;   s = s[:-1]
+    elif s.endswith("b"): mult = 1_000_000_000; s = s[:-1]
+    try:
+        return int(round(float(s.strip()) * mult))
+    except ValueError:
+        return None
+
+
+class GePricesFrame(ctk.CTkFrame):
+    """View + edit live in-game GE prices for every item in the bot
+    catalog. Reads via /admin/ge/prices?catalog=1, edits via
+    /admin/ge/prices/bulk. Prices are persisted server-side via
+    GrandExchange.savePrices() so they survive a restart.
+    """
+    def __init__(self, master, api):
+        super().__init__(master)
+        self.api = api
+        self.rows = []           # list of {id, name, price (int)}
+        self.dirty = {}          # id -> new price (int) for unsaved edits
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=20, pady=(20, 5))
+        ctk.CTkLabel(top, text="GE Prices",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        self.status_label = ctk.CTkLabel(top, text="—",
+                                          font=ctk.CTkFont(size=12))
+        self.status_label.pack(side="left", padx=20)
+
+        actions = ctk.CTkFrame(self)
+        actions.pack(fill="x", padx=20, pady=4)
+        ctk.CTkButton(actions, text="Refresh", width=100,
+                      command=self.refresh).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Save Edits", width=110, fg_color="#1b6e3a",
+                      command=self._save_edits).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Push Catalog Defaults", width=170,
+                      command=self._push_catalog,
+                      fg_color="#a05522").pack(side="left", padx=4)
+        ctk.CTkLabel(actions, text=" │ Filter:").pack(side="left", padx=(20, 4))
+        self.filter_var = tk.StringVar(value="")
+        ent = ctk.CTkEntry(actions, textvariable=self.filter_var, width=200,
+                           placeholder_text="name or id substring")
+        ent.pack(side="left", padx=4)
+        ent.bind("<KeyRelease>", lambda _e: self._render())
+
+        hint = ctk.CTkLabel(self,
+            text="Edit a price (use 800m / 50k / 1.5b shorthand) and Save.\n"
+                 "Push Catalog Defaults: copies BotTradeHandler.java prices "
+                 "into the live GE.",
+            font=ctk.CTkFont(size=11), justify="left", text_color="#888")
+        hint.pack(fill="x", padx=20, pady=(0, 4))
+
+        # Table
+        tree_frame = ctk.CTkFrame(self)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        cols = ("id", "name", "price", "fmt")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", background="#2b2b2b", foreground="white",
+                        fieldbackground="#2b2b2b", borderwidth=0, rowheight=26)
+        style.configure("Treeview.Heading", background="#1f6aa5",
+                        foreground="white", borderwidth=0)
+        style.map("Treeview", background=[("selected", "#1f6aa5")])
+
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                  selectmode="browse")
+        widths = {"id": 70, "name": 280, "price": 130, "fmt": 90}
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=widths.get(c, 100), anchor="w")
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical",
+                            command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<Double-1>", self._edit_selected)
+
+    def on_show(self):
+        self.refresh()
+
+    def refresh(self):
+        def do():
+            try:
+                resp = self.api.ge_prices_catalog()
+                self.after(0, lambda: self._apply(resp))
+            except Exception as e:
+                self.after(0, lambda: self.status_label.configure(
+                    text=f"refresh failed: {e}", text_color="#cc3030"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply(self, resp):
+        prices = (resp or {}).get("prices", {})
+        names = (resp or {}).get("names", {})
+        self.rows = []
+        for k, v in prices.items():
+            try: iid = int(k)
+            except ValueError: continue
+            self.rows.append({
+                "id": iid,
+                "name": names.get(k, "?"),
+                "price": int(v) if v is not None else 0,
+            })
+        self.rows.sort(key=lambda r: r["id"])
+        self.dirty.clear()
+        self.status_label.configure(text=f"{len(self.rows)} items",
+                                     text_color="#3fbf3f")
+        self._render()
+
+    def _render(self):
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        flt = self.filter_var.get().strip().lower()
+        for r in self.rows:
+            if flt and flt not in r["name"].lower() and flt not in str(r["id"]):
+                continue
+            price = self.dirty.get(r["id"], r["price"])
+            tag = ("dirty",) if r["id"] in self.dirty else ()
+            self.tree.insert("", "end", iid=str(r["id"]), values=(
+                r["id"], r["name"], price, _fmt_gp(price)), tags=tag)
+        self.tree.tag_configure("dirty", background="#3a3520")
+
+    def _edit_selected(self, _evt=None):
+        sel = self.tree.selection()
+        if not sel: return
+        iid = int(sel[0])
+        row = next((r for r in self.rows if r["id"] == iid), None)
+        if not row: return
+        cur = self.dirty.get(iid, row["price"])
+        new = simpledialog.askstring(
+            "Edit price",
+            f"{row['name']} (id {iid})\n"
+            f"Current: {_fmt_gp(row['price'])} ({row['price']:,}gp)\n\n"
+            f"New price (e.g. 800m, 50k, 1.5b, 12345):",
+            initialvalue=_fmt_gp(cur))
+        if new is None: return
+        parsed = _parse_gp(new)
+        if parsed is None or parsed < 0:
+            messagebox.showerror("Bad input",
+                f"Couldn't parse '{new}'.\n"
+                f"Use plain ints or k/m/b suffixes (e.g. 50k, 1.5m, 800m, 1b).")
+            return
+        if parsed > 2_147_483_647:
+            messagebox.showerror("Too large",
+                "Java int max is 2.147b. Pick a value <= 2b.")
+            return
+        if parsed == row["price"]:
+            self.dirty.pop(iid, None)
+        else:
+            self.dirty[iid] = parsed
+        self._render()
+
+    def _save_edits(self):
+        if not self.dirty:
+            messagebox.showinfo("Nothing to save",
+                "No edits pending. Double-click a row to edit a price.")
+            return
+        n = len(self.dirty)
+        if not messagebox.askyesno("Confirm",
+                f"Push {n} edited price{'s' if n != 1 else ''} to the live GE?"):
+            return
+        def do():
+            try:
+                resp = self.api.ge_prices_bulk_set(self.dirty)
+                applied = resp.get("applied", "?")
+                self.after(0, lambda: messagebox.showinfo(
+                    "Saved", f"Server applied {applied} of {n} prices"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Save failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _push_catalog(self):
+        if not messagebox.askyesno("Push catalog",
+                "Copy every BotTradeHandler.java StockEntry price into the "
+                "live GE? This overwrites any current GE prices for those "
+                "items with the catalog defaults."):
+            return
+        # Pulls ge_prices_catalog (which returns CURRENT live values, not
+        # catalog values). To push catalog values we need the script.
+        # Easier: call /admin/ge/prices/bulk with a special "from-catalog"
+        # mode... but our endpoint doesn't have that. Use the existing
+        # tool via subprocess instead.
+        import subprocess
+        def do():
+            try:
+                base = self.api.base
+                token = self.api.cfg.get("token", "")
+                cmd = [
+                    "python3", "tools/ge_push_catalog.py",
+                    "--server", base, "--token", token,
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True,
+                                       timeout=60)
+                out = (proc.stdout + "\n" + proc.stderr).strip()
+                self.after(0, lambda: messagebox.showinfo(
+                    "Catalog pushed", out[-1500:]))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Push failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
 
 
 # ----- Players tab -----

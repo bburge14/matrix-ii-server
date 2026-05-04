@@ -192,7 +192,7 @@ public final class BotTradeHandler {
 
         switch (phase) {
             case 0:
-                sayBoth(bot, pname + " gave " + bet + "gp");
+                sayBoth(bot, pname + " gave " + fmtGp(bet) + "gp");
                 bot.getTemporaryAttributtes().put("GambleAnnouncePhase", 1);
                 bot.getTemporaryAttributtes().put("GambleAnnounceNextMs", now + ANNOUNCE_STEP_MS);
                 return true;
@@ -208,9 +208,9 @@ public final class BotTradeHandler {
                 return true;
             case 3:
                 if (win) {
-                    sayBoth(bot, pname + " WINS " + payout + "gp!");
+                    sayBoth(bot, pname + " WINS " + fmtGp(payout) + "gp!");
                 } else {
-                    sayBoth(bot, "house wins " + bet + "gp - better luck next time");
+                    sayBoth(bot, "house wins " + fmtGp(bet) + "gp - better luck next time");
                 }
                 bot.getTemporaryAttributtes().put("GambleAnnouncePhase", 4);
                 bot.getTemporaryAttributtes().put("GambleAnnounceNextMs", now + ANNOUNCE_STEP_MS);
@@ -362,7 +362,7 @@ public final class BotTradeHandler {
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         String pname = target.getDisplayName();
         if (playerGp < MIN_BET) {
-            sayBoth(bot, "min bet is " + MIN_BET + "gp - try again");
+            sayBoth(bot, "min bet is " + fmtGp(MIN_BET) + "gp - try again");
             bot.getTrade().cancelTrade();
             return;
         }
@@ -371,7 +371,7 @@ public final class BotTradeHandler {
             // 100m internally. Player drops their gp and re-trades within
             // the limit. User feedback: "I gave 50m, bot said 10m, kept
             // the rest" - that was the silent cap doing exactly this.
-            sayBoth(bot, "max bet is " + MAX_BET + "gp - reduce and retry");
+            sayBoth(bot, "max bet is " + fmtGp(MAX_BET) + "gp - reduce and retry");
             bot.getTrade().cancelTrade();
             return;
         }
@@ -406,7 +406,7 @@ public final class BotTradeHandler {
             // to see what's being offered to decide whether to accept.
             ensureInvCoins(bot, payout);
             if (bot.getInventory().getAmountOf(COINS) < payout) {
-                sayBoth(bot, "couldn't pay out, sorry");
+                sayBoth(bot, "can't cover " + fmtGp(payout) + "gp - sorry");
                 bot.getTrade().cancelTrade();
                 bot.getTemporaryAttributtes().remove("BotIsPayoutTrade");
                 bot.getTemporaryAttributtes().remove("BotPayoutAmount");
@@ -415,7 +415,7 @@ public final class BotTradeHandler {
             try {
                 bot.getTrade().addItem(new Item(COINS,
                     (int) Math.min(Integer.MAX_VALUE, payout)));
-                sayBoth(bot, "here's your " + payout + "gp - hit accept");
+                sayBoth(bot, "here's your " + fmtGp(payout) + "gp - hit accept");
                 bot.getTemporaryAttributtes().put("BotPayoutOffered", Boolean.TRUE);
             } catch (Throwable ignored) {}
             return;
@@ -619,8 +619,8 @@ public final class BotTradeHandler {
             // Initial offer: full stack for stackable; single for non-stack.
             int initialQty = isStackable(stock.itemId) ? onHand : 1;
             sayBoth(bot, "selling " + initialQty + "x " + stock.name + " at "
-                + stock.priceGp + "gp each, total "
-                + ((long) initialQty * stock.priceGp) + "gp - add gp + accept");
+                + fmtGp(stock.priceGp) + "gp each, total "
+                + fmtGp((long) initialQty * stock.priceGp) + "gp - add gp + accept");
             try {
                 bot.getTrade().addItem(new Item(stock.itemId, initialQty));
                 bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", initialQty);
@@ -654,7 +654,7 @@ public final class BotTradeHandler {
         // player knows how much to add).
         Integer announcedQty = (Integer) bot.getTemporaryAttributtes().get("BotTraderAnnouncedQty");
         if (reqQtyObj != null && (announcedQty == null || announcedQty != units)) {
-            sayBoth(bot, units + "x " + stock.name + " = " + requiredGp + "gp - add it and accept");
+            sayBoth(bot, units + "x " + stock.name + " = " + fmtGp(requiredGp) + "gp - add it and accept");
             bot.getTemporaryAttributtes().put("BotTraderAnnouncedQty", units);
         }
         Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotTradeUnitsOffered");
@@ -682,7 +682,7 @@ public final class BotTradeHandler {
         // Wait for player to commit by clicking Accept.
         if (!playerTrade.hasAccepted()) return;
         if (units <= 0 || playerGp <= 0) {
-            sayBoth(bot, "need at least " + stock.priceGp + "gp for 1 " + stock.name);
+            sayBoth(bot, "need at least " + fmtGp(stock.priceGp) + "gp for 1 " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
@@ -690,15 +690,15 @@ public final class BotTradeHandler {
         // player ends up overpaying (excess goes to bot) or underpaying
         // (and we can't downgrade qty without breaking accept flow).
         if (reqQtyObj != null && playerGp < requiredGp) {
-            sayBoth(bot, "need " + requiredGp + "gp for " + units + "x " + stock.name
-                + " - you've only put in " + playerGp + "gp");
+            sayBoth(bot, "need " + fmtGp(requiredGp) + "gp for " + units + "x " + stock.name
+                + " - you've only put in " + fmtGp(playerGp) + "gp");
             return; // wait for player to add more
         }
 
         // Player accepted with enough gp. Bot accepts.
         try {
             long total = (long) units * stock.priceGp;
-            sayBoth(bot, "deal! " + units + "x " + stock.name + " for " + total + "gp");
+            sayBoth(bot, "deal! " + units + "x " + stock.name + " for " + fmtGp(total) + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
             bot.getTemporaryAttributtes().put("BotTradeSaleQty", units);
@@ -736,7 +736,7 @@ public final class BotTradeHandler {
 
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
-            sayBoth(bot, "buying " + chatIntent.itemName + " at " + unitPrice + "gp each - put it in");
+            sayBoth(bot, "buying " + chatIntent.itemName + " at " + fmtGp(unitPrice) + "gp each - put it in");
             bot.getTemporaryAttributtes().put("BotTradeStockOffered", Boolean.TRUE);
         }
 
@@ -776,7 +776,7 @@ public final class BotTradeHandler {
             return;
         }
         try {
-            sayBoth(bot, "deal! " + playerOffered + "x " + chatIntent.itemName + " for " + total + "gp");
+            sayBoth(bot, "deal! " + playerOffered + "x " + chatIntent.itemName + " for " + fmtGp(total) + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
         } catch (Throwable ignored) {}
@@ -793,7 +793,12 @@ public final class BotTradeHandler {
         if (pool == null || pool.length == 0) return null;
         int hash = bot.getDisplayName() == null ? 0
             : bot.getDisplayName().hashCode();
-        int base = Math.abs(hash) % pool.length;
+        // StockSalt is incremented every 30-min rotation so the bot picks a
+        // DIFFERENT entry on each rotation (otherwise hash-deterministic
+        // pickStockForBot would just re-pick the same item every time).
+        Object saltObj = bot.getTemporaryAttributtes().get("StockSalt");
+        int salt = saltObj instanceof Integer ? (Integer) saltObj : 0;
+        int base = Math.abs(hash + salt * 31) % pool.length;
         // Walk the catalog from `base` and return the first tradeable entry.
         // Without this, a bot whose name happened to hash to an untradeable
         // entry would silently fail to stock and immediately cancel "sold out".
@@ -832,14 +837,44 @@ public final class BotTradeHandler {
         }
     }
 
+    /** How often a trader bot rotates its featured stock. 30 min = the
+     *  user-requested cadence. Each bot's clock is staggered by a random
+     *  offset at first assignment so a cluster of traders doesn't rotate
+     *  simultaneously and confuse advert listeners. */
+    private static final long STOCK_ROTATION_MS = 30L * 60L * 1000L;
+
     /** Pick stock + materialize starting inventory if not already done.
      *  Returns null only on catastrophic failure. */
     private static StockEntry ensureBotStockAssigned(AIPlayer bot) {
         StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
+        Long pickedAt = (Long) bot.getTemporaryAttributtes().get("BotTraderStockPickedMs");
+        long now = System.currentTimeMillis();
+        // Rotate if 30 min elapsed since last pick.
+        if (stock != null && pickedAt != null
+                && now - pickedAt > STOCK_ROTATION_MS) {
+            // Rotate to a different stock entry so the bot becomes a
+            // different vendor for the next 30 min. pickStockForBot is
+            // hash-deterministic so we add a temp salt to force a new pick.
+            bot.getTemporaryAttributtes().put("StockSalt",
+                ((Integer) bot.getTemporaryAttributtes()
+                    .getOrDefault("StockSalt", 0)) + 1);
+            stock = pickStockForBot(bot);
+            if (stock != null) {
+                bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+                bot.getTemporaryAttributtes().put("BotTraderStockPickedMs", now);
+                // Reset advert broadcast cache so the new line goes out.
+                bot.getTemporaryAttributtes().remove("BotTradeBroadcastMs");
+                stockBot(bot, stock);
+            }
+        }
         if (stock == null) {
             stock = pickStockForBot(bot);
             if (stock == null) return null;
             bot.getTemporaryAttributtes().put("BotTraderStock", stock);
+            // Stagger first-pick time by 0-5 min so bots don't all sync.
+            long stagger = (long)(Math.random() * 5L * 60L * 1000L);
+            bot.getTemporaryAttributtes().put(
+                "BotTraderStockPickedMs", now - stagger);
             stockBot(bot, stock);
         }
         // Re-stock if depleted (bot sold everything between trades).
@@ -1180,11 +1215,11 @@ public final class BotTradeHandler {
             }
             if (stock != null) {
                 String[] templates = new String[] {
-                    "selling " + stock.name + " " + stock.priceGp + "gp each",
-                    "wts " + stock.name + " " + stock.priceGp + "gp",
-                    stock.name + " for sale - " + stock.priceGp + "gp ea",
-                    "got " + stock.name + " - " + stock.priceGp + "gp",
-                    "buy " + stock.name + " " + stock.priceGp + "gp"
+                    "selling " + stock.name + " " + fmtGp(stock.priceGp) + "gp each",
+                    "wts " + stock.name + " " + fmtGp(stock.priceGp) + "gp",
+                    stock.name + " for sale - " + fmtGp(stock.priceGp) + "gp ea",
+                    "got " + stock.name + " - " + fmtGp(stock.priceGp) + "gp",
+                    "buy " + stock.name + " " + fmtGp(stock.priceGp) + "gp"
                 };
                 line = templates[Utils.random(templates.length)];
             }
@@ -1222,6 +1257,34 @@ public final class BotTradeHandler {
      *  Each bot rolls one effect at first chat (cached in TemporaryAttributtes)
      *  so the same bot consistently uses the same color/animation - mirrors
      *  RS hosts who have a "signature look". */
+    /** Format a gp amount as a human-readable string. Mirrors RS host
+     *  shorthand: "800m", "50k", "1.5b". Used in all bot chat lines so
+     *  players don't have to count zeros. User explicitly asked for this. */
+    public static String fmtGp(long n) {
+        if (n < 0) return "-" + fmtGp(-n);
+        if (n >= 1_000_000_000L) {
+            double v = n / 1_000_000_000.0;
+            return (v == (long) v ? String.valueOf((long) v)
+                                  : String.format("%.1f", v).replaceAll("\\.0$", ""))
+                   + "b";
+        }
+        if (n >= 1_000_000L) {
+            double v = n / 1_000_000.0;
+            return (v == (long) v ? String.valueOf((long) v)
+                                  : String.format("%.1f", v).replaceAll("\\.0$", ""))
+                   + "m";
+        }
+        if (n >= 10_000L) {
+            double v = n / 1_000.0;
+            return (v == (long) v ? String.valueOf((long) v)
+                                  : String.format("%.1f", v).replaceAll("\\.0$", ""))
+                   + "k";
+        }
+        return Long.toString(n);
+    }
+
+    public static String fmtGp(int n) { return fmtGp((long) n); }
+
     public static void sayBoth(AIPlayer bot, String text) {
         sayBoth(bot, text, true);
     }
