@@ -35,13 +35,14 @@ public final class BotTradeHandler {
     private static final int MIN_BET = 100;
     private static final int MAX_BET = 100_000_000;
 
-    /** Gambling dice modes - per-bot, deterministic by display-name hash.
-     *  RuneScape host convention: NxX means "roll, win if >= N for X payout".
-     *  e.g. 55x2 = win at 55+, get 2x bet. Lower N = better odds for player. */
+    /** Gambling dice modes. We currently expose ONE universal mode (55x2)
+     *  per user request - "they should only advert one". Adding more
+     *  modes here would require also picking a per-bot mode at spawn,
+     *  which is the path we used to take and the user explicitly didn't
+     *  want. RuneScape host convention: NxX = "roll, win if >= N for X
+     *  payout". 55x2 = win at 55+, get 2x bet. */
     private static final DiceMode[] DICE_MODES = new DiceMode[] {
         new DiceMode("55x2", 55, 2),
-        new DiceMode("65x2", 65, 2),
-        new DiceMode("75x2", 75, 2),
     };
 
     /** How often (ms) gambler/trader bots broadcast their service line when
@@ -293,6 +294,10 @@ public final class BotTradeHandler {
         bot.getTemporaryAttributtes().remove("BotTradeUnitsOffered");
         bot.getTemporaryAttributtes().remove("BotPayoutOffered");
         bot.getTemporaryAttributtes().remove("BotTraderInitialOffered");
+        bot.getTemporaryAttributtes().remove("BotTraderRequestedQty");
+        bot.getTemporaryAttributtes().remove("BotTraderAnnouncedQty");
+        bot.getTemporaryAttributtes().remove("BotChatTradeIntent");
+        bot.getTemporaryAttributtes().remove("BotBuyerCoinsOffered");
     }
 
     // === SOCIALITE_GAMBLER: 2-trade dice flow ===
@@ -576,17 +581,21 @@ public final class BotTradeHandler {
             return;
         }
         // For chat-driven BUY (player wants to buy = bot sells specific item),
-        // override the bot's default stock with the requested item.
+        // build a one-off StockEntry for THIS trade only. Do NOT write it to
+        // BotTraderStock - that attribute is the bot's permanent advertised
+        // stock, and overwriting it caused bots to start broadcasting the
+        // chat-trade item afterwards instead of their original wares (user:
+        // "they need to stick to one thing").
+        StockEntry stock;
         if (chatIntent != null && chatIntent.intent == BotChatListener.Intent.BUY) {
             int price = chatIntent.price > 0
                 ? (int) Math.min(Integer.MAX_VALUE, chatIntent.price)
                 : catalogPriceFor(chatIntent.itemId);
             if (price <= 0) price = 1;
-            StockEntry override = new StockEntry(chatIntent.itemId, price, chatIntent.itemName, 1);
-            bot.getTemporaryAttributtes().put("BotTraderStock", override);
+            stock = new StockEntry(chatIntent.itemId, price, chatIntent.itemName, 1);
+        } else {
+            stock = ensureBotStockAssigned(bot);
         }
-
-        StockEntry stock = ensureBotStockAssigned(bot);
         if (stock == null) {
             sayBoth(bot, "no stock right now, sorry");
             bot.getTrade().cancelTrade();
@@ -621,23 +630,32 @@ public final class BotTradeHandler {
             return;
         }
 
-        // Update our offer to match the player's gp. Re-runs each tick so
-        // as they add more gp, the bot's offered qty grows in sync. Player
-        // can also chat "i want 25 logs" in trade and we honor that as a
-        // qty cap (BotChatListener stashes it as BotTraderRequestedQty).
+        // Decide units to offer:
+        //   - Player chat-narrowed ("i want 25 logs") -> EXACTLY that qty,
+        //     capped at onHand. Bot then announces required gp and waits.
+        //   - No narrow + player has gp -> scale qty by gp added.
+        //   - No narrow + 0 gp -> show FULL stack as preview.
+        // User: "I want to buy less than what they put in / bank sales"
+        // - chat narrow is the bank-sale narrowing path.
         int playerGp = countItem(playerTrade.getItemsContainer(), COINS);
         int unitsFromGp = (int) Math.min(Integer.MAX_VALUE, (long) playerGp / stock.priceGp);
         Integer reqQtyObj = (Integer) bot.getTemporaryAttributtes().get("BotTraderRequestedQty");
-        int requestedQty = reqQtyObj == null ? Integer.MAX_VALUE : reqQtyObj;
-        int unitsRequested = Math.min(unitsFromGp, requestedQty);
-        // Preview when player has 0gp: keep showing the FULL stack so they
-        // can see the merchandise (was previously yanking back to 1 - user
-        // didn't want low-tier sellers showing only 1 item).
         int units;
-        if (unitsRequested == 0) {
+        if (reqQtyObj != null) {
+            units = Math.min(reqQtyObj, onHand);
+        } else if (unitsFromGp == 0) {
             units = isStackable(stock.itemId) ? onHand : 1;
         } else {
-            units = Math.min(unitsRequested, onHand);
+            units = Math.min(unitsFromGp, onHand);
+        }
+        // Track expected price so we can validate at accept time.
+        long requiredGp = (long) units * stock.priceGp;
+        // Announce price change when chat-narrow first applies (so the
+        // player knows how much to add).
+        Integer announcedQty = (Integer) bot.getTemporaryAttributtes().get("BotTraderAnnouncedQty");
+        if (reqQtyObj != null && (announcedQty == null || announcedQty != units)) {
+            sayBoth(bot, units + "x " + stock.name + " = " + requiredGp + "gp - add it and accept");
+            bot.getTemporaryAttributtes().put("BotTraderAnnouncedQty", units);
         }
         Integer lastOfferedObj = (Integer) bot.getTemporaryAttributtes().get("BotTradeUnitsOffered");
         int lastOffered = lastOfferedObj == null ? 0 : lastOfferedObj;
@@ -663,20 +681,27 @@ public final class BotTradeHandler {
 
         // Wait for player to commit by clicking Accept.
         if (!playerTrade.hasAccepted()) return;
-        if (unitsRequested <= 0) {
+        if (units <= 0 || playerGp <= 0) {
             sayBoth(bot, "need at least " + stock.priceGp + "gp for 1 " + stock.name);
             bot.getTrade().cancelTrade();
             return;
         }
+        // For chat-narrowed trades, require the EXACT gp - otherwise the
+        // player ends up overpaying (excess goes to bot) or underpaying
+        // (and we can't downgrade qty without breaking accept flow).
+        if (reqQtyObj != null && playerGp < requiredGp) {
+            sayBoth(bot, "need " + requiredGp + "gp for " + units + "x " + stock.name
+                + " - you've only put in " + playerGp + "gp");
+            return; // wait for player to add more
+        }
 
-        // Player accepted with qty matching their gp. Bot accepts.
+        // Player accepted with enough gp. Bot accepts.
         try {
-            int actualUnits = Math.min(unitsRequested, onHand);
-            long total = (long) actualUnits * stock.priceGp;
-            sayBoth(bot, "deal! " + actualUnits + "x " + stock.name + " for " + total + "gp");
+            long total = (long) units * stock.priceGp;
+            sayBoth(bot, "deal! " + units + "x " + stock.name + " for " + total + "gp");
             bot.getTrade().accept(true);
             bot.getTemporaryAttributtes().put("BotTradeStage1", Boolean.TRUE);
-            bot.getTemporaryAttributtes().put("BotTradeSaleQty", actualUnits);
+            bot.getTemporaryAttributtes().put("BotTradeSaleQty", units);
         } catch (Throwable ignored) {}
     }
 
@@ -1034,33 +1059,33 @@ public final class BotTradeHandler {
         new StockEntry(20000, 300_000,   "fire cape", 1),
     };
 
-    /** Tier 3: HOLIDAY RARES per user spec. Partyhats, h'ween masks, santa
-     *  hats, easter items, christmas crackers. Premium pricing - these
-     *  bots stand at the NW corner of GE near the tree (3147, 3472). */
+    /** Tier 3: HOLIDAY RARES. User spec: "rares are stuff that are over 100m
+     *  in price." Every entry below is priced 100m+. These bots stand at
+     *  the NW corner of GE near the tree (3147, 3472) - premium location
+     *  for the premium tier. */
     private static final StockEntry[] CATALOG_RARE = new StockEntry[] {
-        // Partyhats (cracker rewards)
-        new StockEntry(1038, 80_000_000,  "red partyhat",    1),
-        new StockEntry(1040, 60_000_000,  "yellow partyhat", 1),
-        new StockEntry(1042, 70_000_000,  "blue partyhat",   1),
-        new StockEntry(1044, 50_000_000,  "green partyhat",  1),
-        new StockEntry(1046, 90_000_000,  "purple partyhat", 1),
-        new StockEntry(1048, 75_000_000,  "white partyhat",  1),
+        // Partyhats - the canonical rare. RS3 GE prices in the multi-billion
+        // range; tuned here for RSPS economy but still 100m+ as a floor.
+        new StockEntry(1038, 750_000_000, "red partyhat",    1),
+        new StockEntry(1040, 500_000_000, "yellow partyhat", 1),
+        new StockEntry(1042, 600_000_000, "blue partyhat",   1),
+        new StockEntry(1044, 450_000_000, "green partyhat",  1),
+        new StockEntry(1046, 800_000_000, "purple partyhat", 1),
+        new StockEntry(1048, 700_000_000, "white partyhat",  1),
         // Halloween masks
-        new StockEntry(1053, 40_000_000,  "red h'ween mask",   1),
-        new StockEntry(1055, 30_000_000,  "blue h'ween mask",  1),
-        new StockEntry(1057, 35_000_000,  "green h'ween mask", 1),
+        new StockEntry(1053, 300_000_000, "red h'ween mask",   1),
+        new StockEntry(1055, 250_000_000, "blue h'ween mask",  1),
+        new StockEntry(1057, 280_000_000, "green h'ween mask", 1),
         // Santa hat
-        new StockEntry(1050, 25_000_000,  "santa hat",       1),
-        // Easter / seasonal
-        new StockEntry(1959, 5_000_000,   "pumpkin",          1),
-        new StockEntry(962,  8_000_000,   "christmas cracker", 1),
-        new StockEntry(7927, 3_000_000,   "easter ring",      1),
-        // Disk of returning (small holiday)
-        new StockEntry(7771, 500_000,     "disk of returning", 1),
-        // Yo-yo, scythe, hweenmask variants etc
-        new StockEntry(4566, 1_500_000,   "rubber chicken",  1),
-        new StockEntry(1052, 12_000_000,  "scythe",           1),
-        new StockEntry(4084, 800_000,     "yo-yo",            1),
+        new StockEntry(1050, 200_000_000, "santa hat",       1),
+        // Christmas / easter / seasonal
+        new StockEntry(962,  150_000_000, "christmas cracker", 1),
+        new StockEntry(1959, 120_000_000, "pumpkin",           1),
+        new StockEntry(7927, 100_000_000, "easter ring",      1),
+        // Other rare collectibles at floor
+        new StockEntry(4566, 100_000_000, "rubber chicken",  1),
+        new StockEntry(1052, 180_000_000, "scythe",           1),
+        new StockEntry(4084, 100_000_000, "yo-yo",            1),
     };
 
     /** Mixed legacy catalog - flattened union of the three tiers, used by

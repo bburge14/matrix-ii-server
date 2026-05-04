@@ -353,24 +353,46 @@ public final class BotEquipment {
     // Holiday rares (partyhats / hween masks) gated to 5% and known IDs.
     // No comp/max capes. No untradeable PvP gear.
     private static void applySocialite(Player bot, int cb) {
-        // === Helmet ===
+        // === Coordinated outfit set: [hat, chest, legs] ===
+        // Each row is a matching set so we don't end up with mystic-blue
+        // top + mystic-dark legs (user: "weird shit" outfit). -1 hat means
+        // the set is bare-headed; holiday rare roll (5%) overrides.
+        int[][] outfits = {
+            // Wizard family (blue robes)
+            { 579, 577, 1013 },     // hat + top + bottom
+            { 579, 577, 1095 },     // hat + top + skirt
+            { -1,  577, 1013 },     // top + bottom (no hat)
+            { -1,  577, 1095 },     // top + skirt (no hat)
+            // Black wizard
+            { 1037, 1005, 1013 },
+            { 1037, 1005, 1095 },
+            // Mystic blue (full set hat/top/legs)
+            { 4089, 4091, 4093 },
+            { -1,   4091, 4093 },
+            // Mystic dark
+            { 4099, 4101, 4103 },
+            { -1,   4101, 4103 },
+            // Mystic light
+            { 4109, 4111, 4113 },
+            { -1,   4111, 4113 },
+            // Robin hood + black robes (a "rogue host" look)
+            { 2581, 1005, 1013 },
+        };
+        int[] outfit = outfits[Utils.random(outfits.length)];
+
+        // 5% chance: holiday rare hat overrides whatever the outfit's hat
+        // would be. Phats / hween masks are themselves the fashion focus.
         int[] holidayHats = {
             1038, 1040, 1042, 1044, 1046, 1048,    // partyhats (red/yellow/blue/green/purple/white)
             1050,                                    // santa hat
             1053, 1055, 1057,                        // h'ween masks (red/blue/green)
         };
-        int[] standardHats = {
-            579,     // wizard hat (blue)
-            1037,    // black wizard hat
-            2581,    // robin hood hat
-        };
-        if (chance(5)) {
-            equip(bot, Equipment.SLOT_HAT, pick(holidayHats));
-        } else if (chance(40)) {
-            equip(bot, Equipment.SLOT_HAT, pick(standardHats));
-        }
+        int hatId = chance(5) ? pick(holidayHats) : outfit[0];
+        if (hatId > 0) equip(bot, Equipment.SLOT_HAT, hatId);
+        equip(bot, Equipment.SLOT_CHEST, outfit[1]);
+        equip(bot, Equipment.SLOT_LEGS, outfit[2]);
 
-        // === Cape (skill capes + fire cape ONLY - canWear gates on stat) ===
+        // === Cape (skill capes + fire cape - canWear gates on stat) ===
         int[] capes = {
             9747, 9748, 9749,  // skill cape (attack) + trim + hood
             9756, 9757,        // skill cape (ranged)
@@ -382,30 +404,6 @@ public final class BotEquipment {
             6570,              // fire cape
         };
         if (chance(60)) equip(bot, Equipment.SLOT_CAPE, pick(capes));
-
-        // === Chest === (verified TOPS only)
-        // Mystic IDs from ItemSets: 4091 blue/4101 dark/4111 light = TOPS
-        int[] robeTops = {
-            577,     // wizard robe top (blue)
-            1005,    // black robe top
-            4091,    // mystic top (blue)
-            4101,    // mystic top (dark)
-            4111,    // mystic top (light)
-        };
-        equip(bot, Equipment.SLOT_CHEST, pick(robeTops));
-
-        // === Legs === (verified LEGS)
-        // Mystic IDs from ItemSets: 4093 blue/4103 dark/4113 light = LEGS
-        // (4099 was previously mislabelled "red legs" - it's actually the
-        // dark-mystic HAT, hence "trader sold legs but gave a hat" bug.)
-        int[] robeLegs = {
-            1013,    // wizard robe bottom (blue)
-            1095,    // wizard skirt
-            4093,    // mystic legs (blue)
-            4103,    // mystic legs (dark)
-            4113,    // mystic legs (light)
-        };
-        equip(bot, Equipment.SLOT_LEGS, pick(robeLegs));
 
         // === Boots ===
         int[] boots = {

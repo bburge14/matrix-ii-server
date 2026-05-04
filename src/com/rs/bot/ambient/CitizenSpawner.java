@@ -235,6 +235,14 @@ public final class CitizenSpawner {
                     bot.getMoneyPouch().setCoinsAmount(250_000_000);
                 } catch (Throwable ignored) {}
             }
+            // Rare-tier traders need a fat bankroll to BUY 100m+ items
+            // from players via chat (WTS broadcast). Tier 1/2 traders deal
+            // in low-mid items so default wealth is fine.
+            if (arch == AmbientArchetype.SOCIALITE_GE_TRADER_RARE) {
+                try {
+                    bot.getMoneyPouch().setCoinsAmount(1_000_000_000);
+                } catch (Throwable ignored) {}
+            }
 
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
