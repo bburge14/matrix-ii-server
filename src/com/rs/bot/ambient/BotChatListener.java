@@ -69,6 +69,12 @@ public final class BotChatListener {
     /** Price tolerance window: +/- 25% of catalog price. */
     private static final double PRICE_TOLERANCE = 0.25;
 
+    /** Per-broadcast chance any nearby bot responds at all. User explicitly
+     *  asked this not be 100% - real GE traders don't acknowledge every
+     *  shout. 50% feels close to authentic without making the listener
+     *  feel broken. */
+    private static final double RESPONSE_CHANCE = 0.50;
+
     /** Common item aliases. Many phrases map to one item id. Lowercase keys
      *  only - we lowercase the player's chat before looking up. */
     private static final Map<String, Integer> ALIASES = new HashMap<>();
@@ -242,6 +248,9 @@ public final class BotChatListener {
         try {
             TradeIntent intent = parseIntent(lower);
             if (intent == null) return;
+            // Roll response chance BEFORE picking a bot - if no one's
+            // responding, we don't even need to scan for a candidate.
+            if (Math.random() > RESPONSE_CHANCE) return;
             AIPlayer responder = findResponderBot(player, intent);
             if (responder == null) return;
             scheduleBotResponse(responder, player, intent);

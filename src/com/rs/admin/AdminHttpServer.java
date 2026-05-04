@@ -106,6 +106,11 @@ public final class AdminHttpServer {
             // Updates are applied via setPrice() and persisted via
             // savePrices() so they survive a restart.
             server.createContext("/admin/ge/prices/bulk", auth(postOnly(new GePricesBulkHandler())));
+            // GET /admin/ge/prices?ids=1,2,3 - returns current prices for the
+            // requested item ids (or every catalog item id if 'ids' is omitted
+            // and 'catalog=1' is set). Reads through GrandExchange.getPrice()
+            // which falls back to ItemDefinitions value when no price is set.
+            server.createContext("/admin/ge/prices", auth(new GePricesGetHandler()));
 
             // World tick profiler (Phase 1.C step 1)
             server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
@@ -1383,6 +1388,89 @@ public final class AdminHttpServer {
             sb.append("]}");
             sendText(ex, 200, sb.toString());
         }
+    }
+
+    /** GET /admin/ge/prices?ids=4151,11696,1038
+     *      or  /admin/ge/prices?catalog=1
+     *  Returns {"ok":true,"prices":{"4151":86700,...},"names":{"4151":"abyssal whip"}}
+     *  When catalog=1, includes every id present in the bot StockEntry
+     *  catalog so the admin panel can show one-row-per-item table.
+     *  When ids=... is given, fetches just those. */
+    private static class GePricesGetHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.util.Map<String, String> q = parseQuery(ex.getRequestURI().getRawQuery());
+                java.util.List<Integer> ids = new java.util.ArrayList<>();
+                String idsParam = q.get("ids");
+                if (idsParam != null && !idsParam.isEmpty()) {
+                    for (String s : idsParam.split(",")) {
+                        try { ids.add(Integer.parseInt(s.trim())); }
+                        catch (Throwable ignored) {}
+                    }
+                }
+                if (ids.isEmpty() && "1".equals(q.get("catalog"))) {
+                    // Every id from the bot trader catalog file.
+                    java.util.Set<Integer> seen = new java.util.LinkedHashSet<>();
+                    java.io.File f = new java.io.File("src/com/rs/bot/ambient/BotTradeHandler.java");
+                    if (f.isFile()) {
+                        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                            "new\\s+StockEntry\\(\\s*(\\d+)\\s*,");
+                        java.util.regex.Matcher m = p.matcher(
+                            new String(java.nio.file.Files.readAllBytes(f.toPath())));
+                        while (m.find()) {
+                            try { seen.add(Integer.parseInt(m.group(1))); }
+                            catch (Throwable ignored) {}
+                        }
+                    }
+                    ids.addAll(seen);
+                }
+                StringBuilder prices = new StringBuilder("{");
+                StringBuilder names = new StringBuilder("{");
+                boolean first = true;
+                for (int id : ids) {
+                    if (id <= 0) continue;
+                    int price;
+                    try {
+                        price = com.rs.game.player.content.grandExchange
+                            .GrandExchange.getPrice(id);
+                    } catch (Throwable t) { price = -1; }
+                    String name = "";
+                    try {
+                        com.rs.cache.loaders.ItemDefinitions def =
+                            com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                        if (def != null && def.getName() != null) name = def.getName();
+                    } catch (Throwable ignored) {}
+                    if (!first) { prices.append(","); names.append(","); }
+                    first = false;
+                    prices.append("\"").append(id).append("\":").append(price);
+                    names.append("\"").append(id).append("\":\"")
+                          .append(jsonEscape(name)).append("\"");
+                }
+                prices.append("}");
+                names.append("}");
+                sendText(ex, 200, "{\"ok\":true,\"prices\":" + prices
+                    + ",\"names\":" + names + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                    + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    private static java.util.Map<String, String> parseQuery(String q) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        if (q == null || q.isEmpty()) return out;
+        for (String pair : q.split("&")) {
+            int eq = pair.indexOf('=');
+            try {
+                String k = java.net.URLDecoder.decode(
+                    eq < 0 ? pair : pair.substring(0, eq), "UTF-8");
+                String v = eq < 0 ? "" : java.net.URLDecoder.decode(
+                    pair.substring(eq + 1), "UTF-8");
+                out.put(k, v);
+            } catch (Throwable ignored) {}
+        }
+        return out;
     }
 
     /** POST /admin/ge/prices/bulk - body {"prices":{"id":price,...}}.

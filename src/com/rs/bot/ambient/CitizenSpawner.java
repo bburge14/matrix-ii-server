@@ -234,6 +234,12 @@ public final class CitizenSpawner {
                 try {
                     bot.getMoneyPouch().setCoinsAmount(250_000_000);
                 } catch (Throwable ignored) {}
+                // Give the bot a real RS dice item (15098 = "dice (up to 100)")
+                // so it visibly carries dice while standing around. Animation
+                // 11900 fires at roll time. Drop into inventory so they can
+                // brandish it without stat reqs.
+                try { bot.getInventory().addItem(15098, 1); }
+                catch (Throwable ignored) {}
             }
             // Rare-tier traders need a fat bankroll to BUY 100m+ items
             // from players via chat (WTS broadcast). Tier 1/2 traders deal
