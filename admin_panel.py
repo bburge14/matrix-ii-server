@@ -131,6 +131,8 @@ class MatrixAPI:
     def citizens_budget_apply(self, include_manual=True):
         return self._post("/admin/citizens/budget/apply",
                           {"includeManual": "true" if include_manual else "false"})
+    def citizens_budget_reseed(self):
+        return self._post("/admin/citizens/budget/reseed")
 
     # Phantom GE
     def phantom_ge_get(self):    return self._get("/admin/phantom-ge")
@@ -851,6 +853,8 @@ class CitizensFrame(ctk.CTkFrame):
                       command=self._save_budget).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Clear All Live", width=120, fg_color="#aa3030",
                       command=self._clear_all).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Reseed Defaults", width=130, fg_color="#a05522",
+                      command=self._reseed_defaults).pack(side="left", padx=4)
         ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
         ctk.CTkButton(actions, text="+ Add Row", width=90,
                       command=self._add_slot).pack(side="left", padx=4)
@@ -1039,7 +1043,9 @@ class CitizensFrame(ctk.CTkFrame):
         self.dirty_label.configure(text="● unsaved changes")
 
     def _add_slot(self):
-        # Default to a generic socialite at GE
+        # Default to a generic socialite at GE; immediately open the editor
+        # so the user fills in the real values rather than ending up with
+        # multiple identical default rows (the "copies" complaint).
         new_slot = {
             "archetype": (self.archetypes[0]["name"] if self.archetypes else "SOCIALITE_BANKSTAND"),
             "count": 10, "x": 3164, "y": 3486, "plane": 0,
@@ -1048,6 +1054,26 @@ class CitizensFrame(ctk.CTkFrame):
         self.slots.append(new_slot)
         self._mark_dirty()
         self._render_table({})
+        # Auto-edit the new row.
+        idx = len(self.slots) - 1
+        self.tree.selection_set(str(idx))
+        SlotEditor(self, self.slots[idx], self.archetypes, self._on_slot_edited).load(idx)
+
+    def _reseed_defaults(self):
+        if not messagebox.askyesno("Reseed defaults",
+                "Wipe the current budget and restore server defaults? "
+                "Your edits will be backed up server-side as "
+                "data/citizen_budget.json.bak.reseed-<timestamp>."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_reseed()
+                self.after(0, lambda: messagebox.showinfo("Reseeded",
+                    f"Server reseeded {resp.get('slots', '?')} default slots"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Reseed failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
 
     def _delete_selected(self):
         sel = self.tree.selection()

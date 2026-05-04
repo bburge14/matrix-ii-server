@@ -97,6 +97,20 @@ public final class AdminHttpServer {
             server.createContext("/admin/citizens/clear",   auth(postOnly(new CitizensClearHandler())));
             // Citizen population budget (persistent config)
             server.createContext("/admin/citizens/budget",       auth(new CitizensBudgetHandler()));
+            // POST /admin/citizens/budget/reseed - wipe + reseed defaults.
+            // Recovery path when the budget gets weird in the panel.
+            server.createContext("/admin/citizens/budget/reseed",
+                auth(postOnly(new HttpHandler() {
+                    @Override public void handle(HttpExchange ex) throws IOException {
+                        try {
+                            int n = com.rs.bot.ambient.CitizenBudget.reseedDefaults();
+                            sendText(ex, 200, "{\"ok\":true,\"slots\":" + n + "}");
+                        } catch (Throwable t) {
+                            sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                                + jsonEscape(t.toString()) + "\"}");
+                        }
+                    }
+                })));
             server.createContext("/admin/citizens/budget/apply", auth(postOnly(new CitizensBudgetApplyHandler())));
             server.createContext("/admin/citizens/archetypes",   auth(new CitizensArchetypesHandler()));
 

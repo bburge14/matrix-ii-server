@@ -2,6 +2,11 @@
 15158 - 3085 3504 0
 // oracle @ ge
 15158 - 3165 3477 0
+// Skillcape Master clone @ Burthorpe bank - trims untrimmed skillcapes
+// when player has 2+ 99s. Same NPC id (2253) as DZ Skilling Master so
+// same shop + Talk-to dialogue, but the dialogue now offers a Trim Cape
+// option when the player is eligible.
+2253 - 2920 3556 0
 // oracle of darkness
 //15185 - 3194 3922 0
 //donator zone
