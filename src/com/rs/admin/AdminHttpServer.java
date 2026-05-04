@@ -100,6 +100,13 @@ public final class AdminHttpServer {
             server.createContext("/admin/citizens/budget/apply", auth(postOnly(new CitizensBudgetApplyHandler())));
             server.createContext("/admin/citizens/archetypes",   auth(new CitizensArchetypesHandler()));
 
+            // Bulk GE price update - lets the audit script push live RS3
+            // prices into the server's GrandExchange.PRICES map. Body:
+            //   {"prices":{"4151":240000,"11696":2500000,...}}
+            // Updates are applied via setPrice() and persisted via
+            // savePrices() so they survive a restart.
+            server.createContext("/admin/ge/prices/bulk", auth(postOnly(new GePricesBulkHandler())));
+
             // World tick profiler (Phase 1.C step 1)
             server.createContext("/admin/profiler/start",   auth(postOnly(new ProfilerStartHandler())));
             server.createContext("/admin/profiler/stop",    auth(postOnly(new ProfilerStopHandler())));
@@ -1212,17 +1219,37 @@ public final class AdminHttpServer {
                 int total = com.rs.bot.ambient.CitizenSpawner.liveCount();
                 java.util.List<com.rs.bot.AIPlayer> live =
                     com.rs.bot.ambient.CitizenSpawner.getLive();
-                // Per-archetype + per-state tally
+                // Per-archetype + per-state tally + per-bot detail array.
                 java.util.Map<String, Integer> byArch = new java.util.TreeMap<>();
                 java.util.Map<String, Integer> byState = new java.util.TreeMap<>();
+                StringBuilder bots = new StringBuilder();
+                bots.append("[");
+                boolean firstBot = true;
                 for (com.rs.bot.AIPlayer b : live) {
+                    if (b == null) continue;
                     if (!(b.getBrain() instanceof com.rs.bot.ambient.CitizenBrain)) continue;
                     com.rs.bot.ambient.CitizenBrain cb = (com.rs.bot.ambient.CitizenBrain) b.getBrain();
                     String a = cb.getArchetype() == null ? "?" : cb.getArchetype().name();
                     byArch.merge(a, 1, Integer::sum);
                     String s = cb.getState() == null ? "?" : cb.getState().name();
                     byState.merge(s, 1, Integer::sum);
+                    if (!firstBot) bots.append(",");
+                    firstBot = false;
+                    bots.append("{")
+                        .append("\"name\":\"").append(jsonEscape(b.getDisplayName() == null ? "?" : b.getDisplayName())).append("\",")
+                        .append("\"archetype\":\"").append(jsonEscape(a)).append("\",")
+                        .append("\"state\":\"").append(jsonEscape(s)).append("\",")
+                        .append("\"x\":").append(b.getX()).append(",")
+                        .append("\"y\":").append(b.getY()).append(",")
+                        .append("\"plane\":").append(b.getPlane()).append(",")
+                        .append("\"cb\":");
+                    int cbLvl = 3;
+                    try { cbLvl = b.getSkills().getCombatLevel(); } catch (Throwable ignored) {}
+                    bots.append(cbLvl);
+                    bots.append("}");
                 }
+                bots.append("]");
+
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total);
                 sb.append(",\"byArchetype\":{");
                 boolean first = true;
@@ -1236,7 +1263,8 @@ public final class AdminHttpServer {
                     if (!first) sb.append(","); first = false;
                     sb.append("\"").append(jsonEscape(e.getKey())).append("\":").append(e.getValue());
                 }
-                sb.append("}}");
+                sb.append("},\"bots\":").append(bots);
+                sb.append("}");
                 sendText(ex, 200, sb.toString());
             } catch (Throwable t) {
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
@@ -1355,6 +1383,80 @@ public final class AdminHttpServer {
             sb.append("]}");
             sendText(ex, 200, sb.toString());
         }
+    }
+
+    /** POST /admin/ge/prices/bulk - body {"prices":{"id":price,...}}.
+     *  Updates GrandExchange.PRICES via setPrice() then saves to disk.
+     *  Returns count of applied + skipped (id <= 0 or price <= 0). */
+    private static class GePricesBulkHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.io.InputStream in = ex.getRequestBody();
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                String body = new String(out.toByteArray(), "UTF-8");
+                java.util.Map<Integer, Integer> pairs = parseGePricesBody(body);
+                int applied = 0;
+                int skipped = 0;
+                for (java.util.Map.Entry<Integer, Integer> e : pairs.entrySet()) {
+                    int id = e.getKey();
+                    int price = e.getValue();
+                    if (id <= 0 || price <= 0) { skipped++; continue; }
+                    try {
+                        com.rs.game.player.content.grandExchange.GrandExchange.setPrice(id, price);
+                        applied++;
+                    } catch (Throwable t) {
+                        skipped++;
+                    }
+                }
+                try {
+                    com.rs.game.player.content.grandExchange.GrandExchange.savePrices();
+                } catch (Throwable ignored) {}
+                sendText(ex, 200, "{\"ok\":true,\"applied\":" + applied
+                    + ",\"skipped\":" + skipped + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                    + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /** Hand-rolled parser for {"prices":{"4151":240000,"11696":2500000}}.
+     *  Tolerant - whitespace, missing trailing commas, integer-only values.
+     *  Returns empty map on any structural problem. */
+    private static java.util.Map<Integer, Integer> parseGePricesBody(String json) {
+        java.util.Map<Integer, Integer> out = new java.util.HashMap<>();
+        if (json == null) return out;
+        int pricesKey = json.indexOf("\"prices\"");
+        if (pricesKey < 0) return out;
+        int objStart = json.indexOf('{', pricesKey);
+        if (objStart < 0) return out;
+        // Walk balanced braces to find object end.
+        int depth = 0, objEnd = -1;
+        for (int i = objStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) { objEnd = i; break; }
+            }
+        }
+        if (objEnd < 0) return out;
+        String inner = json.substring(objStart + 1, objEnd);
+        // Match "<number>": <number>
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            "\"(\\d+)\"\\s*:\\s*(\\d+)").matcher(inner);
+        while (m.find()) {
+            try {
+                int id = Integer.parseInt(m.group(1));
+                long p = Long.parseLong(m.group(2));
+                if (p > Integer.MAX_VALUE) p = Integer.MAX_VALUE;
+                out.put(id, (int) p);
+            } catch (Throwable ignored) {}
+        }
+        return out;
     }
 
     /** Lightweight JSON parse for budget body: {"slots":[{...},{...}]}.

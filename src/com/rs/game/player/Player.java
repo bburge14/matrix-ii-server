@@ -410,7 +410,7 @@ public class Player extends Entity {
 	runEnergy = 100;
 	allowChatEffects = true;
 	mouseButtons = true;
-	profanityFilter = true;
+	profanityFilter = false; // hard-off by request - bots + players can swear freely
 	guidanceSystemHints = true;
 	toogleQuickChat = true;
 	makeXProgressWindow = true;
@@ -973,6 +973,7 @@ public class Player extends Entity {
 	refreshHideFamiliarOptions();
 	refreshGuidanceSystemHints();
 	refreshToogleQuickChat();
+	profanityFilter = false; // hard-off on every login - server-wide policy
 	refreshProfanityFilter();
 	refreshLockZoom();
 	refreshCameraType();
@@ -2060,7 +2061,9 @@ public class Player extends Entity {
     }
 
     public void switchProfanityFilter() {
-	profanityFilter = !profanityFilter;
+	// Server policy: profanity filter is permanently off. Ignore the toggle
+	// so the in-game settings button can't re-enable it.
+	profanityFilter = false;
 	refreshProfanityFilter();
     }
 

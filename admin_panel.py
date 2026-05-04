@@ -835,12 +835,27 @@ class CitizensFrame(ctk.CTkFrame):
         self.q_count = tk.StringVar(value="20")
         ctk.CTkEntry(quick, textvariable=self.q_count, width=60).pack(side="left", padx=2)
         self.q_category = tk.StringVar(value="mixed")
-        # Per-minigame categories (castlewars/soulwars/stealingcreation) auto-
-        # spawn at the corresponding lobby tile - X/Y/P fields are ignored when
-        # one of those is selected.
-        ctk.CTkOptionMenu(quick, values=["mixed","skiller","combatant","socialite","minigamer",
-                                         "castlewars","soulwars","stealingcreation"],
-                          variable=self.q_category, width=130).pack(side="left", padx=2)
+        # All categories + each archetype subtype (server's randomFor() maps
+        # exact enum names to the matching archetype now). User wants to
+        # spawn each citizen subtype + sub cat separately.
+        category_choices = [
+            "mixed", "skiller", "combatant", "socialite", "minigamer",
+            "castlewars", "soulwars", "stealingcreation",
+            "trader_skill", "trader_combat", "trader_rare",
+            "gambler", "bankstand",
+            # exact archetype names
+            "SKILLER_EFFICIENT", "SKILLER_CASUAL", "SKILLER_NOOB",
+            "COMBATANT_PURE", "COMBATANT_TANK", "COMBATANT_HYBRID",
+            "SOCIALITE_GAMBLER", "SOCIALITE_GE_TRADER",
+            "SOCIALITE_GE_TRADER_SKILL", "SOCIALITE_GE_TRADER_COMBAT",
+            "SOCIALITE_GE_TRADER_RARE", "SOCIALITE_BANKSTAND",
+            "MINIGAMER_CASTLEWARS_RUSHER", "MINIGAMER_CASTLEWARS_DEFENDER",
+            "MINIGAMER_SOULWARS_RUSHER", "MINIGAMER_SOULWARS_DEFENDER",
+            "MINIGAMER_STEALINGCREATION_RUSHER", "MINIGAMER_STEALINGCREATION_DEFENDER",
+            "MINIGAMER_RUSHER", "MINIGAMER_DEFENDER",
+        ]
+        ctk.CTkOptionMenu(quick, values=category_choices,
+                          variable=self.q_category, width=240).pack(side="left", padx=2)
         ctk.CTkLabel(quick, text=" at X").pack(side="left", padx=(8,2))
         self.q_x = tk.StringVar(value="3164")
         ctk.CTkEntry(quick, textvariable=self.q_x, width=70).pack(side="left", padx=2)
@@ -852,21 +867,30 @@ class CitizensFrame(ctk.CTkFrame):
         ctk.CTkEntry(quick, textvariable=self.q_plane, width=40).pack(side="left", padx=2)
         ctk.CTkButton(quick, text="Spawn", width=80, fg_color="#1b6e3a",
                       command=self._quick_spawn).pack(side="left", padx=8)
-        # Per-minigame quick row
+        # Per-minigame + per-socialite-tier quick rows
         mg_quick = ctk.CTkFrame(self)
         mg_quick.pack(fill="x", padx=20, pady=4)
-        ctk.CTkLabel(mg_quick, text="Per-minigame quick spawn:").pack(side="left", padx=4)
+        ctk.CTkLabel(mg_quick, text="Quick: minigame ").pack(side="left", padx=4)
         self.mg_count = tk.StringVar(value="10")
         ctk.CTkEntry(mg_quick, textvariable=self.mg_count, width=50).pack(side="left", padx=2)
         for label, cat in [("Castle Wars","castlewars"), ("Soul Wars","soulwars"),
                            ("Stealing Creation","stealingcreation")]:
-            ctk.CTkButton(mg_quick, text=label, width=140, fg_color="#1b6e3a",
-                          command=lambda c=cat: self._minigame_spawn(c)).pack(side="left", padx=4)
+            ctk.CTkButton(mg_quick, text=label, width=130, fg_color="#1b6e3a",
+                          command=lambda c=cat: self._minigame_spawn(c)).pack(side="left", padx=2)
+        # Socialite tier shortcut row
+        soc_quick = ctk.CTkFrame(self)
+        soc_quick.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(soc_quick, text="Quick: socialite ").pack(side="left", padx=4)
+        self.soc_count = tk.StringVar(value="10")
+        ctk.CTkEntry(soc_quick, textvariable=self.soc_count, width=50).pack(side="left", padx=2)
+        for label, arch in [("Skill Trader","SOCIALITE_GE_TRADER_SKILL"),
+                            ("Combat Trader","SOCIALITE_GE_TRADER_COMBAT"),
+                            ("Rare Trader","SOCIALITE_GE_TRADER_RARE"),
+                            ("Bankstander","SOCIALITE_BANKSTAND"),
+                            ("Gambler","SOCIALITE_GAMBLER")]:
+            ctk.CTkButton(soc_quick, text=label, width=110, fg_color="#1b6e3a",
+                          command=lambda a=arch: self._socialite_spawn(a)).pack(side="left", padx=2)
 
-        # The slot table
-        tree_frame = ctk.CTkFrame(self)
-        tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        cols = ("archetype", "count", "x", "y", "plane", "scatter", "autospawn", "live")
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", background="#2b2b2b", foreground="white",
@@ -874,7 +898,14 @@ class CitizensFrame(ctk.CTkFrame):
         style.configure("Treeview.Heading", background="#1f6aa5", foreground="white", borderwidth=0)
         style.map("Treeview", background=[("selected", "#1f6aa5")])
 
-        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
+        # Pane split: budget table on top, live bot detail list on bottom.
+        # Budget table = configure auto-spawn slots. Live list = see who is
+        # actually online + their location/state (like the AI tab does).
+        ctk.CTkLabel(self, text="Budget slots", font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=20, pady=(10,2))
+        tree_frame = ctk.CTkFrame(self)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=(0,5))
+        cols = ("archetype", "count", "x", "y", "plane", "scatter", "autospawn", "live")
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse", height=8)
         widths = {"archetype":210, "count":60, "x":80, "y":80, "plane":50,
                   "scatter":70, "autospawn":80, "live":60}
         for c in cols:
@@ -885,6 +916,32 @@ class CitizensFrame(ctk.CTkFrame):
         vsb.pack(side="right", fill="y")
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<Double-1>", self._edit_selected)
+
+        # Live bots detail list
+        live_header = ctk.CTkFrame(self, fg_color="transparent")
+        live_header.pack(fill="x", padx=20, pady=(10,2))
+        ctk.CTkLabel(live_header, text="Live citizens", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
+        self.live_filter = tk.StringVar(value="")
+        ctk.CTkLabel(live_header, text="  filter:").pack(side="left", padx=(20,2))
+        ctk.CTkEntry(live_header, textvariable=self.live_filter, width=160,
+                     placeholder_text="archetype/state/name").pack(side="left")
+        ctk.CTkButton(live_header, text="Apply", width=60,
+                      command=self._refresh_live_table).pack(side="left", padx=4)
+
+        live_frame = ctk.CTkFrame(self)
+        live_frame.pack(fill="both", expand=True, padx=20, pady=(0,10))
+        live_cols = ("name", "archetype", "state", "x", "y", "plane", "cb")
+        self.live_tree = ttk.Treeview(live_frame, columns=live_cols, show="headings", selectmode="browse", height=10)
+        live_widths = {"name":140, "archetype":230, "state":110, "x":60, "y":60, "plane":50, "cb":50}
+        for c in live_cols:
+            self.live_tree.heading(c, text=c)
+            self.live_tree.column(c, width=live_widths.get(c, 80), anchor="w")
+        live_vsb = ttk.Scrollbar(live_frame, orient="vertical", command=self.live_tree.yview)
+        self.live_tree.configure(yscroll=live_vsb.set)
+        live_vsb.pack(side="right", fill="y")
+        self.live_tree.pack(fill="both", expand=True)
+        # Cache of last refresh (for filter apply without re-querying)
+        self._last_bots = []
 
     def on_show(self):
         self.refresh()
@@ -906,10 +963,31 @@ class CitizensFrame(ctk.CTkFrame):
         self.slots = budget_resp.get("slots", []) if budget_resp else []
         live_total = live_resp.get("total", 0) if live_resp else 0
         live_by_arch = (live_resp or {}).get("byArchetype", {})
+        self._last_bots = (live_resp or {}).get("bots", [])
         self.live_label.configure(text=f"Live: {live_total}", text_color="#3fbf3f")
         self._render_table(live_by_arch)
+        self._refresh_live_table()
         self._dirty = False
         self.dirty_label.configure(text="")
+
+    def _refresh_live_table(self):
+        """Re-render the live-bot detail table from cached _last_bots,
+        applying the current filter string (case-insensitive substring
+        match against archetype/state/name)."""
+        for iid in self.live_tree.get_children():
+            self.live_tree.delete(iid)
+        flt = (self.live_filter.get() if hasattr(self, "live_filter") else "").lower().strip()
+        for i, bot in enumerate(self._last_bots):
+            name = bot.get("name", "?")
+            arch = bot.get("archetype", "?")
+            state = bot.get("state", "?")
+            if flt and flt not in name.lower() and flt not in arch.lower() and flt not in state.lower():
+                continue
+            self.live_tree.insert("", "end", iid=str(i), values=(
+                name, arch, state,
+                bot.get("x", 0), bot.get("y", 0), bot.get("plane", 0),
+                bot.get("cb", 0),
+            ))
 
     def _render_table(self, live_by_arch):
         for iid in self.tree.get_children():
@@ -1011,6 +1089,31 @@ class CitizensFrame(ctk.CTkFrame):
                 resp = self.api.citizens_spawn(n, category=cat, x=x, y=y, plane=p, scatter=12)
                 self.after(0, lambda: messagebox.showinfo("Spawned",
                     f"Spawned {resp.get('spawned',0)} (live total: {resp.get('total',0)})"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _socialite_spawn(self, archetype_name):
+        """Quick-spawn N citizens of an exact socialite archetype.
+        Server's randomFor() recognises full enum names so we pass the
+        archetype name as the category. Anchor coords pulled from the
+        archetype's socialiteAnchor() server-side, so x/y here are dummies."""
+        try:
+            n = int(self.soc_count.get())
+        except ValueError:
+            messagebox.showerror("Bad input", "count must be a number")
+            return
+        # Anchor inferred server-side from archetype.socialiteAnchor() but
+        # we still pass GE coords as a sane default.
+        x, y, p = 3164, 3486, 0
+        def do():
+            try:
+                resp = self.api.citizens_spawn(n, category=archetype_name,
+                    x=x, y=y, plane=p, scatter=12)
+                self.after(0, lambda: messagebox.showinfo("Socialite spawn",
+                    f"Spawned {resp.get('spawned',0)} {archetype_name} "
+                    f"(live total: {resp.get('total',0)})"))
                 self.after(0, self.refresh)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))

@@ -82,6 +82,12 @@ public class CitizenBrain extends BotBrain {
         this.homeAnchor = new WorldTile(homeAnchor);
         this.homeRadius = Math.max(2, homeRadius);
         scheduleNextStateChange(State.IDLE);
+        // Per-bot phase offset so a batch spawned in the same tick doesn't
+        // all transition states on the same future tick. Without this, 20
+        // bots all idle for 60 ticks, then all simultaneously start
+        // wandering - looks like a sync'd dance. User: "I AM SEEING GROUPS
+        // MOVE IN SYNC".
+        stateTicksRemaining += Utils.random(40);
     }
 
     @Override
@@ -99,24 +105,18 @@ public class CitizenBrain extends BotBrain {
         // moves them away from the trade UI.
         try { BotTradeHandler.tick(bot, archetype); } catch (Throwable ignored) {}
 
-        // Real-player proximity -> PANICKING. Cooldown so we don't oscillate.
-        if (panicCooldownTicks > 0) panicCooldownTicks--;
-        if (panicCooldownTicks <= 0 && state != State.PANICKING) {
-            if (realPlayerNearby(bot)) {
-                transitionTo(State.PANICKING);
-                panicCooldownTicks = 50; // ~30s before re-panic allowed
-            }
-        }
+        // PANICKING removed by request - bots no longer flee from real
+        // players. Real players don't run away from each other in RS, and
+        // it was being triggered constantly at GE making bots look like
+        // shy NPCs instead of socialites.
 
-        // Random AFK / misclick (skip while panicking).
-        if (state != State.PANICKING) {
-            if (Math.random() < AFK_PROBABILITY) {
-                afkUntilMs = System.currentTimeMillis() + (long) gaussianRange(10000, 30000, 5000);
-                return;
-            }
-            if (Math.random() < MISCLICK_PROBABILITY) {
-                stepRandom(bot);
-            }
+        // Random AFK / misclick.
+        if (Math.random() < AFK_PROBABILITY) {
+            afkUntilMs = System.currentTimeMillis() + (long) gaussianRange(10000, 30000, 5000);
+            return;
+        }
+        if (Math.random() < MISCLICK_PROBABILITY) {
+            stepRandom(bot);
         }
 
         // FSM advance.
@@ -127,7 +127,7 @@ public class CitizenBrain extends BotBrain {
             case IDLE:        tickIdle(bot);        break;
             case TRAVERSING:  tickTraversing(bot);  break;
             case INTERACTING: tickInteracting(bot); break;
-            case PANICKING:   tickPanicking(bot);   break;
+            case PANICKING:   /* removed - leave as no-op */ break;
         }
     }
 
@@ -143,9 +143,12 @@ public class CitizenBrain extends BotBrain {
                 // probability. Skiller/combatant pursue their method's
                 // target so they do need to traverse more often.
                 if (archetype != null && archetype.isSocialite()) {
-                    // 90% stay idle, 5% short traverse, 5% interact
-                    if (r < 90) next = State.IDLE;
-                    else if (r < 95) next = State.TRAVERSING;
+                    // 98% stay idle. They're FIXTURES at GE - users want
+                    // them basically stationary, with rare position drift.
+                    // User: "they should not be moving that much anyways,
+                    // it is ABSOLUTELY annoying".
+                    if (r < 98) next = State.IDLE;
+                    else if (r < 99) next = State.TRAVERSING;
                     else next = State.INTERACTING;
                 } else {
                     // Default: 60 traverse / 30 interact / 10 idle (legacy)
@@ -211,14 +214,20 @@ public class CitizenBrain extends BotBrain {
     // === Per-state behavior ===
 
     private void tickIdle(AIPlayer bot) {
+        // Drop any pending bot-to-bot conversation reply that's due.
+        try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
+
         if (Math.random() < CHATTER_PROBABILITY) {
             String line = archetype.randomChatter();
             if (line != null) {
-                // sayBoth = ForceTalk overhead + PublicChatMessage to nearby
-                // real players, so chatter appears in chat boxes (RS-style).
-                try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line); }
+                // sayBoth(plain) = no chat effect for casual chatter.
+                // Effects are reserved for trader/gambler hosts per user spec.
+                try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false); }
                 catch (Throwable ignored) {}
             }
+            // Sometimes a chatty bot kicks off a 2-line convo with a
+            // nearby citizen instead of just speaking solo.
+            try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
         }
     }
 
@@ -611,8 +620,15 @@ public class CitizenBrain extends BotBrain {
         int dist = 5 + Utils.random(4);
         WorldTile flee = new WorldTile(bot.getX() + sx * dist, bot.getY() + sy * dist, bot.getPlane());
         bot.addWalkSteps(flee.getX(), flee.getY(), 10, true);
-        if (Math.random() < 0.15) {
-            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, "...!"); }
+        // Drop a single realistic panic line - rare so it doesn't spam.
+        // Old "...!" placeholder looked like debug output in chat boxes.
+        if (Math.random() < 0.04) {
+            String[] lines = new String[] {
+                "ahh!", "help!", "leave me alone!", "get away!",
+                "noo!", "stop!", "back off!"
+            };
+            String line = lines[Utils.random(lines.length)];
+            try { com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false); }
             catch (Throwable ignored) {}
         }
     }
@@ -620,11 +636,25 @@ public class CitizenBrain extends BotBrain {
     // === Helpers ===
 
     private WorldTile pickWanderTarget() {
-        int dx = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
-        int dy = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
-        if (Math.random() < 0.3) dx += Utils.random(-1, 2);
-        if (Math.random() < 0.3) dy += Utils.random(-1, 2);
-        return new WorldTile(homeAnchor.getX() + dx, homeAnchor.getY() + dy, homeAnchor.getPlane());
+        // Try up to 6 candidates - reject any that aren't walkable so bots
+        // don't pathfind into wall corners and end up "noclipping" between
+        // walls/trees. Falls back to home anchor if nothing's walkable
+        // (which is itself a known-good tile by construction).
+        int plane = homeAnchor.getPlane();
+        for (int attempt = 0; attempt < 6; attempt++) {
+            int dx = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
+            int dy = (int) gaussianRange(-homeRadius, homeRadius, homeRadius / 2.0);
+            if (Math.random() < 0.3) dx += Utils.random(-1, 2);
+            if (Math.random() < 0.3) dy += Utils.random(-1, 2);
+            int tx = homeAnchor.getX() + dx;
+            int ty = homeAnchor.getY() + dy;
+            try {
+                if (com.rs.game.World.isTileFree(plane, tx, ty, 1)) {
+                    return new WorldTile(tx, ty, plane);
+                }
+            } catch (Throwable ignored) {}
+        }
+        return new WorldTile(homeAnchor);
     }
 
     private void stepRandom(AIPlayer bot) {
@@ -632,7 +662,13 @@ public class CitizenBrain extends BotBrain {
         int sx = Utils.random(3) - 1;
         int sy = Utils.random(3) - 1;
         if (sx == 0 && sy == 0) sx = 1;
-        bot.addWalkSteps(bot.getX() + sx, bot.getY() + sy, 1, true);
+        int tx = bot.getX() + sx;
+        int ty = bot.getY() + sy;
+        try {
+            // Reject misclick steps that land on walls/objects.
+            if (!com.rs.game.World.isTileFree(bot.getPlane(), tx, ty, 1)) return;
+        } catch (Throwable ignored) {}
+        bot.addWalkSteps(tx, ty, 1, true);
     }
 
     private boolean realPlayerNearby(AIPlayer bot) {

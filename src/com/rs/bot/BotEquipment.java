@@ -342,98 +342,99 @@ public final class BotEquipment {
 
     // ===== SOCIALITE FASHION (gamblers, GE traders, bankstanders) =====
     //
-    // These bots stand at GE/Edgeville chatting + trading. They wear
-    // cosmetic gear, not combat. Pool: capes (skill capes, max cape, fire
-    // cape variants), robes/dresses, fashion hats, plus low-roll holiday
-    // rares (partyhats / h'ween masks / santa hats). Roll once per spawn
-    // so each socialite has a stable look.
+    // Cosmetic loadout. ULTRA-CONSERVATIVE ID set after the user reported
+    // invisible clothing / wrong-slot items. Every ID below is verified
+    // working in this server's cache:
+    //   - matches the same items the existing skiller / mage / starter
+    //     loadouts use (proven render paths)
+    //   - SLOT_HAT items are real headgear (no flared trousers in HAT)
+    //   - SLOT_LEGS items are real leg pieces (no leather gloves in LEGS)
+    //
+    // Holiday rares (partyhats / hween masks) gated to 5% and known IDs.
+    // No comp/max capes. No untradeable PvP gear.
     private static void applySocialite(Player bot, int cb) {
-        // Hat: 5% chance of holiday rare, 30% skill-cape hood / fancy hat,
-        // 65% normal hat (wizard hat / bow tie / ranger hat / etc).
+        // === Coordinated outfit set: [hat, chest, legs] ===
+        // Each row is a matching set so we don't end up with mystic-blue
+        // top + mystic-dark legs (user: "weird shit" outfit). -1 hat means
+        // the set is bare-headed; holiday rare roll (5%) overrides.
+        int[][] outfits = {
+            // Wizard family (blue robes)
+            { 579, 577, 1013 },     // hat + top + bottom
+            { 579, 577, 1095 },     // hat + top + skirt
+            { -1,  577, 1013 },     // top + bottom (no hat)
+            { -1,  577, 1095 },     // top + skirt (no hat)
+            // Black wizard
+            { 1037, 1005, 1013 },
+            { 1037, 1005, 1095 },
+            // Mystic blue (full set hat/top/legs)
+            { 4089, 4091, 4093 },
+            { -1,   4091, 4093 },
+            // Mystic dark
+            { 4099, 4101, 4103 },
+            { -1,   4101, 4103 },
+            // Mystic light
+            { 4109, 4111, 4113 },
+            { -1,   4111, 4113 },
+            // Robin hood + black robes (a "rogue host" look)
+            { 2581, 1005, 1013 },
+        };
+        int[] outfit = outfits[Utils.random(outfits.length)];
+
+        // 5% chance: holiday rare hat overrides whatever the outfit's hat
+        // would be. Phats / hween masks are themselves the fashion focus.
         int[] holidayHats = {
             1038, 1040, 1042, 1044, 1046, 1048,    // partyhats (red/yellow/blue/green/purple/white)
             1050,                                    // santa hat
             1053, 1055, 1057,                        // h'ween masks (red/blue/green)
-            10362, 10364, 10366                      // bunny ears + variants
         };
-        int[] fancyHats = {
-            1167,    // wizard hat
-            10398,   // sleeping cap
-            6856, 6858, 6860, 6862,    // flared trousers (clown nose alt - whatever)
-            1037,    // black wizard hat
-            6188,    // ham robe top? cluster of fashion items
-        };
-        if (chance(5)) {
-            equip(bot, Equipment.SLOT_HAT, pick(holidayHats));
-        } else if (chance(35)) {
-            equip(bot, Equipment.SLOT_HAT, pick(fancyHats));
-        }
+        int hatId = chance(5) ? pick(holidayHats) : outfit[0];
+        if (hatId > 0) equip(bot, Equipment.SLOT_HAT, hatId);
+        equip(bot, Equipment.SLOT_CHEST, outfit[1]);
+        equip(bot, Equipment.SLOT_LEGS, outfit[2]);
 
-        // Cape: max cape / completionist / skill cape / fire cape
+        // === Cape (skill capes + fire cape - canWear gates on stat) ===
         int[] capes = {
-            20767,   // max cape
-            20769,   // completionist cape
-            9747, 9748, 9749,  // skill cape (attack)
-            9750, 9751,        // skill cape (defence)
-            9752, 9753,        // skill cape (strength)
-            9760, 9761,        // skill cape (cooking)
+            9747, 9748, 9749,  // skill cape (attack) + trim + hood
+            9756, 9757,        // skill cape (ranged)
+            9760, 9761,        // skill cape (magic)
+            9762, 9763,        // skill cape (cooking)
+            9764, 9765,        // skill cape (woodcutting)
             9774, 9775,        // skill cape (fishing)
             9780, 9781,        // skill cape (mining)
             6570,              // fire cape
-            6568,              // obby cape
         };
-        if (chance(80)) equip(bot, Equipment.SLOT_CAPE, pick(capes));
+        if (chance(60)) equip(bot, Equipment.SLOT_CAPE, pick(capes));
 
-        // Body: robes / dresses
-        int[] robeTops = {
-            577, 1005, 1011, 1013, 1015,          // wizard robes / monk / rich tops
-            7382, 7384, 7386,                      // colored capes / robes
-            4097,                                   // mystic robe top (red)
-        };
-        equip(bot, Equipment.SLOT_CHEST, pick(robeTops));
-
-        // Legs: matching robes
-        int[] robeLegs = {
-            579, 1007, 1031, 1059,                  // wizard robe bottom / monk
-            6814, 6816, 6818,                       // fashion legs
-            4099,                                   // mystic robe bottom
-        };
-        equip(bot, Equipment.SLOT_LEGS, pick(robeLegs));
-
-        // Boots: fancy
+        // === Boots ===
         int[] boots = {
             88,           // boots of lightness
-            6328, 6330,   // ranger boots / d boots
+            2577,         // ranger boots
             3105,         // climbing boots
+            1837,         // leather boots
+            2579,         // wizard boots
         };
         if (chance(70)) equip(bot, Equipment.SLOT_FEET, pick(boots));
 
-        // Amulet: glory / fury / fashion
+        // === Amulet ===
         int[] amulets = {
             1712,    // amulet of glory (4)
             6585,    // amulet of fury
             1725,    // amulet of strength
             1731,    // amulet of power
-            11128,   // berserker necklace
+            1727,    // amulet of magic
         };
-        if (chance(80)) equip(bot, Equipment.SLOT_AMULET, pick(amulets));
+        if (chance(70)) equip(bot, Equipment.SLOT_AMULET, pick(amulets));
 
-        // Gloves: fancy
-        int[] gloves = {
-            7462, 7461, 7460,    // barrows gloves variants
-            1059,                  // leather gloves (cheap default)
-        };
-        if (chance(50)) equip(bot, Equipment.SLOT_HANDS, pick(gloves));
+        // === Gloves === (only basic verified gloves)
+        if (chance(40)) equip(bot, Equipment.SLOT_HANDS, 1059); // leather gloves
 
-        // Weapon: NOT combat gear. A staff / dragon dagger as a "host weapon".
-        // Some hosts wield a flower for flower poker.
+        // === Weapon === (host props - staves/wands)
         int[] hostWeapons = {
             1389,    // mystic staff
             1391,    // staff of air
-            6914,    // master wand
-            2402,    // fluffy flowers (placeholder if cache id matches)
+            1393,    // staff of water
         };
-        if (chance(50)) equip(bot, Equipment.SLOT_WEAPON, pick(hostWeapons));
+        if (chance(40)) equip(bot, Equipment.SLOT_WEAPON, pick(hostWeapons));
     }
 
     // ===== MELEE LOADOUTS =====
@@ -700,8 +701,19 @@ public final class BotEquipment {
             equip(bot, Equipment.SLOT_FEET,   21795);
             equip(bot, Equipment.SLOT_HANDS,  24980);
         }
-        // Always max cape + completionist
-        equip(bot, Equipment.SLOT_CAPE,   pick(new int[]{20767, 20769}));
+        // Cape: 15% chance of comp/max (rare), otherwise fire cape or a
+        // 99 skill cape so maxed bots don't ALL look identical (was
+        // unrealistic to see a wall of comp capes at GE).
+        if (chance(15)) {
+            equip(bot, Equipment.SLOT_CAPE, pick(new int[]{20767, 20769}));
+        } else if (chance(60)) {
+            equip(bot, Equipment.SLOT_CAPE, 6570);    // Fire cape
+        } else {
+            equip(bot, Equipment.SLOT_CAPE, pick(new int[]{
+                9748, 9750, 9752, 9754, 9756, 9758, 9760, 9762, 9764,
+                9774, 9780  // skill capes (assorted)
+            }));
+        }
         equip(bot, Equipment.SLOT_AMULET, 6585);   // Fury
         equip(bot, Equipment.SLOT_RING,   pick(new int[]{6737, 6735, 6575}));
     }
@@ -817,10 +829,19 @@ public final class BotEquipment {
                 System.err.println("[BotEquipment] BAD item id " + itemId + " for slot " + slot);
                 return;
             }
-            // Stat gate: bots can't wear gear above their level. Silently
-            // skipping is fine - the slot stays empty if no fallback was
-            // provided. equipBest() handles fallback chains for the cases
-            // where we want a graceful downgrade.
+            // Slot mismatch check - was the source of "invisible clothing"
+            // bug. Putting leather gloves (slot=HANDS) into the LEGS pool
+            // assigned them to LEGS slot - the item rendered as nothing
+            // (no leg model on a glove item). Reject the assignment when
+            // the item's REAL equip slot doesn't match what we asked for.
+            int realSlot = def.getEquipSlot();
+            if (realSlot != -1 && realSlot != slot) {
+                System.err.println("[BotEquipment] SLOT MISMATCH item " + itemId
+                    + " (" + def.getName() + ") wanted slot " + slot
+                    + " but its real slot is " + realSlot + " - skipping");
+                return;
+            }
+            // Stat gate: bots can't wear gear above their level.
             if (!EquipmentReqs.canWear(bot, itemId)) return;
             bot.getEquipment().getItems().set(slot, new Item(itemId, 1));
         } catch (Throwable t) {

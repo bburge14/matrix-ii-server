@@ -27,7 +27,17 @@ public class Trade {
 	public void openTrade(final Player target) {
 		synchronized (this) {
 			player.stopAll();
-			Logger.globalLog(player.getUsername(), player.getSession().getIP(), new String(" began trading with " + target.getUsername() + "."));
+			// Bot-side trade open: skip everything that touches packets /
+			// interfaces / session IP. The bot only needs `this.target` set
+			// so isTrading() is true and the items container is wired up.
+			// Real-player side runs the full openTrade flow normally.
+			if (player.getPackets() == null) {
+				this.target = target;
+				return;
+			}
+			try {
+				Logger.globalLog(player.getUsername(), player.getSession().getIP(), new String(" began trading with " + target.getUsername() + "."));
+			} catch (Throwable ignored) {}
 			this.target = target;
 			player.getPackets().sendCSVarString(2504, target.getDisplayName());
 			sendInterItems();
@@ -72,8 +82,8 @@ public class Trade {
 	}
 
 	public void sendFlash(int slot) {
-		player.getPackets().sendInterFlashScript(335, 25, 4, 7, slot);
-		target.getPackets().sendInterFlashScript(335, 28, 4, 7, slot);
+		try { if (player.getPackets() != null) player.getPackets().sendInterFlashScript(335, 25, 4, 7, slot); } catch (Throwable ignored) {}
+		try { if (target != null && target.getPackets() != null) target.getPackets().sendInterFlashScript(335, 28, 4, 7, slot); } catch (Throwable ignored) {}
 	}
 
 	public void cancelAccepted() {
@@ -95,7 +105,7 @@ public class Trade {
 			if (item == null || !isTrading())
 				return;
 			if (!ItemConstants.isTradeable(item)) {
-				player.getPackets().sendGameMessage("That item isn't tradeable.");
+				try { if (player.getPackets() != null) player.getPackets().sendGameMessage("That item isn't tradeable."); } catch (Throwable ignored) {}
 				return;
 			}
 			Item[] itemsBefore = items.getItemsCopy();
@@ -114,7 +124,7 @@ public class Trade {
 			if (item == null)
 				return;
 			if (!ItemConstants.isTradeable(item)) {
-				player.getPackets().sendGameMessage("That item isn't tradeable.");
+				try { if (player.getPackets() != null) player.getPackets().sendGameMessage("That item isn't tradeable."); } catch (Throwable ignored) {}
 				return;
 			}
 			Item[] itemsBefore = items.getItemsCopy();
@@ -137,8 +147,9 @@ public class Trade {
 		for (int index = 0; index < itemsBefore.length; index++) {
 			Item item = items.getItems()[index];
 			if (itemsBefore[index] != item) {
-				if (itemsBefore[index] != null && (item == null || item.getId() != itemsBefore[index].getId() || item.getAmount() < itemsBefore[index].getAmount()))
-					sendFlash(index);
+				if (itemsBefore[index] != null && (item == null || item.getId() != itemsBefore[index].getId() || item.getAmount() < itemsBefore[index].getAmount())) {
+					try { sendFlash(index); } catch (Throwable ignored) {}
+				}
 				changedSlots[count++] = index;
 			}
 		}
@@ -185,8 +196,16 @@ public class Trade {
 	}
 
 	public void refresh(int... slots) {
-		player.getPackets().sendUpdateItems(90, items, slots);
-		target.getPackets().sendUpdateItems(90, true, items.getItems(), slots);
+		// Either side may be a bot (no packets). Refresh whichever has a real
+		// session - the other doesn't need a UI update.
+		try {
+			if (player.getPackets() != null)
+				player.getPackets().sendUpdateItems(90, items, slots);
+		} catch (Throwable ignored) {}
+		try {
+			if (target != null && target.getPackets() != null)
+				target.getPackets().sendUpdateItems(90, true, items.getItems(), slots);
+		} catch (Throwable ignored) {}
 	}
 
 	public void accept(boolean firstStage) {
@@ -199,8 +218,8 @@ public class Trade {
 						target.getTrade().nextStage();
 				}
 				else {
-					player.setCloseInterfacesEvent(null);
-					player.closeInterfaces();
+					try { player.setCloseInterfacesEvent(null); } catch (Throwable ignored) {}
+					try { player.closeInterfaces(); } catch (Throwable ignored) {}
 					closeTrade(CloseTradeStage.DONE);
 				}
 				return;
@@ -249,15 +268,20 @@ public class Trade {
 		if (!isTrading())
 			return false;
 		if (player.getInventory().getItems().getUsedSlots() + target.getTrade().items.getUsedSlots() > 28) {
-			player.setCloseInterfacesEvent(null);
-			player.closeInterfaces();
+			try { player.setCloseInterfacesEvent(null); } catch (Throwable ignored) {}
+			try { player.closeInterfaces(); } catch (Throwable ignored) {}
 			closeTrade(CloseTradeStage.NO_SPACE);
 			return false;
 		}
 		accepted = false;
-		player.getInterfaceManager().sendCentralInterface(334);
-		player.getInterfaceManager().removeInventoryInterface();
-		player.getPackets().sendHideIComponent(334, 22, !(tradeModified || target.getTrade().tradeModified));
+		// Bot side: no UI to update. Real-player side runs the full path.
+		if (player.getPackets() != null) {
+			try {
+				player.getInterfaceManager().sendCentralInterface(334);
+				player.getInterfaceManager().removeInventoryInterface();
+				player.getPackets().sendHideIComponent(334, 22, !(tradeModified || target.getTrade().tradeModified));
+			} catch (Throwable ignored) {}
+		}
 		refreshBothStageMessage(false);
 		return true;
 	}
@@ -270,7 +294,10 @@ public class Trade {
 	}
 
 	public void refreshStageMessage(boolean firstStage) {
-		player.getPackets().sendIComponentText(firstStage ? 335 : 334, firstStage ? 31 : 15, getAcceptMessage(firstStage));
+		if (player.getPackets() == null) return;
+		try {
+			player.getPackets().sendIComponentText(firstStage ? 335 : 334, firstStage ? 31 : 15, getAcceptMessage(firstStage));
+		} catch (Throwable ignored) {}
 	}
 
 	public String getAcceptMessage(boolean firstStage) {
@@ -282,20 +309,20 @@ public class Trade {
 	}
 
 	public void sendTradeModified() {
-		player.getVarsManager().sendVar(1826, tradeModified ? 1 : 0);
-		target.getVarsManager().sendVar(1827, tradeModified ? 1 : 0);
+		try { if (player.getPackets() != null) player.getVarsManager().sendVar(1826, tradeModified ? 1 : 0); } catch (Throwable ignored) {}
+		try { if (target != null && target.getPackets() != null) target.getVarsManager().sendVar(1827, tradeModified ? 1 : 0); } catch (Throwable ignored) {}
 	}
 
 	public void refreshTradeWealth() {
 		int wealth = getTradeWealth();
-		player.getPackets().sendCSVarInteger(729, wealth);
-		target.getPackets().sendCSVarInteger(697, wealth);
+		try { if (player.getPackets() != null) player.getPackets().sendCSVarInteger(729, wealth); } catch (Throwable ignored) {}
+		try { if (target != null && target.getPackets() != null) target.getPackets().sendCSVarInteger(697, wealth); } catch (Throwable ignored) {}
 	}
 
 	public void refreshFreeInventorySlots() {
-		player.getPackets().sendCSVarString(2519, target.getDisplayName());
+		try { if (player.getPackets() != null) player.getPackets().sendCSVarString(2519, target.getDisplayName()); } catch (Throwable ignored) {}
 		int freeSlots = player.getInventory().getFreeSlots();
-		target.getPackets().sendIComponentText(335, 22, "has " + (freeSlots == 0 ? "no" : freeSlots) + " free" + "<br>inventory slots");
+		try { if (target != null && target.getPackets() != null) target.getPackets().sendIComponentText(335, 22, "has " + (freeSlots == 0 ? "no" : freeSlots) + " free" + "<br>inventory slots"); } catch (Throwable ignored) {}
 	}
 
 	public int getTradeWealth() {
@@ -324,8 +351,8 @@ public class Trade {
 				Player oldTarget = target;
 				reset();
 				oldTarget.getTrade().reset();
-				oldTarget.setCloseInterfacesEvent(null);
-				oldTarget.closeInterfaces();
+				try { oldTarget.setCloseInterfacesEvent(null); } catch (Throwable ignored) {}
+				try { oldTarget.closeInterfaces(); } catch (Throwable ignored) {}
 				if (CloseTradeStage.DONE != stage) {
 					for (Item item : items.getItems()) {
 						if (item == null)
@@ -341,8 +368,8 @@ public class Trade {
 					items.clear();
 				}
 				else {
-					Logger.globalLog(player.getUsername(), player.getSession().getIP(), new String(" completed the trade with " + oldTarget.getUsername() + " items are as follows: " + Arrays.toString(items.getShiftedItem())));
-					Logger.globalLog(oldTarget.getUsername(), oldTarget.getSession().getIP(), new String(" completed the trade with " + player.getUsername() + " items are as follows " + Arrays.toString(oldTarget.getTrade().items.getShiftedItem()) + "."));
+					try { Logger.globalLog(player.getUsername(), player.getSession() == null ? "ai.local" : player.getSession().getIP(), new String(" completed the trade with " + oldTarget.getUsername() + " items are as follows: " + Arrays.toString(items.getShiftedItem()))); } catch (Throwable ignored) {}
+					try { Logger.globalLog(oldTarget.getUsername(), oldTarget.getSession() == null ? "ai.local" : oldTarget.getSession().getIP(), new String(" completed the trade with " + player.getUsername() + " items are as follows " + Arrays.toString(oldTarget.getTrade().items.getShiftedItem()) + ".")); } catch (Throwable ignored) {}
 					for (Item item : items.getItems()) {
 						if (item == null)
 							continue;
@@ -355,15 +382,15 @@ public class Trade {
 					}
 					oldTarget.getTrade().items.clear();
 					items.clear();
-					player.getPackets().sendGameMessage("Accepted trade.");
-					oldTarget.getPackets().sendGameMessage("Accepted trade.");
+					try { if (player.getPackets() != null) player.getPackets().sendGameMessage("Accepted trade."); } catch (Throwable ignored) {}
+					try { if (oldTarget.getPackets() != null) oldTarget.getPackets().sendGameMessage("Accepted trade."); } catch (Throwable ignored) {}
 				}
-				Logger.globalLog(player.getUsername(), player.getSession().getIP(), new String(" trade between " + player.getUsername() + " and " + oldTarget.getUsername() + " has been finished."));
+				try { Logger.globalLog(player.getUsername(), player.getSession() == null ? "ai.local" : player.getSession().getIP(), new String(" trade between " + player.getUsername() + " and " + oldTarget.getUsername() + " has been finished.")); } catch (Throwable ignored) {}
 				if (CloseTradeStage.CANCEL == stage)
-					oldTarget.getPackets().sendGameMessage("<col=ff0000>Other player declined trade!");
+					try { if (oldTarget.getPackets() != null) oldTarget.getPackets().sendGameMessage("<col=ff0000>Other player declined trade!"); } catch (Throwable ignored) {}
 				else if (CloseTradeStage.NO_SPACE == stage) {
-					player.getPackets().sendGameMessage("You don't have enough space in your inventory for this trade.");
-					oldTarget.getPackets().sendGameMessage("Other player doesn't have enough space in their inventory for this trade.");
+					try { if (player.getPackets() != null) player.getPackets().sendGameMessage("You don't have enough space in your inventory for this trade."); } catch (Throwable ignored) {}
+					try { if (oldTarget.getPackets() != null) oldTarget.getPackets().sendGameMessage("Other player doesn't have enough space in their inventory for this trade."); } catch (Throwable ignored) {}
 				}
 			}
 		}

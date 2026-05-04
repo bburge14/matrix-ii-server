@@ -109,18 +109,68 @@ public final class CitizenSpawner {
     public static AIPlayer spawnOne(String category, WorldTile anchor, int scatter) {
         if (anchor == null) return null;
         AmbientArchetype arch = AmbientArchetype.randomFor(category);
+        // Auto-migrate the legacy SOCIALITE_GE_TRADER archetype to a random
+        // new tier so old citizen_budget.json configs still get the proper
+        // tiered behavior + spawn anchors.
+        if (arch == AmbientArchetype.SOCIALITE_GE_TRADER) {
+            int r = Utils.random(100);
+            if (r < 50)      arch = AmbientArchetype.SOCIALITE_GE_TRADER_SKILL;
+            else if (r < 80) arch = AmbientArchetype.SOCIALITE_GE_TRADER_COMBAT;
+            else             arch = AmbientArchetype.SOCIALITE_GE_TRADER_RARE;
+        }
         // Per-minigame archetypes pin the spawn to their lobby tile regardless
         // of the caller's anchor. Lets admin panel spawn castlewars/soulwars/sc
         // citizens via category=castlewars etc and have them appear at the
         // correct minigame lobby instead of wherever the caller picked.
         com.rs.game.WorldTile minigameLobby = arch == null ? null : arch.lobbyTile();
         if (minigameLobby != null) anchor = minigameLobby;
+        // Per-socialite-role anchor (gambler/trader-tier/bankstander) - pin
+        // to the GE-area tile defined by the archetype unless the caller's
+        // anchor is significantly far away (e.g. user explicitly placed
+        // gamblers at Edgeville). 30 tile threshold lets the caller override.
+        if (arch != null && arch.isSocialite() && minigameLobby == null) {
+            com.rs.game.WorldTile sanchor = arch.socialiteAnchor();
+            if (sanchor != null) {
+                long d = (long) Math.hypot(anchor.getX() - sanchor.getX(),
+                                           anchor.getY() - sanchor.getY());
+                if (d <= 30) anchor = sanchor;
+            }
+        }
+        // Spread socialites across the whole quadrant so they don't stack
+        // on the anchor tile. Larger floor so a batch of 20 isn't all
+        // standing on top of each other - the user reported "4-5 bots
+        // standing on top of each other".
+        if (arch != null && arch.isSocialite()) {
+            scatter = Math.max(scatter, 12);
+        }
         scatter = Math.max(2, scatter);
-        int dx = gaussianOffset(scatter);
-        int dy = gaussianOffset(scatter);
-        WorldTile spawn = new WorldTile(
-            anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
-        int wanderRadius = 4 + Utils.random(8);
+        // Pick a spawn tile that's (a) walkable, (b) not stacked on another
+        // bot. Try up to 16 attempts; falls back to anchor on exhaustion.
+        WorldTile spawn = null;
+        for (int attempt = 0; attempt < 16; attempt++) {
+            int dx = gaussianOffset(scatter);
+            int dy = gaussianOffset(scatter);
+            WorldTile cand = new WorldTile(
+                anchor.getX() + dx, anchor.getY() + dy, anchor.getPlane());
+            try {
+                if (!com.rs.game.World.isTileFree(cand.getPlane(),
+                        cand.getX(), cand.getY(), 1)) continue;
+                if (isTileOccupiedByBot(cand)) continue;
+                spawn = cand;
+                break;
+            } catch (Throwable ignored) {}
+        }
+        if (spawn == null) spawn = new WorldTile(anchor);
+        // Socialites cluster at GE - small wander radius keeps them at the
+        // counter / fountain / dicing tile and not drifting across the GE.
+        // Other archetypes get a bigger radius so skillers/combatants can
+        // patrol resource pockets.
+        int wanderRadius;
+        if (arch != null && arch.isSocialite()) {
+            wanderRadius = 2 + Utils.random(2);   // 2-3 tiles
+        } else {
+            wanderRadius = 4 + Utils.random(8);   // 4-11 tiles
+        }
 
         String name = com.rs.bot.BotNames.generate();
         // === SAME PIPELINE AS LEGENDS ===
@@ -172,9 +222,25 @@ public final class CitizenSpawner {
             // Otherwise the trade handler tries to materialize at trade-time
             // which silently failed (full inv from toolkit, non-stackable
             // items > slots, etc) and traders cancelled "sold out".
-            if (arch == AmbientArchetype.SOCIALITE_GE_TRADER) {
+            if (arch != null && arch.isTrader()) {
                 try {
                     com.rs.bot.ambient.BotTradeHandler.preStockTrader(bot);
+                } catch (Throwable ignored) {}
+            }
+            // Gambler bankroll - they need to be able to pay 2x of MAX_BET
+            // (100m * 2 = 200m). Default accumulatedWealth tops out around
+            // 20m for cb 100+ which left them unable to cover big wins.
+            if (arch == AmbientArchetype.SOCIALITE_GAMBLER) {
+                try {
+                    bot.getMoneyPouch().setCoinsAmount(250_000_000);
+                } catch (Throwable ignored) {}
+            }
+            // Rare-tier traders need a fat bankroll to BUY 100m+ items
+            // from players via chat (WTS broadcast). Tier 1/2 traders deal
+            // in low-mid items so default wealth is fine.
+            if (arch == AmbientArchetype.SOCIALITE_GE_TRADER_RARE) {
+                try {
+                    bot.getMoneyPouch().setCoinsAmount(1_000_000_000);
                 } catch (Throwable ignored) {}
             }
 
@@ -230,6 +296,20 @@ public final class CitizenSpawner {
         String tail = Long.toString(n, 36);
         if (tail.length() > 6) tail = tail.substring(tail.length() - 6);
         return "Citizen-" + tail.toUpperCase();
+    }
+
+    /** True if a live citizen bot already stands on this tile (within 1
+     *  tile, since bots are size 1). Prevents spawn-stacking. */
+    private static boolean isTileOccupiedByBot(WorldTile tile) {
+        synchronized (liveCitizens) {
+            for (AIPlayer other : liveCitizens) {
+                if (other == null || other.hasFinished()) continue;
+                if (other.getPlane() != tile.getPlane()) continue;
+                if (other.getX() == tile.getX() && other.getY() == tile.getY())
+                    return true;
+            }
+        }
+        return false;
     }
 
     /** Symmetric Gaussian offset clamped to [-radius, radius]. */
