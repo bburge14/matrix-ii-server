@@ -358,57 +358,75 @@ public final class BotEquipment {
         // top + mystic-dark legs (user: "weird shit" outfit). -1 hat means
         // the set is bare-headed; holiday rare roll (5%) overrides.
         int[][] outfits = {
-            // Wizard family (blue robes)
-            { 579, 577, 1013 },     // hat + top + bottom
-            { 579, 577, 1095 },     // hat + top + skirt
-            { -1,  577, 1013 },     // top + bottom (no hat)
-            { -1,  577, 1095 },     // top + skirt (no hat)
-            // Black wizard
-            { 1037, 1005, 1013 },
-            { 1037, 1005, 1095 },
-            // Mystic blue (full set hat/top/legs)
-            { 4089, 4091, 4093 },
-            { -1,   4091, 4093 },
-            // Mystic dark
-            { 4099, 4101, 4103 },
-            { -1,   4101, 4103 },
-            // Mystic light
-            { 4109, 4111, 4113 },
-            { -1,   4111, 4113 },
-            // Robin hood + black robes (a "rogue host" look)
-            { 2581, 1005, 1013 },
-            // Druidic robes (top 1011, legs 1013)
-            { -1,   1011, 1013 },
-            { 579,  1011, 1013 },
-            // Priest gown (white)
-            { -1,   1015, 1017 },
-            // Monk's robe (542 top, 544 bottom)
-            { -1,   542,  544 },
-            // Adventurer mix - robin hood + wizard top + skirt
-            { 2581, 577,  1095 },
-            // Sleeping cap + black robes (sleepy host vibe)
-            { 10398, 1005, 1013 },
-            // Mystic blue top + dark legs (deliberate two-tone)
-            { 4089, 4091, 4103 },
-            // Dark mystic top + light legs
-            { 4099, 4101, 4113 },
-            // Wizard hat + mystic blue (hybrid)
-            { 579,  4091, 4093 },
-            // Black wizard + mystic dark (hybrid)
-            { 1037, 4101, 4103 },
-            // Bare-headed plain wizard (variety - no hat at all)
-            { -1,   1005, 1095 },
+            // === Wizard / robe family (a quarter of the pool, not most) ===
+            { 579, 577, 1013 },     // blue wizard hat + top + bottom
+            { 1037, 1005, 1013 },   // black wizard
+            { -1,  577, 1095 },     // wizard top + skirt
+            // === Mystic mage robes (3 colors) ===
+            { 4089, 4091, 4093 },   // mystic blue full
+            { 4099, 4101, 4103 },   // mystic dark full
+            { 4109, 4111, 4113 },   // mystic light full
+            // === Casual / themed (RS classic) ===
+            { 2581, 1005, 1013 },   // robin hood + black robes (rogue host)
+            { -1,   1011, 1013 },   // druidic
+            { -1,   1015, 1017 },   // priest gown
+            { -1,   542,  544 },    // monk's robe
+            { 10398, 1005, 1013 },  // sleeping cap (chill host vibe)
+            // === Rune armor (mid-tier combat fashion) ===
+            { 1163, 1127, 1079 },   // full rune (helm/plate/legs)
+            { -1,   1127, 1079 },   // bare-headed rune
+            { 1163, 1115, 1075 },   // rune chain + plate legs
+            // === Dragon armor pieces ===
+            { 1149, 3140, 4087 },   // dragon med + chain + plate legs
+            // === Barrows sets (matched colors per brother) ===
+            { 4716, 4720, 4722 },   // Dharok (full melee)
+            { 4724, 4728, 4730 },   // Guthan (warrior priest look)
+            { 4745, 4749, 4751 },   // Torag (heavy infantry)
+            { 4753, 4757, 4759 },   // Verac (priest of war)
+            { 4732, 4736, 4738 },   // Karil's (range barrows)
+            { 4708, 4712, 4714 },   // Ahrim's (mage barrows)
+            // === Bandos / Armadyl / Pernix (high-tier "show off" gear) ===
+            { 11718, 11724, 11726 },// armadyl helm + bandos top + tassets
+            { 11718, 11720, 11722 },// full armadyl
+            { 20149, 20153, 20157 },// pernix (cb 60+ ranger look)
+            { 20137, 20141, 20145 },// torva (top-end melee)
+            { 20161, 20165, 20169 },// virtus (top-end mage)
+            { 13896, 13884, 13890 },// statius (PvP top tank)
+            // === Hybrid two-piece + bare hat ===
+            { 2581, 577,  1095 },   // robin hood + wizard top
+            { 1037, 4101, 4103 },   // black wizard hat + mystic dark
+            { 579,  4091, 4093 },   // wizard hat + mystic blue
+            { -1,   1005, 1095 },   // bare-headed black + wizard skirt
         };
         // GearSets externalised pool overrides hardcoded array if present.
         // Lets admin panel edit outfits without recompiling. Falls back to
         // the hardcoded list when no JSON config exists.
-        int[] outfit;
+        // Retry up to 6 times if the picked outfit's chest/legs would fail
+        // EquipmentReqs.canWear - otherwise a low-cb bot rolling Torva ends
+        // up with empty chest/legs slots looking weird. After 6 retries,
+        // accept whatever we get (canWear gate still skips bad pieces).
+        int[] outfit = null;
         java.util.List<GearSets.Outfit> jsonPool = GearSets.getOutfits("socialite");
-        if (jsonPool != null && !jsonPool.isEmpty()) {
-            GearSets.Outfit picked = jsonPool.get(Utils.random(jsonPool.size()));
-            outfit = new int[] { picked.hat, picked.chest, picked.legs };
-        } else {
-            outfit = outfits[Utils.random(outfits.length)];
+        for (int attempt = 0; attempt < 6; attempt++) {
+            int[] cand;
+            if (jsonPool != null && !jsonPool.isEmpty()) {
+                GearSets.Outfit picked = jsonPool.get(Utils.random(jsonPool.size()));
+                cand = new int[] { picked.hat, picked.chest, picked.legs };
+            } else {
+                cand = outfits[Utils.random(outfits.length)];
+            }
+            // Both top and legs must be wearable for the outfit to look right.
+            if (EquipmentReqs.canWear(bot, cand[1])
+                    && EquipmentReqs.canWear(bot, cand[2])) {
+                outfit = cand;
+                break;
+            }
+        }
+        if (outfit == null) {
+            // Couldn't find a wearable outfit in 6 tries - bot's stats are
+            // likely too low for most of the pool. Fall back to plain robes
+            // (no stat req).
+            outfit = new int[] { -1, 1005, 1095 };
         }
 
         // 5% chance: holiday rare hat overrides whatever the outfit's hat

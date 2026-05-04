@@ -37,7 +37,7 @@ import java.util.Map;
 public final class GearSets {
 
     private static final String CONFIG_PATH = "data/gear_sets.json";
-    public static final int CURRENT_SCHEMA_VERSION = 1;
+    public static final int CURRENT_SCHEMA_VERSION = 2;
 
     public static final class Outfit {
         public String name;
@@ -94,10 +94,40 @@ public final class GearSets {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = r.readLine()) != null) sb.append(line);
-            parse(sb.toString());
+            String json = sb.toString();
+            int diskVersion = parseSchemaVersion(json);
+            if (diskVersion < CURRENT_SCHEMA_VERSION) {
+                System.out.println("[GearSets] config schema v" + diskVersion
+                    + " < current v" + CURRENT_SCHEMA_VERSION
+                    + " - reseeding defaults (old file backed up)");
+                try {
+                    java.nio.file.Files.copy(f.toPath(),
+                        new File(CONFIG_PATH + ".bak.v" + diskVersion).toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (Throwable ignored) {}
+                seedDefaults();
+                save();
+                return;
+            }
+            parse(json);
         } catch (Throwable t) {
             System.err.println("[GearSets] load failed: " + t);
             seedDefaults();
+        }
+    }
+
+    private static int parseSchemaVersion(String json) {
+        try {
+            int i = json.indexOf("\"schema\":");
+            if (i < 0) return 0;
+            i += "\"schema\":".length();
+            int end = i;
+            while (end < json.length()
+                    && (json.charAt(end) == '-' || Character.isDigit(json.charAt(end)))) end++;
+            if (end == i) return 0;
+            return Integer.parseInt(json.substring(i, end));
+        } catch (Throwable t) {
+            return 0;
         }
     }
 
@@ -133,30 +163,37 @@ public final class GearSets {
         POOLS.clear();
         // Mirrors BotEquipment.applySocialite preset list as of the
         // 23-outfit revision. Editing the JSON file overrides these.
+        // Mirrors BotEquipment.applySocialite outfit pool. 30+ entries
+        // covering wizard / mystic / barrows / bandos / armadyl / pernix /
+        // torva / virtus / statius / dragon / rune / casual themed sets.
+        // canWear gate at apply time filters anything the bot can't actually
+        // wear, with retry-roll so low-cb bots end up with simple robes
+        // instead of bare slots.
         int[][] socialite = {
-            { 579, 577, 1013 },
-            { 579, 577, 1095 },
-            { -1,  577, 1013 },
-            { -1,  577, 1095 },
-            { 1037, 1005, 1013 },
-            { 1037, 1005, 1095 },
-            { 4089, 4091, 4093 },
-            { -1,   4091, 4093 },
-            { 4099, 4101, 4103 },
-            { -1,   4101, 4103 },
-            { 4109, 4111, 4113 },
-            { -1,   4111, 4113 },
-            { 2581, 1005, 1013 },
-            { -1,   1011, 1013 },
-            { 579,  1011, 1013 },
-            { -1,   1015, 1017 },
-            { -1,   542,  544 },
-            { 2581, 577,  1095 },
-            { 10398, 1005, 1013 },
-            { 4089, 4091, 4103 },
-            { 4099, 4101, 4113 },
-            { 579,  4091, 4093 },
-            { 1037, 4101, 4103 },
+            // Wizard / robe family
+            { 579, 577, 1013 },     { 1037, 1005, 1013 },   { -1,  577, 1095 },
+            // Mystic mage robes
+            { 4089, 4091, 4093 },   { 4099, 4101, 4103 },   { 4109, 4111, 4113 },
+            // Casual / themed
+            { 2581, 1005, 1013 },   { -1,   1011, 1013 },   { -1,   1015, 1017 },
+            { -1,   542,  544 },    { 10398, 1005, 1013 },
+            // Rune armor
+            { 1163, 1127, 1079 },   { -1,   1127, 1079 },   { 1163, 1115, 1075 },
+            // Dragon
+            { 1149, 3140, 4087 },
+            // Barrows brothers (full sets)
+            { 4716, 4720, 4722 },   // Dharok
+            { 4724, 4728, 4730 },   // Guthan
+            { 4745, 4749, 4751 },   // Torag
+            { 4753, 4757, 4759 },   // Verac
+            { 4732, 4736, 4738 },   // Karil's
+            { 4708, 4712, 4714 },   // Ahrim's
+            // Bandos / Armadyl / endgame
+            { 11718, 11724, 11726 },   { 11718, 11720, 11722 },
+            { 20149, 20153, 20157 },   { 20137, 20141, 20145 },
+            { 20161, 20165, 20169 },   { 13896, 13884, 13890 },
+            // Hybrid / mixed
+            { 2581, 577,  1095 },   { 1037, 4101, 4103 },   { 579,  4091, 4093 },
             { -1,   1005, 1095 },
         };
         List<Outfit> list = new ArrayList<>();
