@@ -132,6 +132,11 @@ class MatrixAPI:
         return self._post("/admin/citizens/budget/apply",
                           {"includeManual": "true" if include_manual else "false"})
 
+    # Phantom GE
+    def phantom_ge_get(self):    return self._get("/admin/phantom-ge")
+    def phantom_ge_set(self, updates):
+        return self._post("/admin/phantom-ge", updates)
+
     # Gear sets
     def gear_sets_get(self):         return self._get("/admin/gear/sets")
     def gear_sets_save(self, key, outfits):
@@ -214,7 +219,7 @@ class App(ctk.CTk):
                      font=ctk.CTkFont(size=9), text_color="#666").pack(pady=(0, 14))
 
         self.tabs = {}
-        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Gear Sets", "GE Prices", "Players", "Server", "Backups", "Log", "Settings"):
+        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Gear Sets", "GE Prices", "Phantom GE", "Players", "Server", "Backups", "Log", "Settings"):
             btn = ctk.CTkButton(self.sidebar, text=name, height=36,
                                 command=lambda n=name: self.show(n))
             btn.pack(fill="x", padx=10, pady=4)
@@ -235,6 +240,7 @@ class App(ctk.CTk):
         self.tabs["Citizens"]["frame"]  = CitizensFrame(self.content, self.api)
         self.tabs["Gear Sets"]["frame"] = GearSetsFrame(self.content, self.api)
         self.tabs["GE Prices"]["frame"] = GePricesFrame(self.content, self.api)
+        self.tabs["Phantom GE"]["frame"] = PhantomGEFrame(self.content, self.api)
         self.tabs["Players"]["frame"]   = PlayersFrame(self.content, self.api)
         self.tabs["Server"]["frame"]    = ServerFrame(self.content, self.api)
         self.tabs["Backups"]["frame"]   = BackupsFrame(self.content, self.api)
@@ -1460,6 +1466,195 @@ class OutfitEditor(ctk.CTkToplevel):
             return
         self.on_save(self.idx, updated)
         self.destroy()
+
+
+# ----- Phantom GE tab -----
+
+class PhantomGEFrame(ctk.CTkFrame):
+    """Toggle + tune the auto-GE shadow market and view recent fills.
+
+    The phantom market fills player offers from a virtual counter-party
+    at randomized prices within tolerance. This UI exposes:
+
+      - Master enabled/disabled toggle
+      - Per-tier fill rate multipliers (BULK / COMBAT / RARE)
+      - Base rates (placement + per-tick) and spread tolerance
+      - Anti-abuse caps (per-player + per-item / hour)
+      - Live fill log (last 50 events: who, what, qty, price, side)
+
+    Edits push immediately to /admin/phantom-ge.
+    """
+    def __init__(self, master, api):
+        super().__init__(master)
+        self.api = api
+        self.config = {}
+        self.fills = []
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=20, pady=(20, 5))
+        ctk.CTkLabel(top, text="Phantom GE",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        self.status_label = ctk.CTkLabel(top, text="—",
+            font=ctk.CTkFont(size=12))
+        self.status_label.pack(side="left", padx=20)
+
+        actions = ctk.CTkFrame(self)
+        actions.pack(fill="x", padx=20, pady=4)
+        ctk.CTkButton(actions, text="Refresh", width=100,
+                      command=self.refresh).pack(side="left", padx=4)
+        self.toggle_btn = ctk.CTkButton(actions, text="Enable / Disable",
+            width=160, command=self._toggle)
+        self.toggle_btn.pack(side="left", padx=4)
+
+        ctk.CTkLabel(self,
+            text="Shadow matcher fills player offers without bot players. "
+                 "Edits push immediately. Curl-equivalent docs in PhantomMarket.java.",
+            font=ctk.CTkFont(size=11), text_color="#888", justify="left"
+            ).pack(fill="x", padx=20, pady=(0, 4))
+
+        # Two columns: left = config knobs, right = fill log
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=20, pady=10)
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+
+        # ------- Left: config knobs -------
+        cfg_frame = ctk.CTkScrollableFrame(body, label_text="Config")
+        cfg_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+
+        # Each knob: label + entry + apply button
+        self.knob_vars = {}
+        knobs = [
+            ("enabled", "Master kill-switch (true/false)"),
+            ("fillRateOnPlace", "On-placement fill chance (0.0-1.0)"),
+            ("fillRatePerTick", "Per-30s base fill chance (0.0-1.0)"),
+            ("acceptableSpread", "Price spread tolerance (0.30 = ±30%)"),
+            ("minAgeBeforeFillMs", "Min offer age before fill (ms)"),
+            ("bulkMultiplier", "Bulk-tier rate multiplier"),
+            ("combatMultiplier", "Combat-tier rate multiplier"),
+            ("rareMultiplier", "Rare-tier rate multiplier"),
+            ("maxFillsPerPlayerPerHour", "Anti-abuse: per-player/hour cap"),
+            ("maxFillsPerItemPerHour", "Anti-abuse: per-item/hour cap"),
+            ("partialFillChance", "Chance to partial-fill (0.0-1.0)"),
+        ]
+        for i, (key, helptxt) in enumerate(knobs):
+            ctk.CTkLabel(cfg_frame, text=key + ":", anchor="w"
+                ).grid(row=i, column=0, sticky="w", padx=4, pady=2)
+            v = tk.StringVar(value="—")
+            self.knob_vars[key] = v
+            ctk.CTkEntry(cfg_frame, textvariable=v, width=120
+                ).grid(row=i, column=1, padx=4, pady=2)
+            ctk.CTkButton(cfg_frame, text="Apply", width=60,
+                command=lambda k=key: self._apply_knob(k)
+                ).grid(row=i, column=2, padx=4, pady=2)
+            ctk.CTkLabel(cfg_frame, text=helptxt, anchor="w",
+                font=ctk.CTkFont(size=10), text_color="#888"
+                ).grid(row=i, column=3, sticky="w", padx=8, pady=2)
+
+        # ------- Right: live fill log -------
+        log_frame = ctk.CTkFrame(body)
+        log_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        ctk.CTkLabel(log_frame, text="Recent fills (last 50)",
+            font=ctk.CTkFont(size=13, weight="bold")
+            ).pack(anchor="w", padx=10, pady=(8, 4))
+        log_inner = ctk.CTkFrame(log_frame)
+        log_inner.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        cols = ("time", "side", "player", "item", "qty", "price")
+        self.fill_tree = ttk.Treeview(log_inner, columns=cols, show="headings",
+            selectmode="browse")
+        widths = {"time": 80, "side": 50, "player": 100, "item": 60,
+                  "qty": 60, "price": 100}
+        for c in cols:
+            self.fill_tree.heading(c, text=c)
+            self.fill_tree.column(c, width=widths.get(c, 70), anchor="w")
+        vsb = ttk.Scrollbar(log_inner, orient="vertical",
+            command=self.fill_tree.yview)
+        self.fill_tree.configure(yscroll=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.fill_tree.pack(fill="both", expand=True)
+
+    def on_show(self):
+        self.refresh()
+
+    def refresh(self):
+        def do():
+            try:
+                resp = self.api.phantom_ge_get()
+                self.after(0, lambda: self._apply(resp))
+            except Exception as e:
+                self.after(0, lambda: self.status_label.configure(
+                    text=f"refresh failed: {e}", text_color="#cc3030"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply(self, resp):
+        self.config = (resp or {}).get("config", {}) or {}
+        self.fills = (resp or {}).get("recentFills", []) or []
+        en = self.config.get("enabled", False)
+        self.status_label.configure(
+            text=f"{'ENABLED' if en else 'disabled'} · {len(self.fills)} fills logged",
+            text_color=("#3fbf3f" if en else "#888"))
+        self.toggle_btn.configure(
+            text="Disable" if en else "Enable",
+            fg_color=("#aa3030" if en else "#1b6e3a"))
+        for k, v in self.knob_vars.items():
+            cur = self.config.get(k)
+            if cur is not None:
+                v.set(_fmt_knob(cur))
+        # Render fill log (newest at top)
+        for iid in self.fill_tree.get_children():
+            self.fill_tree.delete(iid)
+        import datetime
+        for i, f in enumerate(reversed(self.fills)):
+            ts = datetime.datetime.fromtimestamp(f.get("ts", 0) / 1000.0).strftime("%H:%M:%S")
+            side = "BUY" if f.get("buy") else "SELL"
+            self.fill_tree.insert("", "end", iid=str(i), values=(
+                ts, side, f.get("player", "?"), f.get("itemId", 0),
+                f.get("amount", 0), _fmt_gp(f.get("price", 0))))
+
+    def _toggle(self):
+        new = not bool(self.config.get("enabled", False))
+        self._apply_value("enabled", new)
+
+    def _apply_knob(self, key):
+        raw = self.knob_vars[key].get().strip()
+        if raw in ("", "—"):
+            return
+        # Parse: bool / int / float
+        if raw.lower() in ("true", "false"):
+            v = (raw.lower() == "true")
+        else:
+            try:
+                v = int(raw)
+            except ValueError:
+                try: v = float(raw)
+                except ValueError:
+                    messagebox.showerror("Bad value",
+                        f"Couldn't parse '{raw}' as number/bool.")
+                    return
+        self._apply_value(key, v)
+
+    def _apply_value(self, key, value):
+        def do():
+            try:
+                resp = self.api.phantom_ge_set({key: value})
+                self.after(0, lambda: messagebox.showinfo(
+                    "Applied", f"server applied {resp.get('applied', 0)} change(s)"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Update failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
+def _fmt_knob(v):
+    """Render a knob value in the entry box."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float):
+        # Strip trailing zeros: 0.10 -> 0.1
+        s = f"{v:.6f}".rstrip("0").rstrip(".")
+        return s or "0"
+    return str(v)
 
 
 # ----- GE Prices tab -----

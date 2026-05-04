@@ -25,6 +25,10 @@ public class GrandExchange {
 		OFFERS = SerializableFilesManager.loadGEOffers();
 		OFFERS_TRACK = SerializableFilesManager.loadGEHistory();
 		PRICES = SerializableFilesManager.loadGEPrices();
+		// Boot the phantom market scheduler - hourly fill-cap rotation + 30s
+		// aging-offer ticker. No-op if disabled in PhantomMarket config.
+		try { com.rs.bot.economy.PhantomMarket.start(); }
+		catch (Throwable t) { System.err.println("[GrandExchange] PhantomMarket start failed: " + t); }
 	}
 
 	public static void reset(boolean track, boolean price) {
@@ -137,6 +141,11 @@ public class GrandExchange {
 			player.getGeManager().getOfferUIds()[slot] = createOffer(offer);
 			offer.link(slot, player);
 			findBuyerSeller(offer);
+			// Phantom market hook - lets the shadow matcher roll a chance
+			// to fill from a virtual counter-party. No-op if the phantom
+			// market is disabled in admin config.
+			try { com.rs.bot.economy.PhantomMarket.onOfferPlaced(offer); }
+			catch (Throwable ignored) {}
 		}
 	}
 

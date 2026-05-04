@@ -210,4 +210,55 @@ public class Offer extends Item {
 		return receivedItems.getFreeSlots() != 2;
 	}
 
+	/**
+	 * Phantom-fill helper for {@link com.rs.bot.economy.PhantomMarket}.
+	 * Simulates a counter-party trade without actually creating one - the
+	 * shadow-matcher computes a fill quantity + unit price, calls this,
+	 * and the offer state advances exactly as if a real player on the
+	 * other side had matched.
+	 *
+	 * For BUY offers: adds the item to receivedItems + change coins
+	 * (player.price - actualPrice) per unit.
+	 * For SELL offers: adds total = fillAmount * actualPrice in coins.
+	 *
+	 * @param fillAmount  units to deliver
+	 * @param actualPrice unit price the trade fills at (must be <= player's
+	 *                     listed price for BUY, >= player's listed for SELL)
+	 * @return true if the fill applied
+	 */
+	public boolean phantomFill(int fillAmount, int actualPrice) {
+		if (canceled || isCompleted()) return false;
+		int left = getAmount() - totalAmmountSoFar;
+		if (fillAmount > left) fillAmount = left;
+		if (fillAmount <= 0) return false;
+		int total = fillAmount * actualPrice;
+		if (buying) {
+			// Player is buying. We deliver the item + refund any change
+			// (their listed price was higher than our fill price).
+			receivedItems.add(new Item(getId(), fillAmount));
+			int change = fillAmount * price - total;
+			if (change > 0) receivedItems.add(new Item(995, change));
+		} else {
+			// Player is selling. We pay them coins for the items.
+			receivedItems.add(new Item(995, total));
+		}
+		totalAmmountSoFar += fillAmount;
+		totalPriceSoFar += total;
+		sendUpdateWarning();
+		return true;
+	}
+
+	/** Public read for amountLeft - used by PhantomMarket to decide how
+	 *  much of an aging offer to fill. */
+	public int getAmountLeft() {
+		return getAmount() - totalAmmountSoFar;
+	}
+
+	/** Public read for placement timestamp - PhantomMarket uses this to
+	 *  enforce a min-age before phantom-filling (so player has time to
+	 *  cancel a misclick). */
+	public long getPlacedMs() {
+		return data;
+	}
+
 }
