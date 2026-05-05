@@ -1365,6 +1365,18 @@ public final class AdminHttpServer {
             String body = readBody(ex);
             try {
                 java.util.List<com.rs.bot.ambient.CitizenBudget.Slot> parsed = parseBudgetSlots(body);
+                if (parsed.isEmpty()) {
+                    // User report: "save the budget just wipes it and says
+                    // 0 slots". Log the body so we can see what went wrong
+                    // - body too small, parser ate everything, panel sent
+                    // empty list, etc. REFUSE to save 0 slots so we don't
+                    // wipe a working config silently.
+                    System.err.println("[CitizenBudget] POST parsed 0 slots from body (len="
+                        + body.length() + "): "
+                        + body.substring(0, Math.min(body.length(), 800)));
+                    sendText(ex, 400, "{\"ok\":false,\"error\":\"parsed 0 slots from body - refused to save (would wipe config). check server log for body content.\"}");
+                    return;
+                }
                 com.rs.bot.ambient.CitizenBudget.setSlots(parsed);
                 sendText(ex, 200, "{\"ok\":true,\"saved\":" + parsed.size() + "}");
             } catch (Throwable t) {
