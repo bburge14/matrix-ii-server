@@ -1629,11 +1629,39 @@ class PhantomGEFrame(ctk.CTkFrame):
             width=160, command=self._toggle)
         self.toggle_btn.pack(side="left", padx=4)
 
-        ctk.CTkLabel(self,
-            text="Shadow matcher fills player offers without bot players. "
-                 "Edits push immediately. Curl-equivalent docs in PhantomMarket.java.",
-            font=ctk.CTkFont(size=11), text_color="#888", justify="left"
-            ).pack(fill="x", padx=20, pady=(0, 4))
+        # ------- How-it-works explainer -------
+        explainer = ctk.CTkFrame(self, fg_color="#1a1d22")
+        explainer.pack(fill="x", padx=20, pady=(0, 8))
+        ctk.CTkLabel(explainer, text="How Phantom GE works",
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color="#e0a93f", anchor="w").pack(
+                     anchor="w", padx=12, pady=(8, 2))
+        ctk.CTkLabel(explainer, justify="left", anchor="w", wraplength=900,
+            font=ctk.CTkFont(size=11), text_color="#cccccc",
+            text=(
+"Player places a GE offer. Phantom GE rolls TWO chances to fill it from a virtual counter-party:\n"
+"\n"
+"  1. ON PLACE  (~5s after Confirm):  rate = fillRateOnPlace × tierMultiplier   (capped at 100%)\n"
+"  2. AGING TICK (every 30s, after offer is minAgeBeforeFillMs old):\n"
+"                                     rate = fillRatePerTick × tierMultiplier\n"
+"\n"
+"Tiers come from the item's GE reference price:\n"
+"  cheap < 1k  | bulk < 10k | low < 100k | mid < 1m | high < 10m | rare ≥ 10m\n"
+"\n"
+"Each tier has its own multiplier (below).  Example with current defaults:\n"
+"  • bulk item (logs):  on-place = 0.50 × 6 = 100% (instant);  per-tick = 0.25 × 6 = 100% (instant if it survived).\n"
+"  • mid item (whip):   on-place = 0.50 × 1.5 = 75%;  per-tick = 37.5% per 30s → ~80s expected.\n"
+"  • rare (partyhat):   on-place = 0.50 × 0.3 = 15%;  per-tick = 7.5% per 30s → ~7 min expected.\n"
+"\n"
+"Items NEVER fill if:\n"
+"  (a) item not in the bot trader catalog (no reference price → tryFill returns)\n"
+"  (b) listed price outside ±acceptableSpread of catalog (default ±30%)\n"
+"  (c) hit a cap: maxFillsPerPlayerPerHour or maxFillsPerItemPerHour\n"
+"  (d) owner logged out\n"
+"  (e) Phantom GE disabled\n"
+"\n"
+"Add missing items via the GE Prices tab (sets reference price) or the Items tab (tradeable + price).")
+            ).pack(anchor="w", padx=12, pady=(0, 8), fill="x")
 
         # Two columns: left = config knobs, right = fill log
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -1654,46 +1682,45 @@ class PhantomGEFrame(ctk.CTkFrame):
                 "entirely (no auto-fills, P2P matching still works)."),
             ("fillRateOnPlace",
                 "Base chance an offer fills ~5s after placement. "
-                "Multiplied by the tier mult below. e.g. 0.30 with bulk 5x = "
-                "150% (capped at 100%) - bulk items insta-fill on placement."),
+                "Multiplied by the tier mult below. Default 0.50 → "
+                "bulk = 100%, mid = 75%, high = 50%, rare = 15%."),
             ("fillRatePerTick",
                 "Base chance per 30s tick that an aging offer fills. "
-                "Same tier-mult math. e.g. 0.10 with mid 1x = 10% per 30s, "
-                "so mid-tier offers usually fill within ~5 minutes."),
+                "Default 0.25 → mid = 37%/30s (~80s avg), high = 25%/30s "
+                "(~2 min avg), rare = 7.5%/30s (~7 min avg)."),
             ("acceptableSpread",
                 "Price tolerance vs the GE reference. 0.30 = phantom only "
                 "fills if player's price is within ±30%. Rejects 'wtb phat 1gp' "
-                "trolls. Lower = stricter."),
+                "trolls. Lower = stricter, raise to allow extreme listings."),
             ("minAgeBeforeFillMs",
-                "Offer must sit this long before any phantom fill. Lets "
-                "players cancel misclicks. 30000 = 30s default."),
+                "Offer must sit this long before any phantom fill or aging "
+                "tick. Lets players cancel misclicks. Default 10000 = 10s."),
             ("cheapMultiplier",
-                "Items < 1k gp (eg copper ore, raw shrimps). Multiplier on "
-                "both base rates. 10x = effectively instant fills always."),
+                "Items < 1k gp (eg copper ore, raw shrimps). 10x default = "
+                "always instant on placement (capped at 100%)."),
             ("bulkMultiplier",
-                "Items < 10k gp (logs, ores, runes, raw fish). 5x default = "
-                "very fast fills, 1-2 min typically."),
+                "Items < 10k gp (logs, ores, runes, raw fish). 6x default = "
+                "instant on placement, fills any aging offer in 1-2 ticks."),
             ("lowMultiplier",
-                "Items < 100k gp (rune armor pieces, dragon scim, basic "
-                "amulets). 2x default = fills within a few minutes."),
+                "Items < 100k gp (rune armor, dragon scim, basic amulets). "
+                "3x default = ~150% on place (instant), ~75%/tick aging."),
             ("midMultiplier",
                 "Items < 1m gp (whips, dragon weapons, mystic, mid jewelry). "
-                "1x default = base rate, ~5-10 min typical fill."),
+                "1.5x default = 75% on place, ~37%/30s aging (1-2 min avg)."),
             ("highMultiplier",
-                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 0.5x "
-                "default = slow, 30+ min for full fill."),
+                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 1.0x "
+                "default = 50% on place, 25%/30s aging (~2 min avg)."),
             ("rareMultiplier",
-                "Items ≥ 10m gp (partyhats, hween masks, christmas crackers, "
-                "phats). 0.1x default = days to fill - rare items shouldn't "
-                "auto-flip cheaply."),
+                "Items ≥ 10m gp (partyhats, hween masks, third age, phats). "
+                "0.3x default = 15% on place, 7.5%/30s aging (~7 min avg)."),
             ("maxFillsPerPlayerPerHour",
                 "Anti-abuse: max phantom fills any one player can receive per "
-                "hour. Stops sitting at GE flipping infinitely against the "
-                "phantom. Resets every hour. 50 default."),
+                "hour. Default 200 (was 50) - matches the higher fill rates "
+                "so casual flippers don't hit the cap."),
             ("maxFillsPerItemPerHour",
                 "Anti-abuse: max phantom fills total for any one item id per "
-                "hour. Stops draining 'phantom inventory' on a hot item. "
-                "20 default."),
+                "hour. Default 100 (was 20). Stops draining a single hot "
+                "item's phantom inventory."),
             ("partialFillChance",
                 "When phantom DOES fill, this is the chance it only fills "
                 "20-70% of the offer instead of all. Mimics multiple small "
