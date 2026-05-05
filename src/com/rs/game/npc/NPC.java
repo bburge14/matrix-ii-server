@@ -219,6 +219,28 @@ public class NPC extends Entity implements Serializable {
 	public void processNPC() {
 		if (isDead() || locked)
 			return;
+		// Force-retaliate. If something hit us recently (attackedBy +
+		// attackedByDelay still alive) AND we currently have no combat
+		// target AND we're a normal interactable NPC with an Attack
+		// option, engage the attacker. This is belt-and-suspenders on
+		// top of handleIngoingHit's same-tick set: covers cases where
+		// the hit had damage == -1 and applyHit got skipped, scripted
+		// cantInteract toggles, lureDelay drift in autoRelatie, etc.
+		// The user's complaint was that monsters never retaliate -
+		// this catches every per-tick opportunity to fix that.
+		try {
+			Entity who = getAttackedBy();
+			if (who != null
+					&& combat != null && combat.getTarget() == null
+					&& getAttackedByDelay() + 6000 >= Utils.currentTimeMillis()
+					&& !isCantInteract() && !isForceWalking()
+					&& !who.isDead() && !who.hasFinished()
+					&& who.getPlane() == getPlane()
+					&& getDefinitions() != null
+					&& getDefinitions().hasAttackOption()) {
+				setTarget(who);
+			}
+		} catch (Throwable ignored) {}
 		if (!combat.process()) { // if not under combat
 			if (!isForceWalking()) {// combat still processed for attack delay
 				// go down
