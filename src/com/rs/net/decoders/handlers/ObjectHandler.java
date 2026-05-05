@@ -2875,6 +2875,13 @@ public final class ObjectHandler {
 							}
 							break;
 						default:
+							String lcName_ = objectDef.name == null ? "" : objectDef.name.toLowerCase();
+							if ((lcName_.contains("door") || lcName_.contains("gate"))
+									&& (objectDef.containsOption(0, "Open")
+										|| objectDef.containsOption(0, "Unlock"))) {
+								if (!handleGate(player, object)) handleDoor(player, object);
+								break;
+							}
 							player.getPackets().sendGameMessage("Nothing interesting happens.");
 							break;
 					}
