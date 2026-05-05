@@ -57,6 +57,41 @@ public class CitizenBrain extends BotBrain {
     private State state = State.IDLE;
     private int stateTicksRemaining = 0;
     private long afkUntilMs = 0;
+
+    /**
+     * Surface the citizen FSM's state to botinfo / admin tooling. The
+     * parent BotBrain's currentState/currentActivity are never updated
+     * because CitizenBrain.tick is a complete override - without these
+     * getters, ::botinfo on a citizen always showed "IDLE / initializing"
+     * even when the FSM was traversing or trading, making citizens look
+     * dead when they were actually working.
+     */
+    @Override
+    public com.rs.bot.BotState getCurrentState() {
+        switch (state) {
+            case TRAVERSING:  return com.rs.bot.BotState.TRAVELING;
+            case INTERACTING: return com.rs.bot.BotState.ACTIVITY;
+            case PANICKING:   return com.rs.bot.BotState.SOCIAL;
+            case IDLE:
+            default:          return com.rs.bot.BotState.IDLE;
+        }
+    }
+
+    @Override
+    public String getCurrentActivity() {
+        if (afkUntilMs > 0 && System.currentTimeMillis() < afkUntilMs) {
+            long ms = afkUntilMs - System.currentTimeMillis();
+            return "AFK (" + (ms / 1000) + "s)";
+        }
+        String arch = archetype == null ? "citizen" : archetype.name().toLowerCase();
+        switch (state) {
+            case TRAVERSING:  return arch + " walking (" + stateTicksRemaining + "t)";
+            case INTERACTING: return arch + " interacting (" + stateTicksRemaining + "t)";
+            case PANICKING:   return arch + " fleeing";
+            case IDLE:
+            default:          return arch + " idling";
+        }
+    }
     private long panicCooldownTicks = 0;
 
     /**
