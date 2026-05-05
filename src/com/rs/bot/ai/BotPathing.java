@@ -48,6 +48,12 @@ public final class BotPathing {
         ensureRegionLoaded(targetX, targetY);
         FixedTileStrategy strategy = new FixedTileStrategy(targetX, targetY);
         if (runRoute(bot, strategy)) return true;
+        // RouteFinder failed - check if a closed door is what's blocking
+        // us. Doors are clipped tiles that flip to walkable when opened.
+        // If we find one within a few tiles, open it and tell the caller
+        // we made progress so wiggle doesn't fire. Next tick's walkTo
+        // will route through the now-open door.
+        if (tryOpenNearbyObstacle(bot, 4)) return false;
         // RouteFinder couldn't path us there - usually because the target
         // is outside our loaded scene (cross-region trips). Fall back to
         // a clip-aware straight-line walk: addWalkSteps with check=true
@@ -64,7 +70,9 @@ public final class BotPathing {
             ensureRegionLoaded(object.getX(), object.getY());
         }
         ObjectStrategy strategy = new ObjectStrategy(object);
-        return runRoute(bot, strategy);
+        if (runRoute(bot, strategy)) return true;
+        tryOpenNearbyObstacle(bot, 4);
+        return false;
     }
 
     /** Walk adjacent to an NPC - used for fishing spots and combat. */
@@ -74,7 +82,66 @@ public final class BotPathing {
             ensureRegionLoaded(npc.getX(), npc.getY());
         }
         EntityStrategy strategy = new EntityStrategy(npc);
-        return runRoute(bot, strategy);
+        if (runRoute(bot, strategy)) return true;
+        tryOpenNearbyObstacle(bot, 4);
+        return false;
+    }
+
+    /**
+     * Scan the area around the bot for a closed door / gate / metal door
+     * and "click" it programmatically via ObjectHandler.handleDoor. Returns
+     * true if we opened something. Closed doors block clipping so RouteFinder
+     * gives up on otherwise-reachable destinations - opening them lets the
+     * next walkTo tick succeed.
+     *
+     * Lock + quest gates are intentionally not handled - those need keys /
+     * dialogue steps a bot doesn't have. We just look for plain "Open" /
+     * "Unlock" options on door-named objects.
+     */
+    public static boolean tryOpenNearbyObstacle(AIPlayer bot, int radius) {
+        try {
+            int botRegion = ((bot.getX() >> 6) << 8) + (bot.getY() >> 6);
+            com.rs.game.Region region = com.rs.game.World.getRegion(botRegion, true);
+            if (region == null) return false;
+            java.util.List<WorldObject> objs = region.getAllObjects();
+            if (objs == null) return false;
+            int plane = bot.getPlane();
+            int bx = bot.getX(), by = bot.getY();
+            WorldObject best = null;
+            int bestDist = Integer.MAX_VALUE;
+            for (WorldObject obj : objs) {
+                if (obj == null || obj.getPlane() != plane) continue;
+                int dx = Math.abs(obj.getX() - bx);
+                int dy = Math.abs(obj.getY() - by);
+                if (dx > radius || dy > radius) continue;
+                com.rs.cache.loaders.ObjectDefinitions def = obj.getDefinitions();
+                if (def == null || def.name == null) continue;
+                String name = def.name.toLowerCase();
+                if (!isDoorLike(name)) continue;
+                if (!def.containsOption(0, "Open")
+                        && !def.containsOption(0, "Unlock")) continue;
+                // Don't re-flip a door we already opened on this tick.
+                if (com.rs.game.World.isSpawnedObject(obj)) continue;
+                int d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; best = obj; }
+            }
+            if (best == null) return false;
+            com.rs.net.decoders.handlers.ObjectHandler.handleDoor(bot, best, 60000);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean isDoorLike(String name) {
+        return name.equals("door")
+            || name.equals("gate")
+            || name.equals("large door")
+            || name.equals("metal door")
+            || name.equals("oak door")
+            || name.equals("wooden door")
+            || name.endsWith(" door")
+            || name.endsWith(" gate");
     }
 
     /** Force-load the region containing (x,y) so RouteFinder has clipping. */

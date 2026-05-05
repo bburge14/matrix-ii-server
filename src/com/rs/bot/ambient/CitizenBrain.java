@@ -46,7 +46,13 @@ public class CitizenBrain extends BotBrain {
     private static final int PLAYER_AWARENESS_TILES = 6;
     private static final double AFK_PROBABILITY = 0.0008;
     private static final double MISCLICK_PROBABILITY = 0.012;
-    private static final double CHATTER_PROBABILITY = 0.02;
+    // Idle citizens used to stand silent for the full ~30-72s socialite IDLE
+    // window because chatter rolled at 2%/tick and there was no other
+    // activity. Bumped to ~6% chatter + a small fidget step so an idle
+    // citizen visibly does SOMETHING (talks, glances, shuffles a tile)
+    // every few seconds instead of looking dead.
+    private static final double CHATTER_PROBABILITY = 0.06;
+    private static final double IDLE_FIDGET_PROBABILITY = 0.04;
 
     public enum State { IDLE, TRAVERSING, INTERACTING, PANICKING }
 
@@ -75,6 +81,15 @@ public class CitizenBrain extends BotBrain {
             case IDLE:
             default:          return com.rs.bot.BotState.IDLE;
         }
+    }
+
+    /** Surface the citizen's current FSM method so botinfo's
+     *  method=... line shows what they're actually doing instead of
+     *  null. The parent BotBrain.lastMethod is never written by
+     *  CitizenBrain so it would always be null otherwise. */
+    @Override
+    public com.rs.bot.ai.TrainingMethods.Method getLastMethod() {
+        return currentMethod;
     }
 
     @Override
@@ -270,7 +285,7 @@ public class CitizenBrain extends BotBrain {
         }
 
         if (Math.random() < CHATTER_PROBABILITY) {
-            String line = archetype.randomChatter();
+            String line = archetype == null ? null : archetype.randomChatter();
             if (line != null) {
                 // sayBoth(plain) = no chat effect for casual chatter.
                 // Effects are reserved for trader/gambler hosts per user spec.
@@ -280,6 +295,25 @@ public class CitizenBrain extends BotBrain {
             // Sometimes a chatty bot kicks off a 2-line convo with a
             // nearby citizen instead of just speaking solo.
             try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
+        }
+
+        // Idle fidget: 1-tile shuffle in a random direction so an
+        // "idle" citizen still visibly moves every few seconds
+        // instead of looking dead. Skips socialite hub fixtures
+        // (they're meant to be stationary chat-anchors).
+        if (!bot.hasWalkSteps()
+                && (archetype == null || !archetype.isSocialite())
+                && Math.random() < IDLE_FIDGET_PROBABILITY) {
+            stepRandom(bot);
+        }
+        // Random face-direction so even socialites turn their head
+        // every so often - cheap visual aliveness, no movement.
+        if (Math.random() < 0.05) {
+            try {
+                int fx = bot.getX() + Utils.random(-3, 4);
+                int fy = bot.getY() + Utils.random(-3, 4);
+                bot.setNextFaceWorldTile(new com.rs.game.WorldTile(fx, fy, bot.getPlane()));
+            } catch (Throwable ignored) {}
         }
     }
 
