@@ -267,6 +267,19 @@ public final class CitizenSpawner {
                 if (Utils.random(100) < 12) maybeSpawnPet(bot);
             } catch (Throwable ignored) {}
 
+            // Sheathe roll. CombatDefinitions defaults sheathe=true (weapon
+            // hidden, total skill level shown over the head). Real players
+            // mostly walk around with their weapon out (combat level shown);
+            // Citizens were stuck at the default so EVERY citizen displayed
+            // total skill, which the user explicitly didn't want. 80%
+            // unsheathed (combat level), 20% sheathed (skiller / mage / chill
+            // crowd showing total skill).
+            try {
+                boolean sheathed = Utils.random(100) < 20;
+                bot.setWeaponSheathe(sheathed);
+                if (!sheathed) bot.getCombatDefinitions().switchSheathe();
+            } catch (Throwable ignored) {}
+
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
             System.out.println("[CitizenSpawner] spawned " + name + " (" + arch.name()

@@ -350,6 +350,11 @@ public class ItemConstants {
 	}
 
 	public static boolean isTradeable(Item item) {
+		// Admin-panel runtime override layer. Lets us flip an item to
+		// tradeable / untradeable without recompiling Settings.
+		// Persisted to data/items/tradeable_overrides.json.
+		if (com.rs.utils.TradeableOverrides.isForcedTradeable(item.getId())) return true;
+		if (com.rs.utils.TradeableOverrides.isForcedUntradeable(item.getId())) return false;
 		for (int i = 0; i < Settings.TRADEABLE_EXCEPTION.length; i++)
 			if (item.getId() == Settings.TRADEABLE_EXCEPTION[i])
 				return true;

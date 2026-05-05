@@ -2880,6 +2880,11 @@ public final class ObjectHandler {
 									|| lcName_.contains("portcullis") || lcName_.contains("trapdoor"))
 									&& (objectDef.containsOption(0, "Open")
 										|| objectDef.containsOption(0, "Unlock"))) {
+								if (lcName_.contains("portcullis")) {
+									World.removeObjectTemporary(object, 60000);
+									player.setNextAnimation(new Animation(2606));
+									break;
+								}
 								if (!handleGate(player, object)) handleDoor(player, object);
 								break;
 							}

@@ -156,7 +156,12 @@ public final class BotChatListener {
         addAlias(7927, "easter ring");
         addAlias(7771, "disk of returning", "disk");
         addAlias(4566, "rubber chicken", "chicken");
-        addAlias(1052, "scythe");
+        // Removed: addAlias(1052, "scythe") - id 1052 is "Cape of Legends"
+        // in this cache, NOT a scythe. The bare "scythe" alias was matching
+        // "wtb noxious scythe" body and the bot put up Cape of Legends.
+        // The cache-name auto-scan below registers "noxious scythe" /
+        // "noxious staff" / "noxious longbow" by their actual cache IDs.
+        addAlias(1419, "halloween scythe");  // joke holiday item, explicit
         addAlias(4084, "yo-yo", "yoyo");
         // === Bulk skilling supplies ===
         addAlias(1511, "logs", "regular logs", "reg logs");
@@ -198,6 +203,56 @@ public final class BotChatListener {
         addAlias(1617, "uncut diamond");
         addAlias(11212, "dragon arrows", "d arrows");
         addAlias(892, "rune arrows");
+        // Auto-register cache items that contain certain weapon-style
+        // keywords so Matrix-specific IDs (Noxious / Drygore / Sirenic /
+        // Tectonic / etc.) get aliases without us having to look up each
+        // ID by hand. Registers the FULL lowercased cache name as the
+        // alias key so "wtb noxious scythe" longest-matches it. Skips
+        // noted variants (cache encodes those as separate items with the
+        // same name; we want the wieldable one).
+        autoRegisterByName(new String[] {
+            "noxious", "drygore", "ascension", "seismic",
+            "sirenic", "tectonic", "malevolent",
+            "torva ", "pernix ", "virtus ",
+            "chaotic", "primal ", "promethium ", "sagittarian "
+        });
+    }
+
+    /** Walk the cache and add an alias for every item whose lowercased
+     *  name CONTAINS any of the given keywords. Tradeable / wearable
+     *  variants only - skips notes (isNoted) and placeholders. */
+    private static void autoRegisterByName(String[] keywordsLower) {
+        try {
+            int total = com.rs.utils.Utils.getItemDefinitionsSize();
+            int added = 0;
+            for (int id = 0; id < total && id < 50000; id++) {
+                try {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+                    boolean match = false;
+                    for (String kw : keywordsLower) {
+                        if (lower.contains(kw)) { match = true; break; }
+                    }
+                    if (!match) continue;
+                    // First registration wins (don't overwrite manual ones).
+                    if (!ALIASES.containsKey(lower)) {
+                        ALIASES.put(lower, id);
+                        added++;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            System.out.println("[BotChatListener] auto-registered " + added
+                + " cache item aliases by keyword");
+        } catch (Throwable t) {
+            System.err.println("[BotChatListener] autoRegisterByName failed: " + t);
+        }
     }
 
     private static void addAlias(int id, String... aliases) {

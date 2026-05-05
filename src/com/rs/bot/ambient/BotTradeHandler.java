@@ -882,62 +882,29 @@ public final class BotTradeHandler {
      *  Returns null only on catastrophic failure. */
     private static StockEntry ensureBotStockAssigned(AIPlayer bot) {
         StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
-        Long pickedAt = (Long) bot.getTemporaryAttributtes().get("BotTraderStockPickedMs");
         long now = System.currentTimeMillis();
-        // Rotate if 30 min elapsed since last pick.
-        if (stock != null && pickedAt != null
-                && now - pickedAt > STOCK_ROTATION_MS) {
-            // Rotate to a different stock entry so the bot becomes a
-            // different vendor for the next 30 min. pickStockForBot is
-            // hash-deterministic so we add a temp salt to force a new pick.
-            bot.getTemporaryAttributtes().put("StockSalt",
-                ((Integer) bot.getTemporaryAttributtes()
-                    .getOrDefault("StockSalt", 0)) + 1);
-            stock = pickStockForBot(bot);
-            if (stock != null) {
-                bot.getTemporaryAttributtes().put("BotTraderStock", stock);
-                bot.getTemporaryAttributtes().put("BotTraderStockPickedMs", now);
-                // Reset advert broadcast cache so the new line goes out.
-                bot.getTemporaryAttributtes().remove("BotTradeBroadcastMs");
-                stockBot(bot, stock);
-            }
-        }
+        // First-pick - locked for the bot's lifetime per user request:
+        // "make it to where traders don't have more than one thing for
+        // sale". Was: 30-minute STOCK_ROTATION_MS rotation + sold-out
+        // rotation for high-tier items, both of which created the
+        // "advertises X then Y then X again" carousel the user
+        // complained about. Now the stock is picked exactly once and
+        // sticks until the bot despawns.
         if (stock == null) {
             stock = pickStockForBot(bot);
             if (stock == null) return null;
             bot.getTemporaryAttributtes().put("BotTraderStock", stock);
-            // Stagger first-pick time by 0-5 min so bots don't all sync.
-            long stagger = (long)(Math.random() * 5L * 60L * 1000L);
-            bot.getTemporaryAttributtes().put(
-                "BotTraderStockPickedMs", now - stagger);
+            bot.getTemporaryAttributtes().put("BotTraderStockPickedMs", now);
             stockBot(bot, stock);
         }
-        // Restock policy:
-        //   priceGp <  1m  -> auto-replenish (cheap bulk consumables, infinite)
-        //   priceGp >= 1m  -> bot is genuinely out. Don't sell another phat
-        //                     after one's been sold. Force a rotation to a
-        //                     different catalog entry so it picks something
-        //                     it actually has on hand.
-        // User: "I should not be able to buy a partyhat from a bot, then
-        //  it keeps selling it - they should be out of that item".
+        // Replenish-only restock - no rotation. Cheap bulk traders top
+        // up to their target whenever a sale empties them; high-tier
+        // singles also replenish but slower (controlled by stockBot's
+        // tier-based target counts) so a player can't speed-buy a phat
+        // forever, but the bot keeps advertising the same item.
         try {
             if (bot.getInventory().getAmountOf(tradeId(stock.itemId)) <= 0) {
-                if (stock.priceGp < 1_000_000) {
-                    stockBot(bot, stock);
-                } else {
-                    // High-tier item sold out - rotate to a different stock.
-                    bot.getTemporaryAttributtes().put("StockSalt",
-                        ((Integer) bot.getTemporaryAttributtes()
-                            .getOrDefault("StockSalt", 0)) + 1);
-                    StockEntry newStock = pickStockForBot(bot);
-                    if (newStock != null && newStock.itemId != stock.itemId) {
-                        bot.getTemporaryAttributtes().put("BotTraderStock", newStock);
-                        bot.getTemporaryAttributtes().put("BotTraderStockPickedMs", now);
-                        bot.getTemporaryAttributtes().remove("BotTradeBroadcastMs");
-                        stockBot(bot, newStock);
-                        stock = newStock;
-                    }
-                }
+                stockBot(bot, stock);
             }
         } catch (Throwable ignored) {}
         return stock;
