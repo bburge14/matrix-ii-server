@@ -47,32 +47,38 @@ public final class BotTeleporter {
         new Spell("Watchtower", new WorldTile(2548, 3112, 0), 58, 68, 557, 2, 563, 2),
         new Spell("Trollheim",  new WorldTile(2890, 3678, 0), 61, 68, 554, 2, 563, 2),
         new Spell("Ape Atoll",  new WorldTile(2796, 2791, 0), 64, 76, 555, 2, 554, 2, 565, 2, 563, 2),
-        // Lodestones - free, level 0, no runes. Match the
-        // HomeTeleport landing tiles; bots auto-have all unlocked.
-        // Without these, methods at Catherby / Karamja etc. were
-        // unreachable for bots without Skills Necklaces and the
+        // Lodestone waypoints - free, level 0, no runes. Coordinates
+        // match HomeTeleport.useLodestone exactly (decoded from the
+        // hash values, not guessed) - decoder: x=(h>>14)&0x3fff,
+        // y=h&0x3fff, plane=h>>28. Bots auto-have all of these
+        // unlocked since HomeTeleport doesn't gate on activation.
+        // Without these, methods at Catherby / Karamja / Seers etc.
+        // were unreachable for bots without Skills Necklaces - the
         // bot would oscillate between glory landings forever.
-        new Spell("Lodestone Catherby",  new WorldTile(2832, 3447, 0), 0, 0),
-        new Spell("Lodestone Karamja",   new WorldTile(2858, 3149, 0), 0, 0),
-        new Spell("Lodestone Seers",     new WorldTile(2691, 3486, 0), 0, 0),
-        new Spell("Lodestone Yanille",   new WorldTile(2529, 3094, 0), 0, 0),
-        new Spell("Lodestone Burthorpe", new WorldTile(2899, 3545, 0), 0, 0),
-        new Spell("Lodestone Taverley",  new WorldTile(2878, 3443, 0), 0, 0),
-        // Lunar Isle / Tirannwn are quest-gated lodestones - skip to
-        // avoid teleporting bots into a controller that boots them.
-        new Spell("Lodestone Edgeville", new WorldTile(3067, 3505, 0), 0, 0),
-        new Spell("Lodestone Lumbridge", new WorldTile(3233, 3221, 0), 0, 0),
-        new Spell("Lodestone Falador",   new WorldTile(2967, 3403, 0), 0, 0),
-        new Spell("Lodestone Varrock",   new WorldTile(3214, 3376, 0), 0, 0),
-        new Spell("Lodestone Ardougne",  new WorldTile(2634, 3349, 0), 0, 0),
-        new Spell("Lodestone Draynor",   new WorldTile(3104, 3299, 0), 0, 0),
-        new Spell("Lodestone Al-Kharid", new WorldTile(3294, 3251, 0), 0, 0),
-        new Spell("Lodestone Port Sarim",new WorldTile(3011, 3215, 0), 0, 0),
-        new Spell("Lodestone Fremennik", new WorldTile(2744, 3700, 0), 0, 0),
-        new Spell("Lodestone Canifis",   new WorldTile(3517, 3508, 0), 0, 0),
-        // Bandit Camp / Eagles' Peak / Lunar / Oo'glog skipped as
-        // quest-gated; bots without those quests would land in a
-        // controller and bounce.
+        new Spell("Lodestone Lumbridge",   new WorldTile(3233, 3222, 0), 0, 0),
+        new Spell("Lodestone Burthorpe",   new WorldTile(2899, 3545, 0), 0, 0),
+        new Spell("Lodestone Taverley",    new WorldTile(2878, 3443, 0), 0, 0),
+        new Spell("Lodestone Catherby",    new WorldTile(2831, 3452, 0), 0, 0),
+        new Spell("Lodestone Seers",       new WorldTile(2689, 3483, 0), 0, 0),
+        new Spell("Lodestone Ardougne",    new WorldTile(2634, 3349, 0), 0, 0),
+        new Spell("Lodestone Yanille",     new WorldTile(2529, 3095, 0), 0, 0),
+        new Spell("Lodestone Falador",     new WorldTile(2967, 3404, 0), 0, 0),
+        new Spell("Lodestone Edgeville",   new WorldTile(3067, 3506, 0), 0, 0),
+        new Spell("Lodestone Varrock",     new WorldTile(3214, 3377, 0), 0, 0),
+        new Spell("Lodestone Draynor",     new WorldTile(3105, 3299, 0), 0, 0),
+        new Spell("Lodestone Port Sarim",  new WorldTile(3011, 3216, 0), 0, 0),
+        new Spell("Lodestone Karamja",     new WorldTile(2761, 3148, 0), 0, 0),
+        new Spell("Lodestone Al-Kharid",   new WorldTile(3297, 3185, 0), 0, 0),
+        new Spell("Lodestone Fremennik",   new WorldTile(2712, 3678, 0), 0, 0),
+        new Spell("Lodestone Canifis",     new WorldTile(3517, 3516, 0), 0, 0),
+        new Spell("Lodestone Bandit Camp", new WorldTile(3214, 2955, 0), 0, 0),
+        new Spell("Lodestone Eagles' Peak",new WorldTile(2366, 3480, 0), 0, 0),
+        new Spell("Lodestone Tirannwn",    new WorldTile(2254, 3150, 0), 0, 0),
+        new Spell("Lodestone Oo'glog",     new WorldTile(2532, 2872, 0), 0, 0),
+        new Spell("Lodestone Ashdale",     new WorldTile(2474, 2709, 2), 0, 0),
+        // Lunar Isle (2085,3915) / Prifddinas (2208,3361,plane1) are
+        // hard-gated by controllers and skipped - bots landing there
+        // get bounced. Everything else is reachable as a free tile.
     };
 
     /** Jewelry teleport entry - charged item + landing tile + animation. */
