@@ -2876,7 +2876,8 @@ public final class ObjectHandler {
 							break;
 						default:
 							String lcName_ = objectDef.name == null ? "" : objectDef.name.toLowerCase();
-							if ((lcName_.contains("door") || lcName_.contains("gate"))
+							if ((lcName_.contains("door") || lcName_.contains("gate")
+									|| lcName_.contains("portcullis") || lcName_.contains("trapdoor"))
 									&& (objectDef.containsOption(0, "Open")
 										|| objectDef.containsOption(0, "Unlock"))) {
 								if (!handleGate(player, object)) handleDoor(player, object);

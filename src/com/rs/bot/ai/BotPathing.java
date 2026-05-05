@@ -324,8 +324,10 @@ public final class BotPathing {
             || name.equals("metal door")
             || name.equals("oak door")
             || name.equals("wooden door")
+            || name.equals("portcullis")
             || name.endsWith(" door")
-            || name.endsWith(" gate");
+            || name.endsWith(" gate")
+            || name.endsWith(" portcullis");
     }
 
     /** Force-load the region containing (x,y) so RouteFinder has clipping. */
