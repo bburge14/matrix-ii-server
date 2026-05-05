@@ -239,8 +239,21 @@ public class NPC extends Entity implements Serializable {
 					&& getDefinitions() != null
 					&& getDefinitions().hasAttackOption()) {
 				setTarget(who);
+				if (combat.getTarget() == null && com.rs.utils.Utils.random(20) == 0) {
+					// setTarget called combat.checkAll which immediately
+					// removed the target - log why so the user can see
+					// what's blocking retaliation in their setup.
+					System.out.println("[NPC-RETAL] " + getId() + " " + getDefinitions().name
+						+ " setTarget(" + who.getX() + "," + who.getY() + ",p" + who.getPlane()
+						+ ") -> target=null. mapArea=" + getMapAreaNameHash()
+						+ " respawnDist=" + (Math.abs(getX()-getRespawnTile().getX())+Math.abs(getY()-getRespawnTile().getY()))
+						+ " forceWalking=" + isForceWalking()
+						+ " cantInteract=" + isCantInteract());
+				}
 			}
-		} catch (Throwable ignored) {}
+		} catch (Throwable t) {
+			System.err.println("[NPC-RETAL] hook threw: " + t);
+		}
 		if (!combat.process()) { // if not under combat
 			if (!isForceWalking()) {// combat still processed for attack delay
 				// go down
@@ -373,8 +386,16 @@ public class NPC extends Entity implements Serializable {
 						&& getDefinitions() != null
 						&& getDefinitions().hasAttackOption()) {
 					setTarget(source);
+					if (com.rs.utils.Utils.random(20) == 0) {
+						System.out.println("[NPC-RETAL-HIT] " + getId()
+							+ " " + getDefinitions().name
+							+ " took damage from player " + ((Player) source).getDisplayName()
+							+ " - target now=" + (combat.getTarget() == null ? "null" : "set"));
+					}
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable t) {
+				System.err.println("[NPC-RETAL-HIT] hook threw: " + t);
+			}
 		}
 
 	}
