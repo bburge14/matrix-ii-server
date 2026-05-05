@@ -230,14 +230,19 @@ public class NPC extends Entity implements Serializable {
 		// this catches every per-tick opportunity to fix that.
 		try {
 			Entity who = getAttackedBy();
+			// hasAttackOption() filter dropped: it returned false for
+			// cows (whose primary option is Milk, not Attack) and any
+			// other NPC whose Attack right-click is wired up via id /
+			// NPCHandler instead of the options[] array. The fact that
+			// "who" hit us at all means the engine considered this NPC
+			// attackable - we should always retaliate.
 			if (who != null
 					&& combat != null && combat.getTarget() == null
 					&& getAttackedByDelay() + 6000 >= Utils.currentTimeMillis()
 					&& !isCantInteract() && !isForceWalking()
 					&& !who.isDead() && !who.hasFinished()
 					&& who.getPlane() == getPlane()
-					&& getDefinitions() != null
-					&& getDefinitions().hasAttackOption()) {
+					&& getDefinitions() != null) {
 				setTarget(who);
 				if (combat.getTarget() == null && com.rs.utils.Utils.random(20) == 0) {
 					// setTarget called combat.checkAll which immediately
@@ -383,8 +388,7 @@ public class NPC extends Entity implements Serializable {
 				if (combat != null && combat.getTarget() == null
 						&& !isDead() && !hasFinished()
 						&& !isCantInteract() && !isForceWalking()
-						&& getDefinitions() != null
-						&& getDefinitions().hasAttackOption()) {
+						&& getDefinitions() != null) {
 					setTarget(source);
 					if (com.rs.utils.Utils.random(20) == 0) {
 						System.out.println("[NPC-RETAL-HIT] " + getId()
