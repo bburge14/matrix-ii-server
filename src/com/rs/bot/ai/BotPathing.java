@@ -38,6 +38,14 @@ public final class BotPathing {
      */
     public static boolean walkTo(AIPlayer bot, int targetX, int targetY) {
         if (bot.getX() == targetX && bot.getY() == targetY) return true;
+        // Force-load the source + destination regions before routing.
+        // AIPlayer.loadMapRegions is a no-op so a freshly-teleported bot's
+        // destination region has no clipping data, RouteFinder returns 0
+        // steps, and the fallback addWalkSteps queues nothing. Net result
+        // was bots planted on the lodestone tile forever. Mirrors what
+        // EnvironmentScanner already does for scan queries.
+        ensureRegionLoaded(bot.getX(), bot.getY());
+        ensureRegionLoaded(targetX, targetY);
         FixedTileStrategy strategy = new FixedTileStrategy(targetX, targetY);
         if (runRoute(bot, strategy)) return true;
         // RouteFinder couldn't path us there - usually because the target
@@ -51,14 +59,30 @@ public final class BotPathing {
 
     /** Walk adjacent to an object so the bot can interact with it. */
     public static boolean walkToObject(AIPlayer bot, WorldObject object) {
+        if (object != null) {
+            ensureRegionLoaded(bot.getX(), bot.getY());
+            ensureRegionLoaded(object.getX(), object.getY());
+        }
         ObjectStrategy strategy = new ObjectStrategy(object);
         return runRoute(bot, strategy);
     }
 
     /** Walk adjacent to an NPC - used for fishing spots and combat. */
     public static boolean walkToEntity(AIPlayer bot, NPC npc) {
+        if (npc != null) {
+            ensureRegionLoaded(bot.getX(), bot.getY());
+            ensureRegionLoaded(npc.getX(), npc.getY());
+        }
         EntityStrategy strategy = new EntityStrategy(npc);
         return runRoute(bot, strategy);
+    }
+
+    /** Force-load the region containing (x,y) so RouteFinder has clipping. */
+    private static void ensureRegionLoaded(int x, int y) {
+        try {
+            int regionId = ((x >> 6) << 8) + (y >> 6);
+            com.rs.game.World.getRegion(regionId, true);
+        } catch (Throwable ignored) {}
     }
 
     private static boolean runRoute(AIPlayer bot, com.rs.game.route.RouteStrategy strategy) {

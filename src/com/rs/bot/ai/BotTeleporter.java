@@ -169,6 +169,18 @@ public final class BotTeleporter {
     public static boolean cast(AIPlayer bot, Choice choice) {
         if (bot == null || choice == null) return false;
         try {
+            // Pre-load the destination region NOW. The teleport spell takes
+            // 3-4 ticks to land, which is plenty of time for the region to
+            // hit loadMapStage=2. Without this, a freshly-teleported bot
+            // lands on a region whose clipping data isn't ready, RouteFinder
+            // returns 0 steps, addWalkSteps queues nothing, and the bot
+            // plants on the landing tile until something else loads the
+            // region for it.
+            try {
+                int regionId = ((choice.landingTile.getX() >> 6) << 8)
+                    + (choice.landingTile.getY() >> 6);
+                com.rs.game.World.getRegion(regionId, true);
+            } catch (Throwable ignored) {}
             if (choice.spell != null) {
                 Spell s = choice.spell;
                 return Magic.sendNormalTeleportSpell(bot, s.magicLevel, s.xp, s.landingTile, s.runes);

@@ -1014,11 +1014,21 @@ public class BotBrain {
             int dx = bot.getX() - targetX;
             int dy = bot.getY() - targetY;
             if (dx * dx + dy * dy > 64) { // > ~8 tiles from the jittered target
+                int distance = (int) Math.sqrt(dx * dx + dy * dy);
                 if (com.rs.bot.ai.WorldKnowledge.isWalkingDistance(
                         bot.getX(), bot.getY(), targetX, targetY)) {
                     BotPathing.walkTo(bot, targetX, targetY);
+                    lastDiagnostic = "walking to " + method.description
+                        + " (" + distance + " tiles)";
                 } else {
                     attemptTeleportTo(targetX, targetY, bot.getX(), bot.getY());
+                    // attemptTeleportTo may overwrite lastDiagnostic on its
+                    // own ("teleporting: ..."); fall back to a walk-style
+                    // message if it didn't (e.g. cooldown active).
+                    if (lastDiagnostic == null || !lastDiagnostic.startsWith("teleporting:")) {
+                        lastDiagnostic = "traveling to " + method.description
+                            + " (" + distance + " tiles)";
+                    }
                 }
                 return;
             }
