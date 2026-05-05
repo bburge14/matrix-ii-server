@@ -65,26 +65,32 @@ public enum AmbientArchetype {
 
     SOCIALITE_GE_TRADER("ge trader",
         new int[] {863, 864, 857, 855},                   // wave/beckon/think/yes
-        new String[] {"buying logs 200ea", "selling sharks 950 each",
-                      "pst me", "wts whip", "wtb dragon claws", "ge prices going up"}),
+        // Idle chatter ONLY - the real selling line (with text effect)
+        // comes from BotTradeHandler.maybeBroadcast every ~20s using the
+        // bot's actual locked stock. User noticed: idle "wts whip" (plain
+        // text) was firing alongside "selling magic logs" (real ad with
+        // effect) and the trade itself put up logs - the plain line was a
+        // lie, removed.
+        new String[] {"pst me", "ge prices going up", "anyone trading?",
+                      "any deals?", "msg for trade"}),
 
     // Tiered traders - same trade lifecycle as GE_TRADER but with curated
     // catalog + spawn anchor per tier. SKILL = bulk skilling supplies,
     // COMBAT = mid-tier weapons/armor, RARE = high-tier rares.
     SOCIALITE_GE_TRADER_SKILL("ge skill trader",
         new int[] {863, 864, 855},
-        new String[] {"selling logs", "wts ores", "raw fish here",
-                      "100k bone bundle", "bulk runes", "low low prices"}),
+        new String[] {"pst me for trade", "any traders around?",
+                      "ge prices going up", "open to offers"}),
 
     SOCIALITE_GE_TRADER_COMBAT("ge combat trader",
         new int[] {863, 864, 857, 855},
-        new String[] {"selling weapons", "wts armor", "barrows for sale",
-                      "dragon weapons here", "rune sets cheap"}),
+        new String[] {"pst me for trade", "any combat gear traders?",
+                      "ge prices going up", "open to offers"}),
 
     SOCIALITE_GE_TRADER_RARE("ge rare trader",
         new int[] {864, 857, 855, 858},
-        new String[] {"top tier gear", "endgame weapons", "rares for sale",
-                      "godswords here", "premium prices, premium gear"}),
+        new String[] {"pst me for trade", "any rare collectors here?",
+                      "ge prices going up", "open to offers"}),
 
     SOCIALITE_BANKSTAND("bankstander",
         new int[] {863, 862, 866, 858},                   // wave/cheer/dance/bow
