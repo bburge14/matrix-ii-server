@@ -63,7 +63,14 @@ class MatrixAPI:
     def _post(self, path, body=None, timeout=10):
         r = requests.post(f"{self.base}{path}", headers=self.headers,
                           data=json.dumps(body or {}), timeout=timeout)
-        r.raise_for_status()
+        if not r.ok:
+            # Surface the server's JSON error message instead of letting
+            # raise_for_status drop a generic "400 Client Error" / None.
+            try:
+                msg = r.json().get("error") or r.text
+            except Exception:
+                msg = r.text or f"HTTP {r.status_code}"
+            raise RuntimeError(f"HTTP {r.status_code}: {msg}")
         return r.json()
 
     def ping(self):       return self._get("/admin/ping", timeout=3)

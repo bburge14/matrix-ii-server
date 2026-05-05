@@ -1801,19 +1801,29 @@ public final class AdminHttpServer {
     }
 
     private static String bExtractStr(String obj, String key) {
-        String marker = "\"" + key + "\":\"";
-        int i = obj.indexOf(marker);
-        if (i < 0) return null;
-        i += marker.length();
-        int end = obj.indexOf('"', i);
-        return end < 0 ? null : obj.substring(i, end);
+        // Tolerate whitespace after the colon: Python's json.dumps emits
+        // {"key": "value"} with a space, the original "<key>\":\"" marker
+        // didn't match and every slot lost its archetype -> parser returned
+        // 0 slots -> server 400'd with "would wipe config" -> save failed.
+        int keyAt = obj.indexOf("\"" + key + "\"");
+        if (keyAt < 0) return null;
+        int colon = obj.indexOf(':', keyAt + key.length() + 2);
+        if (colon < 0) return null;
+        int q1 = colon + 1;
+        while (q1 < obj.length() && Character.isWhitespace(obj.charAt(q1))) q1++;
+        if (q1 >= obj.length() || obj.charAt(q1) != '"') return null;
+        q1++;
+        int q2 = obj.indexOf('"', q1);
+        return q2 < 0 ? null : obj.substring(q1, q2);
     }
 
     private static int bExtractInt(String obj, String key, int def) {
-        String marker = "\"" + key + "\":";
-        int i = obj.indexOf(marker);
-        if (i < 0) return def;
-        i += marker.length();
+        int keyAt = obj.indexOf("\"" + key + "\"");
+        if (keyAt < 0) return def;
+        int colon = obj.indexOf(':', keyAt + key.length() + 2);
+        if (colon < 0) return def;
+        int i = colon + 1;
+        while (i < obj.length() && Character.isWhitespace(obj.charAt(i))) i++;
         int end = i;
         while (end < obj.length() && (obj.charAt(end) == '-' || Character.isDigit(obj.charAt(end)))) end++;
         if (end == i) return def;
@@ -1822,10 +1832,12 @@ public final class AdminHttpServer {
     }
 
     private static boolean bExtractBool(String obj, String key, boolean def) {
-        String marker = "\"" + key + "\":";
-        int i = obj.indexOf(marker);
-        if (i < 0) return def;
-        i += marker.length();
+        int keyAt = obj.indexOf("\"" + key + "\"");
+        if (keyAt < 0) return def;
+        int colon = obj.indexOf(':', keyAt + key.length() + 2);
+        if (colon < 0) return def;
+        int i = colon + 1;
+        while (i < obj.length() && Character.isWhitespace(obj.charAt(i))) i++;
         if (obj.startsWith("true", i)) return true;
         if (obj.startsWith("false", i)) return false;
         return def;
