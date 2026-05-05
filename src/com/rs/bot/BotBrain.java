@@ -1066,7 +1066,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestObjectByName(bot, 12, "altar");
         if (altar == null) {
             lastDiagnostic = "prayer: no altar in 24 tiles";
-            if (Utils.random(100) < 30) sayDebug("no altar nearby");
+            if (Utils.random(100) < 3) sayDebug("no altar nearby");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1095,7 +1095,7 @@ public class BotBrain {
         }
         if (targetBone == null) {
             lastDiagnostic = "prayer: no bones in inventory";
-            if (Utils.random(100) < 30) sayDebug("no bones to offer");
+            if (Utils.random(100) < 3) sayDebug("no bones to offer");
             goalBlacklist.add(method);
             return;
         }
@@ -1126,7 +1126,7 @@ public class BotBrain {
         }
         if (target == null) {
             lastDiagnostic = "craft: no uncut gems in inventory";
-            if (Utils.random(100) < 30) sayDebug("no uncut gems");
+            if (Utils.random(100) < 3) sayDebug("no uncut gems");
             goalBlacklist.add(method);
             return;
         }
@@ -1149,7 +1149,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestObjectByName(bot, 12, "furnace");
         if (furnace == null) {
             lastDiagnostic = "smelt: no furnace in 24 tiles";
-            if (Utils.random(100) < 30) sayDebug("no furnace nearby");
+            if (Utils.random(100) < 3) sayDebug("no furnace nearby");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1176,7 +1176,7 @@ public class BotBrain {
         }
         if (targetBar == null) {
             lastDiagnostic = "smelt: no bar mats in inventory";
-            if (Utils.random(100) < 30) sayDebug("no ores to smelt");
+            if (Utils.random(100) < 3) sayDebug("no ores to smelt");
             goalBlacklist.add(method);
             return;
         }
@@ -1198,7 +1198,7 @@ public class BotBrain {
             EnvironmentScanner.findNearestObjectByName(bot, 12, "range", "stove", "fire", "firepit");
         if (range == null) {
             lastDiagnostic = "cook: no range/stove/fire in 24 tiles";
-            if (Utils.random(100) < 30) sayDebug("no range nearby");
+            if (Utils.random(100) < 3) sayDebug("no range nearby");
             BotPathing.wiggle(bot, 4);
             return;
         }
@@ -1226,7 +1226,7 @@ public class BotBrain {
         }
         if (rawItem == null) {
             lastDiagnostic = "cook: no raw food in inventory";
-            if (Utils.random(100) < 30) sayDebug("no raw food to cook");
+            if (Utils.random(100) < 3) sayDebug("no raw food to cook");
             goalBlacklist.add(method);
             return;
         }
@@ -1270,7 +1270,7 @@ public class BotBrain {
         if (targetFire == null) {
             // No logs - blacklist FM, switch to WC to chop some
             lastDiagnostic = "fm: no logs in inventory, need to chop first";
-            if (Utils.random(100) < 30) sayDebug("no logs to burn");
+            if (Utils.random(100) < 3) sayDebug("no logs to burn");
             goalBlacklist.add(method);
             return;
         }
@@ -1351,7 +1351,7 @@ public class BotBrain {
     /** Goal description tied to the current blacklist - reset when goal changes. */
     private String blacklistGoalDesc = null;
     /** Threshold: if no XP gained in this many ms, declare method stuck. */
-    private static final long STUCK_THRESHOLD_MS = 60_000;
+    private static final long STUCK_THRESHOLD_MS = 25_000;
     /**
      * If the current method has produced no XP gain for STUCK_THRESHOLD_MS,
      * blacklist it and report. Returns true if blacklisted (caller should
@@ -1792,7 +1792,7 @@ public class BotBrain {
         int targetCb = target.getDefinitions().combatLevel;
         if (targetCb > botCb * 2 + 5) {
             lastDiagnostic = "combat: target cb " + targetCb + " way over bot cb " + botCb + " - skipping";
-            if (Utils.random(100) < 30) sayDebug("that's way out of my league");
+            if (Utils.random(100) < 3) sayDebug("that's way out of my league");
             goalBlacklist.add(method);
             return;
         }

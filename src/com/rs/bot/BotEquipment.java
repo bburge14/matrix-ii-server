@@ -393,57 +393,6 @@ public final class BotEquipment {
             { 25185, 25186, 25187 },   // Master fishing
             { 25195, 25196, 25197 },   // Sous chef cooking
             { 22332, 22334, 22336 },   // Wicked runecrafting
-
-            // ===== ELEGANT COSTUMES (verified clue rewards) =====
-            { -1, 10404, 10424 },      // red elegant (m)
-            { -1, 10406, 10426 },      // red elegant (f)
-            { -1, 10408, 10428 },      // blue elegant (m)
-            { -1, 10410, 10430 },      // blue elegant (f)
-            { -1, 10412, 10432 },      // green elegant (m)
-            { -1, 10414, 10434 },      // green elegant (f)
-            { -1, 10400, 10420 },      // black elegant
-            { -1, 10402, 10422 },      // white elegant
-            { -1, 10416, 10436 },      // purple elegant (m)
-            { -1, 10418, 10438 },      // purple elegant (f)
-
-            // Elegant + headband / boater
-            { 2645, 10404, 10424 },
-            { 2647, 10408, 10428 },
-            { 2649, 10412, 10432 },
-            { 7319, 10402, 10422 },
-            { 7325, 10400, 10420 },
-
-            // ===== GOD VESTMENTS =====
-            { 10452, 10458, 10460 },   // saradomin
-            { 10454, 10462, 10464 },   // guthix
-            { 10456, 10466, 10468 },   // zamorak
-
-            // ===== BOB THE CAT SHIRTS + WIZARD SKIRT =====
-            { -1, 10316, 1095 }, { -1, 10318, 1095 }, { -1, 10320, 1095 },
-            { -1, 10322, 1095 }, { -1, 10324, 1095 },
-
-            // ===== WIZARD / MYSTIC / CASUAL FILLER =====
-            { 579, 577, 1013 },        // wizard blue
-            { 1037, 1005, 1013 },      // black wizard
-            { -1, 577, 1095 },         // wizard top + skirt
-            { 4089, 4091, 4093 },      // mystic blue
-            { 4099, 4101, 4103 },      // mystic dark
-            { 4109, 4111, 4113 },      // mystic light
-            { 2581, 1005, 1013 },      // robin hood + black robes
-            { -1, 1011, 1013 },        // druidic
-            { -1, 1015, 1017 },        // priest gown
-            { -1, 542, 544 },          // monk's robe
-            { 10398, 1005, 1013 },     // sleeping cap
-
-            // ===== RUNE / DRAGON (mid-tier filler) =====
-            { 1163, 1127, 1079 },      // full rune
-            { 1149, 3140, 4087 },      // dragon med + chain + plate
-
-            // ===== HYBRID =====
-            { 2581, 577, 1095 },
-            { 1037, 4101, 4103 },
-            { 579, 4091, 4093 },
-            { -1, 1005, 1095 },
         };
         // GearSets externalised pool overrides hardcoded array if present.
         // Lets admin panel edit outfits without recompiling. Falls back to
