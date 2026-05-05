@@ -793,21 +793,44 @@ public final class BotEquipment {
     // ===== SKILLER =====
 
     private static void applySkiller(Player bot, int cb) {
-        // Skillcape (matched to a randomly-chosen skill) + matching robes
-        // Skillers display their identity through skill capes
+        // Skillcape (matched to a randomly-chosen skill).
         int[] skillcapes = {
-            9774, 9777, 9780, 9783, 9786, 9792, 9795, 9798, 9801, 9804, 9807, 9810,  // melee skills
-            9762, 9765, 9771, 9759, 9948, 12169, 15706, 29185                         // skill capes incl summoning, dung, divin
+            9774, 9777, 9780, 9783, 9786, 9792, 9795, 9798, 9801, 9804, 9807, 9810,
+            9762, 9765, 9771, 9759, 9948, 12169, 15706, 29185
         };
         equip(bot, Equipment.SLOT_CAPE, pick(skillcapes));
 
-        // Robes - colored variety
-        int robeSet = Utils.random(6); int[][] robes = { {577,1011}, {581,1015}, {638,639}, {640,641}, {642,643}, {644,645} };  // wizard/black/green/blue/cream/turquoise + enchanted
-        
-        equip(bot, Equipment.SLOT_CHEST, robes[robeSet][0]);
-        equip(bot, Equipment.SLOT_LEGS, robes[robeSet][1]);
-        if (chance(40)) equip(bot, Equipment.SLOT_HAT, 579);  // wizard hat
-        if (chance(60)) equip(bot, Equipment.SLOT_FEET, pick(new int[]{2579, 88}));
+        // Pick a skill-themed outfit - lumberjack / prospector / angler /
+        // pyromancer / botanist / chef. Was: wizard robes regardless of
+        // archetype, which was the placeholder when the seed was first
+        // wired. Skillers should look like skillers, not mages.
+        // Each row: { hat, chest, legs, feet, gloves } - -1 = leave slot.
+        int[][] skillOutfits = {
+            // Lumberjack (Woodcutting)
+            { 10939, 10941, 10940, 10933, -1 },
+            // Prospector (Mining)
+            { 25185, 25186, 25187, 25188, -1 },
+            // Angler (Fishing)
+            { 24437, 24438, 24439, 24440, -1 },
+            // Pyromancer (Firemaking)
+            { 20789, 20791, 20790, 20792, -1 },
+            // Botanist (Farming)
+            { 25195, 25196, 25197, 25198, -1 },
+            // Master chef (Cooking) - 3-slot only, no shoes/gloves
+            { 22332, 22334, 22336,    -1, -1 },
+            // Sous chef alt
+            { 22326, 22328, 22330,    -1, -1 },
+        };
+        int[] outfit = skillOutfits[Utils.random(skillOutfits.length)];
+        if (outfit[0] != -1) equip(bot, Equipment.SLOT_HAT,   outfit[0]);
+        if (outfit[1] != -1) equip(bot, Equipment.SLOT_CHEST, outfit[1]);
+        if (outfit[2] != -1) equip(bot, Equipment.SLOT_LEGS,  outfit[2]);
+        if (outfit[3] != -1) equip(bot, Equipment.SLOT_FEET,  outfit[3]);
+        if (outfit[4] != -1) equip(bot, Equipment.SLOT_HANDS, outfit[4]);
+        // Fallback feet for outfits with no shoes - chef's apron etc.
+        if (outfit[3] == -1 && bot.getEquipment().getItem(Equipment.SLOT_FEET) == null) {
+            equip(bot, Equipment.SLOT_FEET, pick(new int[]{2579, 88}));
+        }
         // No weapon - they're skillers
     }
 

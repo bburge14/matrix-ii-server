@@ -47,6 +47,38 @@ public final class BotTeleporter {
         new Spell("Watchtower", new WorldTile(2548, 3112, 0), 58, 68, 557, 2, 563, 2),
         new Spell("Trollheim",  new WorldTile(2890, 3678, 0), 61, 68, 554, 2, 563, 2),
         new Spell("Ape Atoll",  new WorldTile(2796, 2791, 0), 64, 76, 555, 2, 554, 2, 565, 2, 563, 2),
+        // Lodestone waypoints - free, level 0, no runes. Coordinates
+        // match HomeTeleport.useLodestone exactly (decoded from the
+        // hash values, not guessed) - decoder: x=(h>>14)&0x3fff,
+        // y=h&0x3fff, plane=h>>28. Bots auto-have all of these
+        // unlocked since HomeTeleport doesn't gate on activation.
+        // Without these, methods at Catherby / Karamja / Seers etc.
+        // were unreachable for bots without Skills Necklaces - the
+        // bot would oscillate between glory landings forever.
+        new Spell("Lodestone Lumbridge",   new WorldTile(3233, 3222, 0), 0, 0),
+        new Spell("Lodestone Burthorpe",   new WorldTile(2899, 3545, 0), 0, 0),
+        new Spell("Lodestone Taverley",    new WorldTile(2878, 3443, 0), 0, 0),
+        new Spell("Lodestone Catherby",    new WorldTile(2831, 3452, 0), 0, 0),
+        new Spell("Lodestone Seers",       new WorldTile(2689, 3483, 0), 0, 0),
+        new Spell("Lodestone Ardougne",    new WorldTile(2634, 3349, 0), 0, 0),
+        new Spell("Lodestone Yanille",     new WorldTile(2529, 3095, 0), 0, 0),
+        new Spell("Lodestone Falador",     new WorldTile(2967, 3404, 0), 0, 0),
+        new Spell("Lodestone Edgeville",   new WorldTile(3067, 3506, 0), 0, 0),
+        new Spell("Lodestone Varrock",     new WorldTile(3214, 3377, 0), 0, 0),
+        new Spell("Lodestone Draynor",     new WorldTile(3105, 3299, 0), 0, 0),
+        new Spell("Lodestone Port Sarim",  new WorldTile(3011, 3216, 0), 0, 0),
+        new Spell("Lodestone Karamja",     new WorldTile(2761, 3148, 0), 0, 0),
+        new Spell("Lodestone Al-Kharid",   new WorldTile(3297, 3185, 0), 0, 0),
+        new Spell("Lodestone Fremennik",   new WorldTile(2712, 3678, 0), 0, 0),
+        new Spell("Lodestone Canifis",     new WorldTile(3517, 3516, 0), 0, 0),
+        new Spell("Lodestone Bandit Camp", new WorldTile(3214, 2955, 0), 0, 0),
+        new Spell("Lodestone Eagles' Peak",new WorldTile(2366, 3480, 0), 0, 0),
+        new Spell("Lodestone Tirannwn",    new WorldTile(2254, 3150, 0), 0, 0),
+        new Spell("Lodestone Oo'glog",     new WorldTile(2532, 2872, 0), 0, 0),
+        new Spell("Lodestone Ashdale",     new WorldTile(2474, 2709, 2), 0, 0),
+        // Lunar Isle (2085,3915) / Prifddinas (2208,3361,plane1) are
+        // hard-gated by controllers and skipped - bots landing there
+        // get bounced. Everything else is reachable as a free tile.
     };
 
     /** Jewelry teleport entry - charged item + landing tile + animation. */
@@ -137,6 +169,18 @@ public final class BotTeleporter {
     public static boolean cast(AIPlayer bot, Choice choice) {
         if (bot == null || choice == null) return false;
         try {
+            // Pre-load the destination region NOW. The teleport spell takes
+            // 3-4 ticks to land, which is plenty of time for the region to
+            // hit loadMapStage=2. Without this, a freshly-teleported bot
+            // lands on a region whose clipping data isn't ready, RouteFinder
+            // returns 0 steps, addWalkSteps queues nothing, and the bot
+            // plants on the landing tile until something else loads the
+            // region for it.
+            try {
+                int regionId = ((choice.landingTile.getX() >> 6) << 8)
+                    + (choice.landingTile.getY() >> 6);
+                com.rs.game.World.getRegion(regionId, true);
+            } catch (Throwable ignored) {}
             if (choice.spell != null) {
                 Spell s = choice.spell;
                 return Magic.sendNormalTeleportSpell(bot, s.magicLevel, s.xp, s.landingTile, s.runes);

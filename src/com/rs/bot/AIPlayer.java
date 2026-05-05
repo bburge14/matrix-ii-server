@@ -58,8 +58,37 @@ public class AIPlayer extends Player {
 
     @Override
     public void loadMapRegions() {
-        // Do nothing. Real players need this to tell their client about the map.
-        // Bots have no client. Region tracking happens via setPlace() in BotManager.
+        // Mirror Entity.loadMapRegions WITHOUT the Player override that
+        // sends scene packets to a non-existent client. We DO need to
+        // populate mapRegionsIds and force-load the surrounding regions
+        // so RouteFinder has clipping data and EnvironmentScanner finds
+        // NPCs/objects. Without this, every walkTo after a region change
+        // hit "blocked - region not loaded" and the bot froze on the
+        // landing tile until a real player happened to load the area.
+        try {
+            int chunkX = getChunkX();
+            int chunkY = getChunkY();
+            int sceneChunksRadio = com.rs.Settings.MAP_SIZES[getMapSize()] / 16;
+            int sceneBaseChunkX = Math.max(0, chunkX - sceneChunksRadio);
+            int sceneBaseChunkY = Math.max(0, chunkY - sceneChunksRadio);
+            int fromRegionX = sceneBaseChunkX / 8;
+            int fromRegionY = sceneBaseChunkY / 8;
+            int toRegionX = (chunkX + sceneChunksRadio) / 8;
+            int toRegionY = (chunkY + sceneChunksRadio) / 8;
+            getMapRegionsIds().clear();
+            for (int regionX = fromRegionX; regionX <= toRegionX; regionX++) {
+                for (int regionY = fromRegionY; regionY <= toRegionY; regionY++) {
+                    int regionId = com.rs.game.map.MapUtils.encode(
+                        com.rs.game.map.MapUtils.Structure.REGION,
+                        regionX, regionY);
+                    com.rs.game.World.getRegion(regionId, true);
+                    getMapRegionsIds().add(regionId);
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[AIPlayer] loadMapRegions failed for "
+                + getDisplayName() + ": " + t);
+        }
     }
 
     @Override

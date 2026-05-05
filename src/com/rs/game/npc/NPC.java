@@ -219,6 +219,28 @@ public class NPC extends Entity implements Serializable {
 	public void processNPC() {
 		if (isDead() || locked)
 			return;
+		// Force-retaliate. If something hit us recently (attackedBy +
+		// attackedByDelay still alive) AND we currently have no combat
+		// target AND we're a normal interactable NPC with an Attack
+		// option, engage the attacker. This is belt-and-suspenders on
+		// top of handleIngoingHit's same-tick set: covers cases where
+		// the hit had damage == -1 and applyHit got skipped, scripted
+		// cantInteract toggles, lureDelay drift in autoRelatie, etc.
+		// The user's complaint was that monsters never retaliate -
+		// this catches every per-tick opportunity to fix that.
+		try {
+			Entity who = getAttackedBy();
+			if (who != null
+					&& combat != null && combat.getTarget() == null
+					&& getAttackedByDelay() + 6000 >= Utils.currentTimeMillis()
+					&& !isCantInteract() && !isForceWalking()
+					&& !who.isDead() && !who.hasFinished()
+					&& who.getPlane() == getPlane()
+					&& getDefinitions() != null
+					&& getDefinitions().hasAttackOption()) {
+				setTarget(who);
+			}
+		} catch (Throwable ignored) {}
 		if (!combat.process()) { // if not under combat
 			if (!isForceWalking()) {// combat still processed for attack delay
 				// go down
@@ -333,6 +355,26 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
+			// Force-retaliate when hit by a player. PlayerCombatNew /
+			// CombatScript.delayHit do call autoRelatie -> n.setTarget()
+			// AFTER the hit applies, but it's gated on
+			// canBeAttackedByAutoRelatie() which has a 12s lureDelay
+			// window keyed on lastAttackedByTarget. In several cases
+			// (multi-attack ticks, scripted bosses calling setTarget
+			// programmatically, lureDelay drift) the gate refused the
+			// retaliate set even on first hit and the NPC just stood
+			// there. Real RS behaviour is "if you hit it, it fights
+			// back" - so set target whenever combat.target is currently
+			// null AND the NPC is alive AND it has an Attack option.
+			try {
+				if (combat != null && combat.getTarget() == null
+						&& !isDead() && !hasFinished()
+						&& !isCantInteract() && !isForceWalking()
+						&& getDefinitions() != null
+						&& getDefinitions().hasAttackOption()) {
+					setTarget(source);
+				}
+			} catch (Throwable ignored) {}
 		}
 
 	}
