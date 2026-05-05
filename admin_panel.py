@@ -858,6 +858,8 @@ class CitizensFrame(ctk.CTkFrame):
                       command=self._apply_budget).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Save Budget", width=110,
                       command=self._save_budget).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Load Budget", width=110,
+                      command=self._load_budget).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Clear All Live", width=120, fg_color="#aa3030",
                       command=self._clear_all).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Reseed Defaults", width=130, fg_color="#a05522",
@@ -1000,7 +1002,14 @@ class CitizensFrame(ctk.CTkFrame):
 
     def _apply_data(self, arch_resp, budget_resp, live_resp):
         self.archetypes = arch_resp.get("archetypes", []) if arch_resp else []
-        self.slots = budget_resp.get("slots", []) if budget_resp else []
+        # Prefer the user's local saved budget over whatever the server
+        # has - the local file is the source of truth now. Falls back to
+        # the server's slots if no local file yet (first run).
+        local_slots = self._read_local_budget()
+        if local_slots is not None:
+            self.slots = local_slots
+        else:
+            self.slots = budget_resp.get("slots", []) if budget_resp else []
         live_total = live_resp.get("total", 0) if live_resp else 0
         live_by_arch = (live_resp or {}).get("byArchetype", {})
         self._last_bots = (live_resp or {}).get("bots", [])
@@ -1008,6 +1017,20 @@ class CitizensFrame(ctk.CTkFrame):
         self._render_table(live_by_arch)
         self._refresh_live_table()
         self._dirty = False
+
+    def _read_local_budget(self):
+        """Return slots list from the local budget file, or None if absent."""
+        try:
+            import os, json as _json
+            path = self._budget_file()
+            if not os.path.exists(path):
+                return None
+            with open(path, "r") as f:
+                data = _json.load(f)
+            slots = data.get("slots")
+            return list(slots) if isinstance(slots, list) else None
+        except Exception:
+            return None
         self.dirty_label.configure(text="")
 
     def _refresh_live_table(self):
@@ -1104,19 +1127,65 @@ class CitizensFrame(ctk.CTkFrame):
         self._render_table({})
 
     def _save_budget(self):
-        def do():
-            try:
-                resp = self.api.citizens_budget_set(self.slots)
-                self.after(0, lambda: messagebox.showinfo("Saved",
-                    f"Budget saved: {resp.get('saved', '?')} slots"))
-                self.after(0, self.refresh)
-            except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Save failed", str(e)))
-        threading.Thread(target=do, daemon=True).start()
+        # Local-file save. The server-side save kept hitting parser /
+        # whitespace / "0 slots" issues and the user lost edits over and
+        # over. From now on the source of truth is a JSON file on the
+        # user's machine; the server only sees it when "Apply Budget Now"
+        # pushes it. Hitting Save here cannot fail because of the server.
+        path = self._budget_file()
+        try:
+            import os, json as _json
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                _json.dump({"slots": self.slots}, f, indent=2)
+            self._dirty = False
+            self.after(0, lambda: self.dirty_label.configure(text=""))
+            messagebox.showinfo("Saved",
+                f"Budget saved locally ({len(self.slots)} slots)\n{path}")
+        except Exception as e:
+            messagebox.showerror("Save failed", f"{type(e).__name__}: {e}")
+
+    def _load_budget(self):
+        path = self._budget_file()
+        try:
+            import os, json as _json
+            if not os.path.exists(path):
+                messagebox.showinfo("Load Budget",
+                    f"No saved budget at:\n{path}\n\n"
+                    "Save the current budget first to create one.")
+                return
+            with open(path, "r") as f:
+                data = _json.load(f)
+            slots = data.get("slots") or []
+            self.slots = list(slots)
+            self._dirty = True
+            self._render_table({})
+            self.after(0, lambda: self.dirty_label.configure(
+                text="loaded from disk - hit Apply Budget Now to push to server"))
+            messagebox.showinfo("Loaded",
+                f"Loaded {len(self.slots)} slots from\n{path}")
+        except Exception as e:
+            messagebox.showerror("Load failed", f"{type(e).__name__}: {e}")
+
+    @staticmethod
+    def _budget_file():
+        # Lives next to admin_panel.py so it travels with the project,
+        # rather than in $HOME where it could get separated from the
+        # codebase.  data/admin/citizen_budget.json keeps the data dir
+        # convention used by the rest of the project.
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(here, "data", "admin", "citizen_budget.json")
 
     def _apply_budget(self):
+        # Push the local slots to the server first, then trigger apply.
+        # Server-side budget is now slaved to the local file - the user's
+        # source of truth is on their machine, the server's copy is just
+        # what gets used to autospawn between restarts.
         def do():
             try:
+                if self.slots:
+                    self.api.citizens_budget_set(self.slots)
                 resp = self.api.citizens_budget_apply(include_manual=True)
                 spawned = resp.get("spawned", 0)
                 total = resp.get("total", 0)
