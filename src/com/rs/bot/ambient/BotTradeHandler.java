@@ -46,10 +46,10 @@ public final class BotTradeHandler {
     };
 
     /** How often (ms) gambler/trader bots broadcast their service line when
-     *  not actively in a trade. Was 10s - bumped to 20s per user feedback
-     *  ("slow the carousels down"). Each bot has a randomized phase offset
-     *  so a cluster doesn't all shout at the same instant. */
-    private static final long BROADCAST_INTERVAL_MS = 20_000;
+     *  not actively in a trade. 10s = active "barker" pacing real RS hosts
+     *  use. Each bot has a randomized phase offset so a cluster doesn't all
+     *  shout at the same instant. */
+    private static final long BROADCAST_INTERVAL_MS = 10_000;
 
     /** How many ticks the bot waits after entering trade before acting. Lets
      *  the player see the trade screen + add items / GP before bot responds. */

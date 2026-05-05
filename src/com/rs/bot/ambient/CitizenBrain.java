@@ -48,11 +48,11 @@ public class CitizenBrain extends BotBrain {
     private static final double MISCLICK_PROBABILITY = 0.012;
     // Idle citizens used to stand silent for the full ~30-72s socialite IDLE
     // window because chatter rolled at 2%/tick and there was no other
-    // activity. Bumped to 6%, then dialed back to 4% per "slow the carousels
-    // down" - still visible activity (one chat / shuffle every ~15s) without
-    // becoming a rapid-fire chat carousel.
-    private static final double CHATTER_PROBABILITY = 0.04;
-    private static final double IDLE_FIDGET_PROBABILITY = 0.025;
+    // activity. Bumped to ~6% chatter + a small fidget step so an idle
+    // citizen visibly does SOMETHING (talks, glances, shuffles a tile)
+    // every few seconds instead of looking dead.
+    private static final double CHATTER_PROBABILITY = 0.06;
+    private static final double IDLE_FIDGET_PROBABILITY = 0.04;
 
     public enum State { IDLE, TRAVERSING, INTERACTING, PANICKING }
 
