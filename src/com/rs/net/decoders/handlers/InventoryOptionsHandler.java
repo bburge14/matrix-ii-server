@@ -490,7 +490,26 @@ public class InventoryOptionsHandler {
 				player.getDialogueManager().startDialogue("CombinationsD", combination);
 				return;
 			}
-			else if (Firemaking.isFiremaking(player, itemUsed, usedWith))
+			else if (com.rs.utils.DyeRecolors.isInvolved(itemUsedId, usedWithId)) {
+				int dyeResult = com.rs.utils.DyeRecolors.tryRecolor(itemUsedId, usedWithId);
+				if (dyeResult > 0) {
+					int dyeSlot, srcSlot, srcId;
+					if (com.rs.utils.DyeRecolors.getResult(itemUsedId, usedWithId) == dyeResult) {
+						dyeSlot = fromSlot; srcSlot = toSlot; srcId = usedWithId;
+					} else {
+						dyeSlot = toSlot;   srcSlot = fromSlot; srcId = itemUsedId;
+					}
+					player.getInventory().deleteItem(dyeSlot,
+						player.getInventory().getItem(dyeSlot));
+					player.getInventory().deleteItem(srcSlot,
+						new com.rs.game.item.Item(srcId, 1));
+					player.getInventory().addItem(dyeResult, 1);
+					player.getPackets().sendGameMessage(
+						"You apply the dye and the item takes on a new look.");
+					return;
+				}
+			}
+			if (Firemaking.isFiremaking(player, itemUsed, usedWith))
 				return;
 			else if (OrnamentKits.attachKit(player, itemUsed, usedWith, fromSlot, toSlot))
 				return;

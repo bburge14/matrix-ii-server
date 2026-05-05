@@ -75,6 +75,13 @@ public final class AdminHttpServer {
             server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
             server.createContext("/admin/items/all",        auth(new ItemsAllHandler()));
             server.createContext("/admin/items/tradeable",  auth(postOnly(new ItemsTradeableHandler())));
+            server.createContext("/admin/items/dyes/reload", auth(postOnly(new HttpHandler() {
+                @Override public void handle(HttpExchange ex) throws IOException {
+                    com.rs.utils.DyeRecolors.reload();
+                    sendText(ex, 200, "{\"ok\":true,\"dyes\":"
+                        + com.rs.utils.DyeRecolors.registeredDyeCount() + "}");
+                }
+            })));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
