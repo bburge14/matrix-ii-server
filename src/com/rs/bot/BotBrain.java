@@ -999,6 +999,23 @@ public class BotBrain {
             if (method != null) com.rs.bot.SuccessTracker.onMethodPicked(method.description);
         }
         this.lastMethod = method;
+        // If we're already swinging at something, don't re-evaluate the
+        // walk-out / teleport branch. Combat chases NPCs around so the
+        // bot can drift past the 8-tile method.location threshold mid-
+        // fight; without this guard, the brain would teleport the bot
+        // away from the kill it's halfway through and walk it back, on
+        // repeat. PlayerCombatNew owns positioning while it's active.
+        if (bot.getActionManager().getAction()
+                instanceof com.rs.game.player.actions.PlayerCombatNew) {
+            return;
+        }
+        // Same logic for any non-null Action that isn't combat - a
+        // bot that's mining a rock or filleting a fish shouldn't get
+        // teleported off it because the brain re-checked location.
+        if (bot.getActionManager().getAction() != null
+                && bot.isUnderCombat()) {
+            return;
+        }
         // Walk-out phase - get to the training area first.
         // Per-bot jittered target: 10 bots on the same goal don't all walk
         // to the exact same tile and step on each other. Hash by player
@@ -1813,6 +1830,17 @@ public class BotBrain {
             return;
         }
 
+        // Unsheathe before the swing - isSheathe() returns false during
+        // active combat but only after a hit lands, and the appearance
+        // doesn't refresh automatically until generateAppearenceData()
+        // gets called somewhere. Calling setSheathe(false) plays the
+        // unsheathe animation (18028) and refreshes appearance, so the
+        // weapon model shows up the instant we engage instead of after
+        // the first tick of damage.
+        try {
+            com.rs.game.player.CombatDefinitions cd = bot.getCombatDefinitions();
+            if (cd != null && cd.isSheathe()) cd.setSheathe(false);
+        } catch (Throwable ignored) {}
         // PlayerCombatNew handles its own approach + attack-distance logic
         // (melee = adjacent, ranged/magic = within sight). Just hand it the
         // target and let it run.
