@@ -363,7 +363,13 @@ public class CitizenBrain extends BotBrain {
                 }
             } catch (Throwable ignored) {}
         }
-        bot.addWalkSteps(target.getX(), target.getY(), 25, true);
+        // Was: bot.addWalkSteps(target.getX(), target.getY(), 25, true);
+        // That's a straight-line clipped walk - if the next tile is blocked
+        // (fence, water, half-loaded region), it queues zero steps and the
+        // bot freezes on whatever lodestone tile it just landed on. Routing
+        // through BotPathing.walkTo gets proper A* via RouteFinder + the
+        // region force-load so cross-region walks actually work.
+        com.rs.bot.ai.BotPathing.walkTo(bot, target.getX(), target.getY());
     }
 
     private void tickInteracting(AIPlayer bot) {
