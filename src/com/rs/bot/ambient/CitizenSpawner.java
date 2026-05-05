@@ -168,6 +168,11 @@ public final class CitizenSpawner {
         int wanderRadius;
         if (arch != null && arch.isSocialite()) {
             wanderRadius = 2 + Utils.random(2);   // 2-3 tiles
+        } else if (arch != null && arch.isSkiller()) {
+            // Skillers travel further between resource pockets.
+            // Bigger radius means TRAVERSING phase actually carries them
+            // out of GE if the user manually spawned them there.
+            wanderRadius = 12 + Utils.random(20);  // 12-31 tiles
         } else {
             wanderRadius = 4 + Utils.random(8);   // 4-11 tiles
         }
@@ -204,6 +209,11 @@ public final class CitizenSpawner {
             // Match BotPool.spawn() order exactly: hydrate -> start -> setBrain.
             bot.hydrate(name); // single init() - same path Legends use
             bot.start();       // bot.start() finalizes the entry into world
+            // Bots default to walking. Toggle run on so they actually
+            // RUN to far-away training spots / GE / etc instead of
+            // shuffling. Player.run() ticks regenerate energy when
+            // not moving so they don't deplete permanently.
+            try { bot.setRun(true); } catch (Throwable ignored) {}
             try {
                 bot.setNextWorldTile(spawn);
             } catch (Throwable ignore) {}

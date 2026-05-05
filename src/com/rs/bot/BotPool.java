@@ -129,6 +129,9 @@ public final class BotPool {
                 // because displayName is transient and gets wiped by serialization.
                 bot.hydrate(name);   // this calls init() which calls World.addPlayer
                 bot.start();
+                // Bots default to walking - toggle run on so Legend bots
+                // actually RUN to method locations instead of shuffling.
+                try { bot.setRun(true); } catch (Throwable ignored) {}
                 // Scatter the spawn tile so bots don't stack at START_PLAYER_LOCATION
                 // and walk in lockstep when they share a goal. Picks a random
                 // offset within +/-15 tiles of wherever they were saved.
@@ -290,6 +293,7 @@ public final class BotPool {
 		try {
 			bot.hydrate(name);
 			bot.start();
+			try { bot.setRun(true); } catch (Throwable ignored) {}
 			bot.setBrain(new BotBrain(bot));
 			offline.remove(name);
 			online.put(name, bot);

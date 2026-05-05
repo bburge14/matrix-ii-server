@@ -323,6 +323,9 @@ public final class TrainingMethods {
         ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Burthorpe", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(2906, 3540).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
 
         // ---- Prayer (process-skill: bones on altar) ----
         // Bot needs bones in inventory and an altar object. 4x XP via altar
@@ -332,6 +335,9 @@ public final class TrainingMethods {
             .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
         ALL.add(b("Bones on altar - Falador church", Kind.PRAYER)
             .skill(Skills.PRAYER).lvl(1, 99).at(2995, 3372).xp(35000).gp(0)
+            .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
+        ALL.add(b("Bones on altar - Burthorpe Saradomin altar", Kind.PRAYER)
+            .skill(Skills.PRAYER).lvl(1, 99).at(2918, 3486).xp(35000).gp(0)
             .needs(526, 528, 530, 532, 534, 536, 2859, 3183, 4812, 18830, 4834).build());
 
         // ---- Crafting (process-skill: cut uncut gems with chisel) ----
@@ -353,6 +359,9 @@ public final class TrainingMethods {
         ALL.add(b("Smelt bars - Al-Kharid furnace", Kind.SMELTING)
             .skill(Skills.SMITHING).lvl(1, 99).at(3275, 3186).xp(50000).gp(0)
             .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
+        ALL.add(b("Smelt bars - Burthorpe furnace", Kind.SMELTING)
+            .skill(Skills.SMITHING).lvl(1, 99).at(2912, 3552).xp(50000).gp(0)
+            .needs(436, 438, 440, 442, 444, 447, 449, 451).build());
 
         // ---- Cooking (process-skill: requires raw food + range nearby) ----
         // Kitchens at well-known towns. Bot scans for "range" / "stove" /
@@ -366,6 +375,9 @@ public final class TrainingMethods {
             .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
         ALL.add(b("Cook food - Al-Kharid", Kind.COOKING)
             .skill(Skills.COOKING).lvl(1, 99).at(3271, 3180).xp(40000).gp(0)
+            .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
+        ALL.add(b("Cook food - Burthorpe Beer Inn", Kind.COOKING)
+            .skill(Skills.COOKING).lvl(1, 99).at(2912, 3540).xp(40000).gp(0)
             .needs(317, 327, 321, 331, 359, 377, 371, 383, 7944, 15270).build());
 
         // ---- Thieving (pickpocket targets clustered around Nails) ----
@@ -424,6 +436,18 @@ public final class TrainingMethods {
         ALL.add(b("Train combat - Stronghold rats lvl 1", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 15).at(2155, 5092).xp(8000).cb(1)
             .npcs(2854, 2855, 2856).build());
+        // Burthorpe combat starter spots - Trolls / Imps / Goblins around
+        // the city + the Death Plateau area. Anchors in the city itself
+        // so bots aggro the right pack on arrival.
+        ALL.add(b("Train combat - Burthorpe imps", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 20).at(2898, 3554).xp(7000).cb(1)
+            .npcs(414, 7878).build());
+        ALL.add(b("Train combat - Burthorpe goblins", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(1, 25).at(2880, 3546).xp(9000).cb(1)
+            .npcs(4481, 4482, 4485, 4486, 4488, 4491, 4493).build());
+        ALL.add(b("Train combat - Death Plateau trolls", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(60, 99).at(2853, 3582).xp(35000).cb(60)
+            .npcs(941, 942, 943, 944, 945).build());
 
         // Tier 2 (cb 30-60): guards, knights, hill giants
         ALL.add(b("Train combat - Falador guards", Kind.COMBAT)
@@ -574,6 +598,10 @@ public final class TrainingMethods {
             .skill(Skills.AGILITY).lvl(10, 19).at(3103, 3279).xp(10500).gp(0).build());
         ALL.add(b("Al-Kharid rooftop course", Kind.AGILITY)
             .skill(Skills.AGILITY).lvl(20, 29).at(3273, 3193).xp(13500).gp(0).build());
+        // Burthorpe doesn't have an official rooftop course but bots can
+        // hover at the lodestone area and the auto-XP stub still progresses.
+        ALL.add(b("Burthorpe agility (auto-XP)", Kind.AGILITY)
+            .skill(Skills.AGILITY).lvl(1, 30).at(2906, 3540).xp(11000).gp(0).build());
         ALL.add(b("Varrock rooftop course", Kind.AGILITY)
             .skill(Skills.AGILITY).lvl(30, 39).at(3221, 3414).xp(16500).gp(0).build());
         ALL.add(b("Canifis rooftop course", Kind.AGILITY)

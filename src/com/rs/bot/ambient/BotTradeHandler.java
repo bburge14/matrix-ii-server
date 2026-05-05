@@ -606,7 +606,11 @@ public final class BotTradeHandler {
             bot.getTrade().cancelTrade();
             return;
         }
-        int onHand = bot.getInventory().getAmountOf(stock.itemId);
+        // Trade-time id: notable non-stackables become banknotes so they
+        // fit in 1 inventory + 1 trade slot instead of N icons (the
+        // "trade screen full of arrows" complaint).
+        final int sid = tradeId(stock.itemId);
+        int onHand = bot.getInventory().getAmountOf(sid);
         if (onHand <= 0) {
             sayBoth(bot, "ran out of " + stock.name);
             bot.getTrade().cancelTrade();
@@ -621,13 +625,11 @@ public final class BotTradeHandler {
         // each') or by chat ('i want 25 logs').
         Boolean announced = (Boolean) bot.getTemporaryAttributtes().get("BotTradeStockOffered");
         if (!Boolean.TRUE.equals(announced)) {
-            // Initial offer: full stack for stackable. For non-stackable,
-            // show as many as we have in stock (capped at 10) so cheap items
-            // like magic shortbows / staves / rune pieces are offered as a
-            // bundle, not 1-at-a-time. User: "the trader should not only
-            // just offer one" for items < 10k each.
+            // Initial offer: full stack for stackable + noted (notes stack).
+            // For raw non-stackables (those without a noted form), show up
+            // to 10 in trade so cheap singles like staves bundle.
             int initialQty;
-            if (isStackable(stock.itemId)) {
+            if (isStackable(stock.itemId) || sid != stock.itemId) {
                 initialQty = onHand;
             } else if (stock.priceGp < 100_000) {
                 initialQty = Math.min(10, onHand);
@@ -638,7 +640,7 @@ public final class BotTradeHandler {
                 + fmtGp(stock.priceGp) + " each, total "
                 + fmtGp((long) initialQty * stock.priceGp) + " - add gp + accept");
             try {
-                bot.getTrade().addItem(new Item(stock.itemId, initialQty));
+                bot.getTrade().addItem(new Item(sid, initialQty));
                 bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", initialQty);
                 bot.getTemporaryAttributtes().put("BotTraderInitialOffered", Boolean.TRUE);
             } catch (Throwable ignored) {}
@@ -695,13 +697,13 @@ public final class BotTradeHandler {
                 if (botItems != null) {
                     for (int i = 0; i < botItems.getSize(); i++) {
                         Item it = botItems.get(i);
-                        if (it != null && it.getId() == stock.itemId) {
+                        if (it != null && it.getId() == sid) {
                             botItems.set(i, null);
                         }
                     }
                 }
                 if (units > 0) {
-                    bot.getTrade().addItem(new Item(stock.itemId, units));
+                    bot.getTrade().addItem(new Item(sid, units));
                 }
                 bot.getTemporaryAttributtes().put("BotTradeUnitsOffered", units);
                 // Refresh both views since we manually nulled slots.
@@ -919,7 +921,7 @@ public final class BotTradeHandler {
         // User: "I should not be able to buy a partyhat from a bot, then
         //  it keeps selling it - they should be out of that item".
         try {
-            if (bot.getInventory().getAmountOf(stock.itemId) <= 0) {
+            if (bot.getInventory().getAmountOf(tradeId(stock.itemId)) <= 0) {
                 if (stock.priceGp < 1_000_000) {
                     stockBot(bot, stock);
                 } else {
@@ -956,11 +958,11 @@ public final class BotTradeHandler {
         stockBot(bot, stock);
         // Verify - if we couldn't stock anything (inv full), surface it.
         try {
-            int onHand = bot.getInventory().getAmountOf(stock.itemId);
+            int onHand = bot.getInventory().getAmountOf(tradeId(stock.itemId));
             if (onHand <= 0) {
                 System.err.println("[BotTradeHandler] preStockTrader: " + bot.getDisplayName()
                     + " could not stock " + stock.name + " (id=" + stock.itemId
-                    + ") - inv full?");
+                    + " trade=" + tradeId(stock.itemId) + ") - inv full?");
             }
         } catch (Throwable ignored) {}
     }
@@ -969,29 +971,28 @@ public final class BotTradeHandler {
      *  pile in 1 slot; non-stackable get a few copies (limited by slots). */
     private static void stockBot(AIPlayer bot, StockEntry stock) {
         try {
-            boolean stackable = isStackable(stock.itemId);
-            int already = bot.getInventory().getAmountOf(stock.itemId);
+            // Stock as banknotes when item is non-stackable but notable -
+            // 1 inv slot, 1 trade slot, no "12 dragon arrows piled up in
+            // the trade window" complaint.
+            int sid = tradeId(stock.itemId);
+            boolean stackable = isStackable(stock.itemId) || sid != stock.itemId;
+            int already = bot.getInventory().getAmountOf(sid);
             int target;
             if (stackable) {
-                // 8 bundles for stackables (logs, runes, fish, ore, etc.) -
-                // plenty of stock in 1 slot.
+                // Stackable / noted: big pile in 1 slot.
                 target = stock.bundleSize * 8;
             } else if (stock.priceGp < 10_000) {
-                // Cheap non-stackable singles (msb, mlb, low-tier staves):
-                // user wants traders to offer multiple, not just 1. 10 copies
-                // takes 10 inv slots which is fine - bots have 28 free.
+                // Cheap non-stackable + non-notable (e.g. raw staves):
+                // user wants multi-stock, takes inventory slots.
                 target = 10;
             } else if (stock.priceGp < 100_000) {
-                // Mid-tier singles (rune armor pieces, dragon scim) - small
-                // bundle so the bot can sell to a few players before rotating.
                 target = 5;
             } else {
-                // High-tier (godswords, bandos, fury): one in stock. Sells
-                // out fast on purpose so the bot rotates.
+                // High-tier singles: one in stock, sells out -> rotate.
                 target = 1;
             }
             int give = Math.max(0, target - already);
-            if (give > 0) bot.getInventory().addItem(stock.itemId, give);
+            if (give > 0) bot.getInventory().addItem(sid, give);
         } catch (Throwable ignored) {}
     }
 
@@ -1004,6 +1005,28 @@ public final class BotTradeHandler {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** Translate a catalog item id into the id the BOT actually stocks +
+     *  trades. For non-stackable bulk items (logs / sharks / dragon arrows
+     *  in some servers / etc) we swap to the BANKNOTE so 10 sharks fits in
+     *  ONE inventory slot + ONE trade-window slot instead of stuffing the
+     *  trade screen with 10 individual icons. User: "if they have bulk
+     *  not stackable items, they need to be noted".
+     *
+     *  Player receives a stack of notes; banking converts back to real
+     *  items. Standard RS UX for bulk trades. */
+    private static int tradeId(int itemId) {
+        try {
+            com.rs.cache.loaders.ItemDefinitions def =
+                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId);
+            if (def == null) return itemId;
+            if (def.isStackable()) return itemId;       // already 1-slot
+            if (def.isNoted()) return itemId;            // already a note
+            int cert = def.getCertId();
+            if (cert > 0 && cert != itemId) return cert;
+        } catch (Throwable ignored) {}
+        return itemId;
     }
 
     // ===== TIERED CATALOGS =====
@@ -1272,11 +1295,12 @@ public final class BotTradeHandler {
             };
             line = templates[Utils.random(templates.length)];
         } else if (isTrader) {
-            StockEntry stock = (StockEntry) bot.getTemporaryAttributtes().get("BotTraderStock");
-            if (stock == null) {
-                stock = pickStockForBot(bot);
-                if (stock != null) bot.getTemporaryAttributtes().put("BotTraderStock", stock);
-            }
+            // Always go through ensureBotStockAssigned so stock is the
+            // SAME instance the next handleTrader run reads. Was previously
+            // duplicating the pick logic here which could drift if salt
+            // changed mid-broadcast cycle (causing the "advertises X then
+            // says Y" bug).
+            StockEntry stock = ensureBotStockAssigned(bot);
             if (stock != null) {
                 String[] templates = new String[] {
                     "selling " + stock.name + " " + fmtGp(stock.priceGp) + " each",

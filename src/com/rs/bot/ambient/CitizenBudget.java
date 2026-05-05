@@ -151,6 +151,22 @@ public final class CitizenBudget {
         save();
     }
 
+    /** Wipe + reseed defaults. Backs up current config first. */
+    public static synchronized int reseedDefaults() {
+        File f = new File(CONFIG_PATH);
+        if (f.isFile()) {
+            try {
+                java.nio.file.Files.copy(f.toPath(),
+                    new File(CONFIG_PATH + ".bak.reseed-" + System.currentTimeMillis()).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (Throwable ignored) {}
+        }
+        seedDefaults();
+        loaded = true;
+        save();
+        return slots.size();
+    }
+
     /**
      * Spawn enough Citizens to bring each slot's live count up to target.
      * Counts are by archetype only - if you have 80 SOCIALITE_BANKSTAND

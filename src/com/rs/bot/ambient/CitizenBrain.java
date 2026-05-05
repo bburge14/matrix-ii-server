@@ -100,6 +100,14 @@ public class CitizenBrain extends BotBrain {
             afkUntilMs = 0;
         }
 
+        // Keep run toggled on + energy topped up so bots actually run
+        // between waypoints. Engine drains energy as they move; without
+        // this they end up walking after ~30s of travel.
+        try {
+            if (!bot.getRun()) bot.setRun(true);
+            if (bot.getRunEnergy() < 30) bot.setRunEnergy(100);
+        } catch (Throwable ignored) {}
+
         // Trade lifecycle for socialite gambler/trader bots. Runs first so
         // they can accept inbound trade requests before any other behavior
         // moves them away from the trade UI.
@@ -217,6 +225,15 @@ public class CitizenBrain extends BotBrain {
         // Drop any pending bot-to-bot conversation reply that's due.
         try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
 
+        // "Dancing" socialites - small chance to take a step toward a
+        // nearby socialite leader so 2-3 of them appear to be following
+        // each other. Limited to socialites + only fires when the bot
+        // isn't already walking (so we don't fight the FSM).
+        if (archetype != null && archetype.isSocialite()
+                && !bot.hasWalkSteps() && Math.random() < 0.015) {
+            try { followNearbySocialite(bot); } catch (Throwable ignored) {}
+        }
+
         if (Math.random() < CHATTER_PROBABILITY) {
             String line = archetype.randomChatter();
             if (line != null) {
@@ -231,12 +248,67 @@ public class CitizenBrain extends BotBrain {
         }
     }
 
+    /** Find a nearby socialite citizen and step one tile toward them.
+     *  Creates the "small group dancing" effect the user asked for - a
+     *  cluster of 2-3 bots gradually shuffle toward each other rather
+     *  than standing perfectly still. Does NOT walk all the way over
+     *  (just a step) so the bot stays around its anchor. */
+    private void followNearbySocialite(AIPlayer bot) {
+        AIPlayer leader = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (Player p : World.getPlayers()) {
+            if (!(p instanceof AIPlayer)) continue;
+            AIPlayer other = (AIPlayer) p;
+            if (other == bot) continue;
+            if (other.hasFinished()) continue;
+            if (other.getPlane() != bot.getPlane()) continue;
+            if (!(other.getBrain() instanceof CitizenBrain)) continue;
+            AmbientArchetype oa = ((CitizenBrain) other.getBrain()).getArchetype();
+            if (oa == null || !oa.isSocialite()) continue;
+            int dx = other.getX() - bot.getX();
+            int dy = other.getY() - bot.getY();
+            int sq = dx * dx + dy * dy;
+            if (sq < 4 || sq > 36) continue;  // 2-6 tile sweet spot
+            if (sq < bestDist) { bestDist = sq; leader = other; }
+        }
+        if (leader == null) return;
+        int sx = Integer.signum(leader.getX() - bot.getX());
+        int sy = Integer.signum(leader.getY() - bot.getY());
+        if (sx == 0 && sy == 0) return;
+        int tx = bot.getX() + sx;
+        int ty = bot.getY() + sy;
+        try {
+            if (!com.rs.game.World.isTileFree(bot.getPlane(), tx, ty, 1)) return;
+        } catch (Throwable ignored) {}
+        bot.addWalkSteps(tx, ty, 1, true);
+    }
+
     private void tickTraversing(AIPlayer bot) {
         if (bot.hasWalkSteps()) return;
         // Try to walk toward a real interaction target; fall back to random
         // wander if there's nothing scannable in the home radius.
         WorldTile target = findInteractionDestination(bot);
         if (target == null) target = pickWanderTarget();
+        // Skillers at the GE: if they end up here (user mass-spawn at GE,
+        // wander into it, etc) but their method is somewhere else, fire
+        // an EARLY teleport instead of standing around. Without this they
+        // shuffle around GE pretending to chop trees that don't exist.
+        boolean isSkiller = archetype != null && archetype.isSkiller();
+        boolean atGE = bot.getX() >= 3160 && bot.getX() <= 3170
+                    && bot.getY() >= 3480 && bot.getY() <= 3500;
+        if (isSkiller && atGE && target != null
+                && (target.getX() < 3155 || target.getX() > 3175
+                    || target.getY() < 3478 || target.getY() > 3500)) {
+            try {
+                com.rs.bot.ai.BotTeleporter.Choice c =
+                    com.rs.bot.ai.BotTeleporter.pickBest(bot, target.getX(), target.getY());
+                if (c != null && com.rs.bot.ai.BotTeleporter.cast(bot, c)) {
+                    debug(bot, "skiller-at-GE: teleporting to "
+                        + target.getX() + "," + target.getY());
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
         // Teleport-first for far targets: anything > ~40 tiles is realistically
         // a teleport in real-player play (jewelry, standard spell). Without
         // this, citizens spent 10+ minutes shuffling 8 tiles per traversing

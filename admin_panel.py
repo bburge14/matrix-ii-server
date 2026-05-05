@@ -131,6 +131,8 @@ class MatrixAPI:
     def citizens_budget_apply(self, include_manual=True):
         return self._post("/admin/citizens/budget/apply",
                           {"includeManual": "true" if include_manual else "false"})
+    def citizens_budget_reseed(self):
+        return self._post("/admin/citizens/budget/reseed")
 
     # Phantom GE
     def phantom_ge_get(self):    return self._get("/admin/phantom-ge")
@@ -851,6 +853,8 @@ class CitizensFrame(ctk.CTkFrame):
                       command=self._save_budget).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Clear All Live", width=120, fg_color="#aa3030",
                       command=self._clear_all).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Reseed Defaults", width=130, fg_color="#a05522",
+                      command=self._reseed_defaults).pack(side="left", padx=4)
         ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
         ctk.CTkButton(actions, text="+ Add Row", width=90,
                       command=self._add_slot).pack(side="left", padx=4)
@@ -1039,7 +1043,9 @@ class CitizensFrame(ctk.CTkFrame):
         self.dirty_label.configure(text="● unsaved changes")
 
     def _add_slot(self):
-        # Default to a generic socialite at GE
+        # Default to a generic socialite at GE; immediately open the editor
+        # so the user fills in the real values rather than ending up with
+        # multiple identical default rows (the "copies" complaint).
         new_slot = {
             "archetype": (self.archetypes[0]["name"] if self.archetypes else "SOCIALITE_BANKSTAND"),
             "count": 10, "x": 3164, "y": 3486, "plane": 0,
@@ -1048,6 +1054,26 @@ class CitizensFrame(ctk.CTkFrame):
         self.slots.append(new_slot)
         self._mark_dirty()
         self._render_table({})
+        # Auto-edit the new row.
+        idx = len(self.slots) - 1
+        self.tree.selection_set(str(idx))
+        SlotEditor(self, self.slots[idx], self.archetypes, self._on_slot_edited).load(idx)
+
+    def _reseed_defaults(self):
+        if not messagebox.askyesno("Reseed defaults",
+                "Wipe the current budget and restore server defaults? "
+                "Your edits will be backed up server-side as "
+                "data/citizen_budget.json.bak.reseed-<timestamp>."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_reseed()
+                self.after(0, lambda: messagebox.showinfo("Reseeded",
+                    f"Server reseeded {resp.get('slots', '?')} default slots"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Reseed failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
 
     def _delete_selected(self):
         sel = self.tree.selection()
@@ -1526,17 +1552,56 @@ class PhantomGEFrame(ctk.CTkFrame):
         # Each knob: label + entry + apply button
         self.knob_vars = {}
         knobs = [
-            ("enabled", "Master kill-switch (true/false)"),
-            ("fillRateOnPlace", "On-placement fill chance (0.0-1.0)"),
-            ("fillRatePerTick", "Per-30s base fill chance (0.0-1.0)"),
-            ("acceptableSpread", "Price spread tolerance (0.30 = ±30%)"),
-            ("minAgeBeforeFillMs", "Min offer age before fill (ms)"),
-            ("bulkMultiplier", "Bulk-tier rate multiplier"),
-            ("combatMultiplier", "Combat-tier rate multiplier"),
-            ("rareMultiplier", "Rare-tier rate multiplier"),
-            ("maxFillsPerPlayerPerHour", "Anti-abuse: per-player/hour cap"),
-            ("maxFillsPerItemPerHour", "Anti-abuse: per-item/hour cap"),
-            ("partialFillChance", "Chance to partial-fill (0.0-1.0)"),
+            ("enabled",
+                "Master toggle. true=phantom fills are active, false=disabled "
+                "entirely (no auto-fills, P2P matching still works)."),
+            ("fillRateOnPlace",
+                "Base chance an offer fills ~5s after placement. "
+                "Multiplied by the tier mult below. e.g. 0.30 with bulk 5x = "
+                "150% (capped at 100%) - bulk items insta-fill on placement."),
+            ("fillRatePerTick",
+                "Base chance per 30s tick that an aging offer fills. "
+                "Same tier-mult math. e.g. 0.10 with mid 1x = 10% per 30s, "
+                "so mid-tier offers usually fill within ~5 minutes."),
+            ("acceptableSpread",
+                "Price tolerance vs the GE reference. 0.30 = phantom only "
+                "fills if player's price is within ±30%. Rejects 'wtb phat 1gp' "
+                "trolls. Lower = stricter."),
+            ("minAgeBeforeFillMs",
+                "Offer must sit this long before any phantom fill. Lets "
+                "players cancel misclicks. 30000 = 30s default."),
+            ("cheapMultiplier",
+                "Items < 1k gp (eg copper ore, raw shrimps). Multiplier on "
+                "both base rates. 10x = effectively instant fills always."),
+            ("bulkMultiplier",
+                "Items < 10k gp (logs, ores, runes, raw fish). 5x default = "
+                "very fast fills, 1-2 min typically."),
+            ("lowMultiplier",
+                "Items < 100k gp (rune armor pieces, dragon scim, basic "
+                "amulets). 2x default = fills within a few minutes."),
+            ("midMultiplier",
+                "Items < 1m gp (whips, dragon weapons, mystic, mid jewelry). "
+                "1x default = base rate, ~5-10 min typical fill."),
+            ("highMultiplier",
+                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 0.5x "
+                "default = slow, 30+ min for full fill."),
+            ("rareMultiplier",
+                "Items ≥ 10m gp (partyhats, hween masks, christmas crackers, "
+                "phats). 0.1x default = days to fill - rare items shouldn't "
+                "auto-flip cheaply."),
+            ("maxFillsPerPlayerPerHour",
+                "Anti-abuse: max phantom fills any one player can receive per "
+                "hour. Stops sitting at GE flipping infinitely against the "
+                "phantom. Resets every hour. 50 default."),
+            ("maxFillsPerItemPerHour",
+                "Anti-abuse: max phantom fills total for any one item id per "
+                "hour. Stops draining 'phantom inventory' on a hot item. "
+                "20 default."),
+            ("partialFillChance",
+                "When phantom DOES fill, this is the chance it only fills "
+                "20-70% of the offer instead of all. Mimics multiple small "
+                "buyers/sellers vs one big match. 0.40 = 40% of fills are "
+                "partial."),
         ]
         for i, (key, helptxt) in enumerate(knobs):
             ctk.CTkLabel(cfg_frame, text=key + ":", anchor="w"
@@ -1548,9 +1613,9 @@ class PhantomGEFrame(ctk.CTkFrame):
             ctk.CTkButton(cfg_frame, text="Apply", width=60,
                 command=lambda k=key: self._apply_knob(k)
                 ).grid(row=i, column=2, padx=4, pady=2)
-            ctk.CTkLabel(cfg_frame, text=helptxt, anchor="w",
-                font=ctk.CTkFont(size=10), text_color="#888"
-                ).grid(row=i, column=3, sticky="w", padx=8, pady=2)
+            ctk.CTkLabel(cfg_frame, text=helptxt, anchor="w", wraplength=320,
+                justify="left", font=ctk.CTkFont(size=10), text_color="#888"
+                ).grid(row=i, column=3, sticky="nw", padx=8, pady=4)
 
         # ------- Right: live fill log -------
         log_frame = ctk.CTkFrame(body)

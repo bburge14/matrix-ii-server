@@ -196,34 +196,45 @@ public final class BotSkillProfile {
         scaleHpThenPrayer(levels, 99, 99, 99, hp, prayer, rng, mag, target);
     }
 
+    private static void tuneMain(int[] levels, int hp, int prayer, int target) {
+        // Balanced: all combat styles trained, melee leads.
+        // HP scales alongside melee - real players gain HP XP from every
+        // hit they deal, so a 99-melee bot has ~85-99 HP. Was previously
+        // leaving HP=10 (baseline) because the loop hit target combat by
+        // raising melee with low HP, leading to "cb 95 with 45 HP" bots.
+        for (int L = 1; L <= 99; L++) {
+            int rng = Math.max(1, (L * (50 + Utils.random(30))) / 100);
+            int mag = Math.max(1, (L * (50 + Utils.random(30))) / 100);
+            int H = Math.max(hp, Math.min(99, L * (85 + Utils.random(15)) / 100));
+            int c = computeCombat(L, L, L, H, prayer, rng, mag);
+            if (c >= target) { set(levels, L, L, L, H, prayer, rng, mag); return; }
+        }
+        scaleHpThenPrayer(levels, 99, 99, 99, hp, prayer, 80, 80, target);
+    }
+
     private static void tuneTank(int[] levels, int hp, int prayer, int target) {
+        // Defensive build: defence leads, att/str trail. HP scales with
+        // defence (tanks take a lot of hits = more HP XP).
+        int dummy = hp; // placeholder kept for signature parity below
         for (int L = 1; L <= 99; L++) {
             int off = Math.max(1, (L * 70) / 100);
-            int c = computeCombat(off, off, L, hp, prayer, 1, 1);
-            if (c >= target) { set(levels, off, off, L, hp, prayer, 1, 1); return; }
+            int H = Math.max(hp, Math.min(99, L * (90 + Utils.random(10)) / 100));
+            int c = computeCombat(off, off, L, H, prayer, 1, 1);
+            if (c >= target) { set(levels, off, off, L, H, prayer, 1, 1); return; }
         }
         scaleHpThenPrayer(levels, 70, 70, 99, hp, prayer, 1, 1, target);
     }
 
     private static void tunePure(int[] levels, int hp, int prayer, int target) {
-        // 1 defence pure: max attack/strength, defence stays at 1
+        // 1 defence pure: max attack/strength, defence stays at 1. HP
+        // scales with strength (gp.org pures usually 95-99 hp).
         int def = 1;
         for (int L = 1; L <= 99; L++) {
-            int c = computeCombat(L, L, def, hp, prayer, 1, 1);
-            if (c >= target) { set(levels, L, L, def, hp, prayer, 1, 1); return; }
+            int H = Math.max(hp, Math.min(99, L * (80 + Utils.random(15)) / 100));
+            int c = computeCombat(L, L, def, H, prayer, 1, 1);
+            if (c >= target) { set(levels, L, L, def, H, prayer, 1, 1); return; }
         }
         scaleHpThenPrayer(levels, 99, 99, def, hp, prayer, 1, 1, target);
-    }
-
-    private static void tuneMain(int[] levels, int hp, int prayer, int target) {
-        // Balanced: all combat styles trained, melee leads
-        for (int L = 1; L <= 99; L++) {
-            int rng = Math.max(1, (L * (50 + Utils.random(30))) / 100);
-            int mag = Math.max(1, (L * (50 + Utils.random(30))) / 100);
-            int c = computeCombat(L, L, L, hp, prayer, rng, mag);
-            if (c >= target) { set(levels, L, L, L, hp, prayer, rng, mag); return; }
-        }
-        scaleHpThenPrayer(levels, 99, 99, 99, hp, prayer, 80, 80, target);
     }
 
     private static void scaleHpThenPrayer(int[] levels, int att, int str, int def,

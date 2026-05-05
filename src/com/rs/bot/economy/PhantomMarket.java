@@ -47,12 +47,14 @@ public final class PhantomMarket {
 
     private static volatile boolean enabled = true;
 
-    /** Per-tick fill probability when rolling on placement (within ~5s). */
-    private static volatile double fillRateOnPlace = 0.10;
+    /** Per-tick fill probability when rolling on placement (within ~5s).
+     *  This is the BASE; tier multipliers below apply on top so cheap
+     *  items fill instantly more often than rares. */
+    private static volatile double fillRateOnPlace = 0.30;
 
     /** Per-30s-tick base fill rate for an aging offer. Multiplied by the
      *  per-tier rate. */
-    private static volatile double fillRatePerTick = 0.02;
+    private static volatile double fillRatePerTick = 0.10;
 
     /** Spread tolerance: phantom fills only if player's price is within
      *  +/- this fraction of the catalog reference. */
@@ -62,10 +64,23 @@ public final class PhantomMarket {
      *  misclick before the market eats it. */
     private static volatile long minAgeBeforeFillMs = 30_000L;
 
-    /** Per-tier fill rate multipliers applied to fillRatePerTick. */
+    /** Per-tier fill rate multipliers. Applied to BOTH on-place and
+     *  per-tick rolls so cheap items have a high instant-fill chance
+     *  AND fast aging fills, while rare items take their time on both
+     *  paths. Refprice tiers:
+     *    cheap   < 1k       -> 10.0x  (effectively instant for tutorials)
+     *    bulk    < 10k      -> 5.0x   (logs / ores / runes / fish)
+     *    low     < 100k     -> 2.0x   (basic dragon, rune armor pieces)
+     *    mid     < 1m       -> 1.0x   (whips, dragon weapons, mid jewelry)
+     *    high    < 10m      -> 0.5x   (bandos, armadyl, fury)
+     *    rare    >= 10m     -> 0.1x   (godswords, partyhats, hween masks)
+     */
+    private static volatile double cheapMultiplier  = 10.0;
     private static volatile double bulkMultiplier   = 5.0;
-    private static volatile double combatMultiplier = 2.0;
-    private static volatile double rareMultiplier   = 0.25;
+    private static volatile double lowMultiplier    = 2.0;
+    private static volatile double midMultiplier    = 1.0;
+    private static volatile double highMultiplier   = 0.5;
+    private static volatile double rareMultiplier   = 0.1;
 
     /** Anti-abuse caps. */
     private static volatile int maxFillsPerPlayerPerHour = 50;
@@ -131,14 +146,21 @@ public final class PhantomMarket {
      *  the player placed it. */
     public static void onOfferPlaced(final Offer offer) {
         if (!enabled || offer == null) return;
+        // Tier-aware roll: cheap items basically always insta-fill (10x
+        // base = 100%), rares almost never (0.1x base = 1%). User asked
+        // for "higher chance for cheaper items to be instant buy/sell,
+        // higher you get in price the lower chance".
+        final int refPrice = referencePrice(offer.getId());
+        final double tierMult = tierMultiplier(refPrice);
+        final double rate = Math.min(1.0, fillRateOnPlace * tierMult);
         // Delay the placement-fill roll by a few ticks so it doesn't feel
-        // instant. 8 ticks = ~5 seconds.
+        // instant on the same packet. 8 ticks = ~5 seconds.
         try {
             WorldTasksManager.schedule(new WorldTask() {
                 @Override public void run() {
                     try {
                         if (!enabled) return;
-                        if (Math.random() > fillRateOnPlace) return;
+                        if (Math.random() > rate) return;
                         tryFill(offer, false);
                     } catch (Throwable ignored) {}
                 }
@@ -234,11 +256,29 @@ public final class PhantomMarket {
             fillAmount = amountLeft;
         }
 
-        // Fill price = player's price (no fancy spread math; the gating
-        // already ensured player's price is within tolerance of ref).
-        // For BUY: phantom sells AT the player's price (no change).
-        // For SELL: phantom buys AT the player's price.
-        int fillPrice = playerPrice;
+        // Realistic fill price: simulate matching against a counter-party
+        // who would never pay more / accept less than they have to. So:
+        //   BUY  : fillPrice in [refPrice, playerPrice] - player saves $$
+        //   SELL : fillPrice in [playerPrice, refPrice] - player gets $$
+        // User: "I put in a buy offer for like a few clicks of the 5% and
+        // it bought for exactly this price? that wouldn't happen, it would
+        // have bought for lower and I would've saved money".
+        int fillPrice;
+        if (offer.isBuying()) {
+            if (playerPrice > refPrice) {
+                int range = playerPrice - refPrice;
+                fillPrice = refPrice + (int) (Math.random() * (range + 1));
+            } else {
+                fillPrice = playerPrice;
+            }
+        } else {
+            if (playerPrice < refPrice) {
+                int range = refPrice - playerPrice;
+                fillPrice = playerPrice + (int) (Math.random() * (range + 1));
+            } else {
+                fillPrice = playerPrice;
+            }
+        }
         if (!offer.phantomFill(fillAmount, fillPrice)) return;
 
         // Update counters + log
@@ -291,10 +331,17 @@ public final class PhantomMarket {
         return ratio <= (1.0 + acceptableSpread);
     }
 
-    private static double tierMultiplier(int refPrice) {
+    /** 6-tier price classification. Returns a multiplier applied to BOTH
+     *  the on-place fill chance and the per-tick aging-fill chance, so a
+     *  player listing a partyhat at fair price won't insta-fill but a
+     *  player listing yew logs probably will. */
+    public static double tierMultiplier(int refPrice) {
         if (refPrice <= 0) return 0.0;
-        if (refPrice < 10_000)    return bulkMultiplier;
-        if (refPrice < 1_000_000) return combatMultiplier;
+        if (refPrice < 1_000)        return cheapMultiplier;
+        if (refPrice < 10_000)       return bulkMultiplier;
+        if (refPrice < 100_000)      return lowMultiplier;
+        if (refPrice < 1_000_000)    return midMultiplier;
+        if (refPrice < 10_000_000)   return highMultiplier;
         return rareMultiplier;
     }
 
@@ -307,8 +354,11 @@ public final class PhantomMarket {
         m.put("fillRatePerTick", fillRatePerTick);
         m.put("acceptableSpread", acceptableSpread);
         m.put("minAgeBeforeFillMs", minAgeBeforeFillMs);
+        m.put("cheapMultiplier", cheapMultiplier);
         m.put("bulkMultiplier", bulkMultiplier);
-        m.put("combatMultiplier", combatMultiplier);
+        m.put("lowMultiplier", lowMultiplier);
+        m.put("midMultiplier", midMultiplier);
+        m.put("highMultiplier", highMultiplier);
         m.put("rareMultiplier", rareMultiplier);
         m.put("maxFillsPerPlayerPerHour", maxFillsPerPlayerPerHour);
         m.put("maxFillsPerItemPerHour", maxFillsPerItemPerHour);
@@ -325,9 +375,14 @@ public final class PhantomMarket {
         if ((v = updates.get("fillRatePerTick")) != null) fillRatePerTick = parseDouble(v, fillRatePerTick);
         if ((v = updates.get("acceptableSpread")) != null) acceptableSpread = parseDouble(v, acceptableSpread);
         if ((v = updates.get("minAgeBeforeFillMs")) != null) minAgeBeforeFillMs = parseLong(v, minAgeBeforeFillMs);
+        if ((v = updates.get("cheapMultiplier")) != null) cheapMultiplier = parseDouble(v, cheapMultiplier);
         if ((v = updates.get("bulkMultiplier")) != null) bulkMultiplier = parseDouble(v, bulkMultiplier);
-        if ((v = updates.get("combatMultiplier")) != null) combatMultiplier = parseDouble(v, combatMultiplier);
+        if ((v = updates.get("lowMultiplier")) != null) lowMultiplier = parseDouble(v, lowMultiplier);
+        if ((v = updates.get("midMultiplier")) != null) midMultiplier = parseDouble(v, midMultiplier);
+        if ((v = updates.get("highMultiplier")) != null) highMultiplier = parseDouble(v, highMultiplier);
         if ((v = updates.get("rareMultiplier")) != null) rareMultiplier = parseDouble(v, rareMultiplier);
+        // Back-compat: old "combatMultiplier" key maps to the new "lowMultiplier".
+        if ((v = updates.get("combatMultiplier")) != null) lowMultiplier = parseDouble(v, lowMultiplier);
         if ((v = updates.get("maxFillsPerPlayerPerHour")) != null) maxFillsPerPlayerPerHour = (int) parseLong(v, maxFillsPerPlayerPerHour);
         if ((v = updates.get("maxFillsPerItemPerHour")) != null) maxFillsPerItemPerHour = (int) parseLong(v, maxFillsPerItemPerHour);
         if ((v = updates.get("partialFillChance")) != null) partialFillChance = parseDouble(v, partialFillChance);
