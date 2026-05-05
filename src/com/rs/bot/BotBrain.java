@@ -84,7 +84,13 @@ public class BotBrain {
         this.previousState = BotState.IDLE;
         this.lastDecisionTime = System.currentTimeMillis();
         this.lastStateChange = System.currentTimeMillis();
-        this.lastGoalCheck = System.currentTimeMillis();
+        // 0 (not now()) so the first tick triggers checkAndUpdateGoals
+        // immediately. Without this, currentActivity stays stuck on
+        // "initializing" for up to 10s after spawn even though the
+        // bot is already walking/teleporting toward its goal -
+        // botinfo would show "IDLE / Initializing / null / null"
+        // for newly-hatched bots that just lodestoned to a method.
+        this.lastGoalCheck = 0L;
         this.lastMovementTick = 0L;
         this.boredomLevel = 0;
         this.restlessness = 0;
