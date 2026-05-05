@@ -124,9 +124,19 @@ public final class EnvironmentScanner {
             if (n == null || n.hasFinished()) continue;
             if (n.getPlane() != from.getPlane()) continue;
             if (!from.withinDistance(n, radius)) continue;
-            FishingSpots def = matchFishingSpot(n.getId());
+            // Two reasons we can't just match by enum identity:
+            //   1. Variant NPCs (Catherby cage = NPC 312 = CAGE2;
+            //      inland cage = NPC 6267 = CAGE) - same tool,
+            //      different enum.
+            //   2. Multi-option NPCs (NPC 312 supports BOTH cage
+            //      AND harpoon as separate options on the same
+            //      entity) - one NPC, multiple FishingSpots.
+            // Pick the variant whose tool matches what the method
+            // needs - otherwise pick the first matching enum so we
+            // still have something to fish if no filter was given.
+            FishingSpots def = matchFishingSpot(n.getId(),
+                only == null ? -1 : only.getTool());
             if (def == null) continue;
-            if (only != null && def != only) continue;
             int d = manhattan(from, n);
             if (d < bestDist) {
                 bestDist = d;
@@ -302,9 +312,21 @@ public final class EnvironmentScanner {
     }
 
     private static FishingSpots matchFishingSpot(int npcId) {
+        return matchFishingSpot(npcId, -1);
+    }
+
+    /** preferTool=-1 means "any" - returns the first matching enum.
+     *  Otherwise return the variant whose getTool() matches preferTool,
+     *  or null if no variant on this NPC supports that tool (we don't
+     *  want to send a NET-fishing bot to a CAGE-only spot). */
+    private static FishingSpots matchFishingSpot(int npcId, int preferTool) {
+        FishingSpots first = null;
         for (FishingSpots s : FishingSpots.values()) {
-            if (s.getId() == npcId) return s;
+            if (s.getId() != npcId) continue;
+            if (preferTool == -1) return s;
+            if (s.getTool() == preferTool) return s;
+            if (first == null) first = s;
         }
-        return null;
+        return preferTool == -1 ? first : null;
     }
 }
