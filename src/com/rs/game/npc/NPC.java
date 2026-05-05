@@ -333,6 +333,26 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
+			// Force-retaliate when hit by a player. PlayerCombatNew /
+			// CombatScript.delayHit do call autoRelatie -> n.setTarget()
+			// AFTER the hit applies, but it's gated on
+			// canBeAttackedByAutoRelatie() which has a 12s lureDelay
+			// window keyed on lastAttackedByTarget. In several cases
+			// (multi-attack ticks, scripted bosses calling setTarget
+			// programmatically, lureDelay drift) the gate refused the
+			// retaliate set even on first hit and the NPC just stood
+			// there. Real RS behaviour is "if you hit it, it fights
+			// back" - so set target whenever combat.target is currently
+			// null AND the NPC is alive AND it has an Attack option.
+			try {
+				if (combat != null && combat.getTarget() == null
+						&& !isDead() && !hasFinished()
+						&& !isCantInteract() && !isForceWalking()
+						&& getDefinitions() != null
+						&& getDefinitions().hasAttackOption()) {
+					setTarget(source);
+				}
+			} catch (Throwable ignored) {}
 		}
 
 	}
