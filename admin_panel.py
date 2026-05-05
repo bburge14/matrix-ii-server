@@ -162,6 +162,26 @@ class MatrixAPI:
         return self._post("/admin/ge/prices/bulk",
                           {"prices": {str(k): int(v) for k, v in prices.items()}})
 
+    # All-items browser
+    def items_all(self, q=None, slot=None, wearable=False, tradeable=False,
+                  override=False, page=0, page_size=200):
+        from urllib.parse import quote
+        parts = [f"page={page}", f"pageSize={page_size}"]
+        if q:        parts.append("q=" + quote(q))
+        if slot is not None: parts.append(f"slot={int(slot)}")
+        if wearable: parts.append("wearable=1")
+        if tradeable: parts.append("tradeable=1")
+        if override: parts.append("override=1")
+        return self._get("/admin/items/all?" + "&".join(parts))
+
+    def items_set_tradeable(self, ids, tradeable):
+        body = {"ids": [int(i) for i in ids], "tradeable": bool(tradeable)}
+        return self._post("/admin/items/tradeable", body)
+
+    def items_clear_override(self, ids):
+        body = {"ids": [int(i) for i in ids], "clear": True}
+        return self._post("/admin/items/tradeable", body)
+
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
     def profiler_stop(self):         return self._post("/admin/profiler/stop")
@@ -228,7 +248,7 @@ class App(ctk.CTk):
                      font=ctk.CTkFont(size=9), text_color="#666").pack(pady=(0, 14))
 
         self.tabs = {}
-        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Gear Sets", "GE Prices", "Phantom GE", "Players", "Server", "Backups", "Log", "Settings"):
+        for name in ("Dashboard", "Bots", "Bot AI", "Citizens", "Gear Sets", "GE Prices", "Items", "Phantom GE", "Players", "Server", "Backups", "Log", "Settings"):
             btn = ctk.CTkButton(self.sidebar, text=name, height=36,
                                 command=lambda n=name: self.show(n))
             btn.pack(fill="x", padx=10, pady=4)
@@ -249,6 +269,7 @@ class App(ctk.CTk):
         self.tabs["Citizens"]["frame"]  = CitizensFrame(self.content, self.api)
         self.tabs["Gear Sets"]["frame"] = GearSetsFrame(self.content, self.api)
         self.tabs["GE Prices"]["frame"] = GePricesFrame(self.content, self.api)
+        self.tabs["Items"]["frame"]     = ItemsFrame(self.content, self.api)
         self.tabs["Phantom GE"]["frame"] = PhantomGEFrame(self.content, self.api)
         self.tabs["Players"]["frame"]   = PlayersFrame(self.content, self.api)
         self.tabs["Server"]["frame"]    = ServerFrame(self.content, self.api)
@@ -2025,6 +2046,232 @@ class GePricesFrame(ctk.CTkFrame):
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror(
                     "Push failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
+# ----- Items tab (all items + tradeable + GE price) -----
+
+# OSRS-style equip slot id -> short label.
+EQUIP_SLOT_NAMES = {
+    -1: "—", 0: "head", 1: "cape", 2: "neck", 3: "weapon",
+    4: "chest", 5: "shield", 7: "legs", 9: "hands", 10: "feet",
+    12: "ring", 13: "ammo", 14: "aura", 15: "pocket",
+}
+
+
+class ItemsFrame(ctk.CTkFrame):
+    """Browse every item in the cache. Filter, search, set tradeable
+    overrides, push GE prices in bulk. Server endpoint /admin/items/all
+    pages 200 rows at a time so we never block the UI on a 25k-item dump."""
+
+    def __init__(self, master, api):
+        super().__init__(master)
+        self.api = api
+        self.rows = []          # current page rows from server
+        self.total = 0
+        self.page = 0
+        self.page_size = 200
+        self.selected_ids = set()
+        # Filter state
+        self.q_var          = tk.StringVar()
+        self.wearable_var   = tk.BooleanVar(value=False)
+        self.tradeable_var  = tk.BooleanVar(value=False)
+        self.override_var   = tk.BooleanVar(value=False)
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=20, pady=(20, 10))
+        ctk.CTkLabel(top, text="Items", font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        self.total_label = ctk.CTkLabel(top, text="—", font=ctk.CTkFont(size=12))
+        self.total_label.pack(side="left", padx=20)
+
+        # ---- filter row ----
+        f = ctk.CTkFrame(self)
+        f.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(f, text="Search:").pack(side="left", padx=4)
+        e = ctk.CTkEntry(f, textvariable=self.q_var, width=260)
+        e.pack(side="left", padx=4)
+        e.bind("<Return>", lambda _: self._apply_filters())
+        ctk.CTkCheckBox(f, text="Equipable only", variable=self.wearable_var,
+                        command=self._apply_filters).pack(side="left", padx=8)
+        ctk.CTkCheckBox(f, text="Tradeable only", variable=self.tradeable_var,
+                        command=self._apply_filters).pack(side="left", padx=8)
+        ctk.CTkCheckBox(f, text="Has override", variable=self.override_var,
+                        command=self._apply_filters).pack(side="left", padx=8)
+        ctk.CTkButton(f, text="Apply", width=70,
+                      command=self._apply_filters).pack(side="left", padx=4)
+        ctk.CTkButton(f, text="Refresh", width=80,
+                      command=self.refresh).pack(side="right", padx=4)
+
+        # ---- bulk action row ----
+        a = ctk.CTkFrame(self)
+        a.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(a, text="Selected:").pack(side="left", padx=4)
+        self.sel_label = ctk.CTkLabel(a, text="0")
+        self.sel_label.pack(side="left", padx=4)
+        ctk.CTkButton(a, text="Make Tradeable", width=130, fg_color="#1b6e3a",
+                      command=lambda: self._set_tradeable(True)).pack(side="left", padx=4)
+        ctk.CTkButton(a, text="Make Untradeable", width=140, fg_color="#aa3030",
+                      command=lambda: self._set_tradeable(False)).pack(side="left", padx=4)
+        ctk.CTkButton(a, text="Clear Override", width=120,
+                      command=self._clear_overrides).pack(side="left", padx=4)
+        ctk.CTkLabel(a, text=" │ ").pack(side="left", padx=4)
+        ctk.CTkButton(a, text="Set GE Price...", width=120, fg_color="#3a5588",
+                      command=self._bulk_set_price).pack(side="left", padx=4)
+
+        # ---- table (Tk Treeview - faster than custom widgets at 200 rows) ----
+        from tkinter import ttk
+        cols = ("id", "name", "slot", "wearable", "tradeable", "override", "price")
+        wrap = ctk.CTkFrame(self)
+        wrap.pack(fill="both", expand=True, padx=20, pady=4)
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
+                                 selectmode="extended", height=20)
+        widths = {"id": 70, "name": 320, "slot": 80,
+                  "wearable": 80, "tradeable": 80, "override": 100, "price": 100}
+        for c in cols:
+            self.tree.heading(c, text=c.title())
+            self.tree.column(c, width=widths[c], anchor="w")
+        sb = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        # ---- paging ----
+        p = ctk.CTkFrame(self)
+        p.pack(fill="x", padx=20, pady=4)
+        ctk.CTkButton(p, text="◀ Prev", width=80,
+                      command=self._prev_page).pack(side="left", padx=4)
+        self.page_label = ctk.CTkLabel(p, text="page 1 / 1")
+        self.page_label.pack(side="left", padx=8)
+        ctk.CTkButton(p, text="Next ▶", width=80,
+                      command=self._next_page).pack(side="left", padx=4)
+
+    def on_show(self):
+        if not self.rows:
+            self.refresh()
+
+    def _apply_filters(self):
+        self.page = 0
+        self.refresh()
+
+    def refresh(self):
+        def do():
+            try:
+                resp = self.api.items_all(
+                    q=(self.q_var.get() or None),
+                    wearable=self.wearable_var.get(),
+                    tradeable=self.tradeable_var.get(),
+                    override=self.override_var.get(),
+                    page=self.page, page_size=self.page_size)
+                self.after(0, lambda: self._apply_data(resp))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Items refresh failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _apply_data(self, resp):
+        self.rows = resp.get("rows", []) if resp else []
+        self.total = resp.get("total", 0) if resp else 0
+        # Refresh selection set against new rows on the page.
+        self.selected_ids = set()
+        self.tree.delete(*self.tree.get_children())
+        for r in self.rows:
+            slot_label = EQUIP_SLOT_NAMES.get(r.get("slot", -1), str(r.get("slot")))
+            ov = "—"
+            if r.get("overrideT"): ov = "T"
+            elif r.get("overrideU"): ov = "U"
+            price = r.get("price", -1)
+            price_str = "—" if price < 0 else f"{price:,}"
+            self.tree.insert("", "end", iid=str(r["id"]), values=(
+                r["id"], r.get("name", "?"), slot_label,
+                "yes" if r.get("wearable") else "no",
+                "yes" if r.get("tradeable") else "no",
+                ov, price_str))
+        max_pages = max(1, (self.total + self.page_size - 1) // self.page_size)
+        self.page_label.configure(
+            text=f"page {self.page + 1} / {max_pages}")
+        self.total_label.configure(
+            text=f"{self.total:,} matching items", text_color="#3fbf3f")
+        self._on_select()
+
+    def _on_select(self, _evt=None):
+        ids = []
+        for iid in self.tree.selection():
+            try: ids.append(int(iid))
+            except Exception: pass
+        self.selected_ids = set(ids)
+        self.sel_label.configure(text=str(len(ids)))
+
+    def _prev_page(self):
+        if self.page == 0: return
+        self.page -= 1
+        self.refresh()
+
+    def _next_page(self):
+        max_pages = max(1, (self.total + self.page_size - 1) // self.page_size)
+        if self.page + 1 >= max_pages: return
+        self.page += 1
+        self.refresh()
+
+    def _set_tradeable(self, t):
+        if not self.selected_ids:
+            messagebox.showinfo("No selection", "Select rows first.")
+            return
+        ids = sorted(self.selected_ids)
+        def do():
+            try:
+                self.api.items_set_tradeable(ids, t)
+                self.after(0, self.refresh)
+                self.after(0, lambda: messagebox.showinfo("Done",
+                    f"{len(ids)} item(s) -> "
+                    + ("tradeable" if t else "untradeable")))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Tradeable update failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _clear_overrides(self):
+        if not self.selected_ids:
+            messagebox.showinfo("No selection", "Select rows first.")
+            return
+        ids = sorted(self.selected_ids)
+        def do():
+            try:
+                self.api.items_clear_override(ids)
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Clear override failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _bulk_set_price(self):
+        if not self.selected_ids:
+            messagebox.showinfo("No selection", "Select rows first.")
+            return
+        ids = sorted(self.selected_ids)
+        # Quick prompt - one price for all selected. For per-item edits,
+        # use the GE Prices tab's bulk import.
+        from tkinter import simpledialog
+        v = simpledialog.askstring(
+            "Set GE Price",
+            f"GE price (gp) to apply to {len(ids)} item(s):",
+            parent=self)
+        if not v: return
+        try:
+            price = int(v.replace(",", "").replace("k", "000")
+                         .replace("m", "000000").replace("b", "000000000"))
+        except Exception:
+            messagebox.showerror("Bad price", f"could not parse: {v}")
+            return
+        def do():
+            try:
+                self.api.ge_prices_bulk_set({i: price for i in ids})
+                self.after(0, self.refresh)
+                self.after(0, lambda: messagebox.showinfo(
+                    "Done", f"set GE price for {len(ids)} item(s) to {price:,}"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Set price failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
 
 

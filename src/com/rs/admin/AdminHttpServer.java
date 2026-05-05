@@ -73,6 +73,8 @@ public final class AdminHttpServer {
             server.createContext("/admin/world/scan",      auth(new WorldScanHandler()));
             server.createContext("/admin/items/find",       auth(new ItemFindHandler()));
             server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
+            server.createContext("/admin/items/all",        auth(new ItemsAllHandler()));
+            server.createContext("/admin/items/tradeable",  auth(postOnly(new ItemsTradeableHandler())));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
@@ -1012,6 +1014,179 @@ public final class AdminHttpServer {
             }
             sb.append("]}");
             sendText(ex, 200, sb.toString());
+        }
+    }
+
+    /**
+     * GET /admin/items/all - returns paged item dump for the admin panel.
+     *
+     * Query params (all optional):
+     *   q=search        - case-insensitive name substring filter
+     *   slot=N          - only items with this equip slot (-1 = none)
+     *   wearable=1      - only equipable items (any slot)
+     *   tradeable=1     - only currently-tradeable items
+     *   override=1      - only items with a runtime tradeable override set
+     *   page=N          - 0-indexed page (default 0)
+     *   pageSize=N      - rows per page (default 200, max 1000)
+     *
+     * Body:
+     *   {"ok":true, "total":N, "page":P, "pageSize":S, "rows":[
+     *     {"id":N,"name":"...","slot":N,"wearable":bool,"tradeable":bool,
+     *      "overrideT":bool,"overrideU":bool,"price":N}, ...
+     *   ]}
+     */
+    private static class ItemsAllHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.util.Map<String,String> q = parseQuery(ex.getRequestURI().getRawQuery());
+                String search = q.get("q");
+                if (search != null) search = search.toLowerCase();
+                int slotFilter = parseIntQ(q, "slot", -2); // -2 = no filter
+                boolean wearableOnly  = "1".equals(q.get("wearable"));
+                boolean tradeableOnly = "1".equals(q.get("tradeable"));
+                boolean overrideOnly  = "1".equals(q.get("override"));
+                int page = Math.max(0, parseIntQ(q, "page", 0));
+                int pageSize = Math.max(1, Math.min(1000, parseIntQ(q, "pageSize", 200)));
+
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000; // sanity cap
+
+                java.util.Set<Integer> tSet = com.rs.utils.TradeableOverrides.getTradeable();
+                java.util.Set<Integer> uSet = com.rs.utils.TradeableOverrides.getUntradeable();
+
+                java.util.List<int[]> matches = new java.util.ArrayList<>();
+                java.util.List<String> matchNames = new java.util.ArrayList<>();
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    if (search != null && !name.toLowerCase().contains(search)) continue;
+                    int slot = -1;
+                    boolean wearable = false;
+                    try { slot = def.getEquipSlot(); } catch (Throwable ignored) {}
+                    try { wearable = def.isWearItem(); } catch (Throwable ignored) {}
+                    if (slotFilter != -2 && slot != slotFilter) continue;
+                    if (wearableOnly && !wearable) continue;
+                    boolean tradeable = isTradeableHelper(id);
+                    if (tradeableOnly && !tradeable) continue;
+                    boolean ovT = tSet.contains(id);
+                    boolean ovU = uSet.contains(id);
+                    if (overrideOnly && !ovT && !ovU) continue;
+                    int price;
+                    try {
+                        price = com.rs.game.player.content.grandExchange
+                            .GrandExchange.getPrice(id);
+                    } catch (Throwable t) { price = -1; }
+                    matches.add(new int[]{ id, slot, wearable ? 1 : 0,
+                        tradeable ? 1 : 0, ovT ? 1 : 0, ovU ? 1 : 0, price });
+                    matchNames.add(name);
+                }
+
+                int total = matches.size();
+                int from = Math.min(total, page * pageSize);
+                int to   = Math.min(total, from + pageSize);
+
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"total\":").append(total)
+                    .append(",\"page\":").append(page)
+                    .append(",\"pageSize\":").append(pageSize)
+                    .append(",\"rows\":[");
+                for (int i = from; i < to; i++) {
+                    int[] m = matches.get(i);
+                    if (i > from) sb.append(",");
+                    sb.append("{\"id\":").append(m[0])
+                      .append(",\"name\":\"").append(jsonEscape(matchNames.get(i))).append("\"")
+                      .append(",\"slot\":").append(m[1])
+                      .append(",\"wearable\":").append(m[2] == 1)
+                      .append(",\"tradeable\":").append(m[3] == 1)
+                      .append(",\"overrideT\":").append(m[4] == 1)
+                      .append(",\"overrideU\":").append(m[5] == 1)
+                      .append(",\"price\":").append(m[6])
+                      .append("}");
+                }
+                sb.append("]}");
+                sendText(ex, 200, sb.toString());
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+
+        private static boolean isTradeableHelper(int id) {
+            try {
+                return com.rs.game.player.content.ItemConstants.isTradeable(
+                    new com.rs.game.item.Item(id, 1));
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
+        private static int parseIntQ(java.util.Map<String,String> q, String k, int def) {
+            try {
+                String v = q.get(k);
+                return v == null ? def : Integer.parseInt(v);
+            } catch (Throwable t) { return def; }
+        }
+    }
+
+    /**
+     * POST /admin/items/tradeable
+     * Body: {"id": N, "tradeable": true|false} - sets runtime override.
+     *       {"id": N, "clear": true}           - removes any override.
+     *       {"ids": [N,...], "tradeable": true|false} - bulk.
+     */
+    private static class ItemsTradeableHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                String body = readBody(ex);
+                if (body == null) body = "";
+                boolean clearMode = body.contains("\"clear\"") && body.contains("true");
+                Boolean tradeable = null;
+                int tIdx = body.indexOf("\"tradeable\"");
+                if (tIdx >= 0) {
+                    int colon = body.indexOf(':', tIdx);
+                    int trueIdx = body.indexOf("true",  colon);
+                    int falseIdx = body.indexOf("false", colon);
+                    int comma = body.indexOf(',', colon);
+                    int rbrace = body.indexOf('}', colon);
+                    int end = comma < 0 ? rbrace : (rbrace < 0 ? comma : Math.min(comma, rbrace));
+                    if (trueIdx > colon && (end < 0 || trueIdx < end)) tradeable = Boolean.TRUE;
+                    else if (falseIdx > colon && (end < 0 || falseIdx < end)) tradeable = Boolean.FALSE;
+                }
+                java.util.List<Integer> ids = new java.util.ArrayList<>();
+                int idsIdx = body.indexOf("\"ids\"");
+                if (idsIdx >= 0) {
+                    int lb = body.indexOf('[', idsIdx);
+                    int rb = body.indexOf(']', lb < 0 ? 0 : lb);
+                    if (lb >= 0 && rb >= 0) {
+                        for (String s : body.substring(lb + 1, rb).split(",")) {
+                            try { ids.add(Integer.parseInt(s.trim())); }
+                            catch (Throwable ignored) {}
+                        }
+                    }
+                }
+                if (ids.isEmpty()) {
+                    int single = bExtractInt(body, "id", -1);
+                    if (single >= 0) ids.add(single);
+                }
+                if (ids.isEmpty()) {
+                    sendText(ex, 400, "{\"ok\":false,\"error\":\"need id or ids[]\"}");
+                    return;
+                }
+                int n = 0;
+                for (int id : ids) {
+                    if (clearMode) com.rs.utils.TradeableOverrides.clear(id);
+                    else if (tradeable != null) com.rs.utils.TradeableOverrides.setTradeable(id, tradeable);
+                    else { sendText(ex, 400, "{\"ok\":false,\"error\":\"need tradeable or clear\"}"); return; }
+                    n++;
+                }
+                sendText(ex, 200, "{\"ok\":true,\"updated\":" + n + "}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
         }
     }
 
