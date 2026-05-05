@@ -1049,6 +1049,26 @@ public class BotBrain {
                 }
                 return;
             }
+            // Within XY range of the method tile but on the wrong plane.
+            // Common case: Slayer Tower is at plane 1 / 2, the bot walked
+            // to the base on plane 0, the XY check passes but
+            // findNearestNPC filters by plane and reports "no enemies here"
+            // - the staircase right next to the bot stays unused. Force
+            // a ladder climb in the right direction. Returns if a climb
+            // started so the brain re-evaluates after the lock expires.
+            int targetPlane = method.location.getPlane();
+            if (bot.getPlane() != targetPlane) {
+                if (com.rs.bot.ai.BotPathing.tryUseNearbyLadder(
+                        bot, targetX, targetY, targetPlane, 6)) {
+                    lastDiagnostic = "climbing to plane " + targetPlane
+                        + " for " + method.description;
+                    return;
+                }
+                lastDiagnostic = "wrong plane (" + bot.getPlane() + " != "
+                    + targetPlane + ") for " + method.description
+                    + " - no ladder in 6 tiles";
+                return;
+            }
         }
         goal.setCurrentStep(method.description);
         // 0.D: align bot's combat XP style with the goal so the right skill

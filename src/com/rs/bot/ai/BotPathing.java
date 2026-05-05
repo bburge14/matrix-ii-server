@@ -151,38 +151,50 @@ public final class BotPathing {
      * Climb-down at the trapdoor's tile. Plane-shift ladders inside multi-
      * level buildings (mage tower, fally castle, etc.) work the same way.
      */
+    /** Default arity: infer target plane from Y coord (>= 6400 = underground). */
     public static boolean tryUseNearbyLadder(AIPlayer bot, int targetX, int targetY, int radius) {
+        // Infer target plane: Y >= 6400 is the underground band, plane 0.
+        // Otherwise default to 0 (most surface targets). Multi-storey
+        // building targets (Slayer Tower, Wizard Tower) MUST use the
+        // 5-arg overload below to pass the actual plane.
+        int inferredPlane = (targetY >= 6400) ? 0 : 0;
+        return tryUseNearbyLadder(bot, targetX, targetY, inferredPlane, radius);
+    }
+
+    /**
+     * Climb a nearby ladder / staircase if one exists and it'd shift the
+     * bot toward the target's plane. Direction = up if target plane >
+     * bot plane, down if lower; underground (Y>=6400) is treated as
+     * needing a climb-down even when the target plane field is 0.
+     */
+    public static boolean tryUseNearbyLadder(AIPlayer bot, int targetX, int targetY, int targetPlane, int radius) {
         try {
             int botPlane = bot.getPlane();
-            // Decide which direction we want to go.
-            // Up if target is on a higher plane; down if lower.
-            // Underground (Y >= 6400) targets are reached via climb-down
-            // from the surface, even though the destination plane is
-            // typically 0 too - the trapdoor uses its own teleport tile,
-            // not a generic plane shift. We detect that situation and
-            // pass it to specialDownFromTrapdoor below.
             int targetUndergroundFromAbove =
                 (targetY >= 6400 && bot.getY() < 6400) ? 1 : 0;
             int targetAboveFromUnderground =
                 (targetY < 6400 && bot.getY() >= 6400) ? 1 : 0;
-            // If both are on the same band and same plane, no ladder needed.
-            if (botPlane == 0 && targetUndergroundFromAbove == 0
+            // If both are on the same plane and same band, no ladder needed.
+            if (botPlane == targetPlane && targetUndergroundFromAbove == 0
                     && targetAboveFromUnderground == 0) {
                 return false;
             }
             boolean wantUp = false;
             boolean wantDown = false;
-            if (botPlane > 0 && targetY < 6400 && bot.getY() < 6400) {
-                // We're stranded on a higher plane at the surface.
+            if (targetPlane > botPlane) {
+                // Target is on a higher floor of the same building.
+                wantUp = true;
+            } else if (targetPlane < botPlane && targetY < 6400 && bot.getY() < 6400) {
+                // Stranded on a higher plane at the surface, target is
+                // a lower floor of the same building.
                 wantDown = true;
             } else if (targetUndergroundFromAbove == 1) {
                 wantDown = true;
             } else if (targetAboveFromUnderground == 1) {
                 wantUp = true;
             } else {
-                // Same band, just plane mismatch: pick the matching direction.
-                wantUp = botPlane == 0;
-                wantDown = botPlane > 0;
+                wantUp = botPlane < targetPlane;
+                wantDown = botPlane > targetPlane;
             }
             int botRegion = ((bot.getX() >> 6) << 8) + (bot.getY() >> 6);
             com.rs.game.Region region = com.rs.game.World.getRegion(botRegion, true);
@@ -312,8 +324,10 @@ public final class BotPathing {
             || name.equals("metal door")
             || name.equals("oak door")
             || name.equals("wooden door")
+            || name.equals("portcullis")
             || name.endsWith(" door")
-            || name.endsWith(" gate");
+            || name.endsWith(" gate")
+            || name.endsWith(" portcullis");
     }
 
     /** Force-load the region containing (x,y) so RouteFinder has clipping. */
