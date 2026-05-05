@@ -1845,6 +1845,20 @@ public class BotBrain {
         // (melee = adjacent, ranged/magic = within sight). Just hand it the
         // target and let it run.
         bot.getActionManager().setAction(new PlayerCombatNew(target));
+        // Force the NPC to engage us immediately. PlayerCombatNew.autoRelatie
+        // does call target.setTarget(player) after each hit lands, but it
+        // runs on a delayed WorldTask and only fires if a hit actually
+        // dealt damage (target.applyHit was reached). Until then the NPC
+        // sits there because its combat target is null - no retaliation
+        // animation, no swing back, no aggro lock. Calling setTarget here
+        // primes the NPC to swing on the very next NPC tick, matching
+        // real-player feel where mobs immediately fight back.
+        try {
+            if (target.getCombat() != null
+                    && (!target.isUnderCombat() || target.canBeAttackedByAutoRelatie())) {
+                target.setTarget(bot);
+            }
+        } catch (Throwable ignored) {}
         lastDiagnostic = "combat: attacking NPC " + target.getId() + " (cb " + targetCb + ")";
         if (Utils.random(100) < 20) say(combatChatter());
     }
