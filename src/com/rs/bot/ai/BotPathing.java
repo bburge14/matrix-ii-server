@@ -54,6 +54,12 @@ public final class BotPathing {
         // we made progress so wiggle doesn't fire. Next tick's walkTo
         // will route through the now-open door.
         if (tryOpenNearbyObstacle(bot, 4)) return false;
+        // Still no path - if the destination has a Y coord in the
+        // underground band (>= 6400) and we're above ground, try a
+        // climb-down. Same the other way for bots stranded on plane 1+.
+        // No-op when bot + target share a plane and the underground
+        // doesn't apply.
+        if (tryUseNearbyLadder(bot, targetX, targetY, 4)) return false;
         // RouteFinder couldn't path us there - usually because the target
         // is outside our loaded scene (cross-region trips). Fall back to
         // a clip-aware straight-line walk: addWalkSteps with check=true
@@ -127,6 +133,172 @@ public final class BotPathing {
             }
             if (best == null) return false;
             com.rs.net.decoders.handlers.ObjectHandler.handleDoor(bot, best, 60000);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Climb a nearby ladder / staircase if one exists and it'd shift the
+     * bot toward the target's plane. Mirrors the engine's handleLadder
+     * logic (Climb-up = plane+1 same XY, Climb-down = plane-1 same XY)
+     * since that's not directly callable - it's a private method that
+     * reads from the network packet path.
+     *
+     * Special case: a target with Y >= 6400 is the underground band - bots
+     * standing above ground in a building with a trapdoor nearby get a
+     * Climb-down at the trapdoor's tile. Plane-shift ladders inside multi-
+     * level buildings (mage tower, fally castle, etc.) work the same way.
+     */
+    public static boolean tryUseNearbyLadder(AIPlayer bot, int targetX, int targetY, int radius) {
+        try {
+            int botPlane = bot.getPlane();
+            // Decide which direction we want to go.
+            // Up if target is on a higher plane; down if lower.
+            // Underground (Y >= 6400) targets are reached via climb-down
+            // from the surface, even though the destination plane is
+            // typically 0 too - the trapdoor uses its own teleport tile,
+            // not a generic plane shift. We detect that situation and
+            // pass it to specialDownFromTrapdoor below.
+            int targetUndergroundFromAbove =
+                (targetY >= 6400 && bot.getY() < 6400) ? 1 : 0;
+            int targetAboveFromUnderground =
+                (targetY < 6400 && bot.getY() >= 6400) ? 1 : 0;
+            // If both are on the same band and same plane, no ladder needed.
+            if (botPlane == 0 && targetUndergroundFromAbove == 0
+                    && targetAboveFromUnderground == 0) {
+                return false;
+            }
+            boolean wantUp = false;
+            boolean wantDown = false;
+            if (botPlane > 0 && targetY < 6400 && bot.getY() < 6400) {
+                // We're stranded on a higher plane at the surface.
+                wantDown = true;
+            } else if (targetUndergroundFromAbove == 1) {
+                wantDown = true;
+            } else if (targetAboveFromUnderground == 1) {
+                wantUp = true;
+            } else {
+                // Same band, just plane mismatch: pick the matching direction.
+                wantUp = botPlane == 0;
+                wantDown = botPlane > 0;
+            }
+            int botRegion = ((bot.getX() >> 6) << 8) + (bot.getY() >> 6);
+            com.rs.game.Region region = com.rs.game.World.getRegion(botRegion, true);
+            if (region == null) return false;
+            java.util.List<WorldObject> objs = region.getAllObjects();
+            if (objs == null) return false;
+            int bx = bot.getX(), by = bot.getY();
+            WorldObject best = null;
+            String bestOpt = null;
+            int bestDist = Integer.MAX_VALUE;
+            for (WorldObject obj : objs) {
+                if (obj == null || obj.getPlane() != botPlane) continue;
+                int dx = Math.abs(obj.getX() - bx);
+                int dy = Math.abs(obj.getY() - by);
+                if (dx > radius || dy > radius) continue;
+                com.rs.cache.loaders.ObjectDefinitions def = obj.getDefinitions();
+                if (def == null || def.name == null) continue;
+                String name = def.name.toLowerCase();
+                if (!isLadderLike(name)) continue;
+                String pickedOpt = pickLadderOption(def, wantUp, wantDown);
+                if (pickedOpt == null) continue;
+                int d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; best = obj; bestOpt = pickedOpt; }
+            }
+            if (best == null) return false;
+            return executeLadderClimb(bot, best, bestOpt);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean isLadderLike(String name) {
+        return name.equals("ladder")
+            || name.equals("staircase")
+            || name.equals("stairs")
+            || name.equals("trapdoor")
+            || name.equals("manhole")
+            || name.endsWith(" ladder")
+            || name.endsWith(" stairs")
+            || name.endsWith(" staircase")
+            || name.endsWith(" trapdoor");
+    }
+
+    /** Pick the option string (Climb-up / Climb-down / Climb / Walk-up /
+     *  Walk-down) on this ladder def that matches the requested direction.
+     *  Returns null if the ladder doesn't have a matching option. */
+    private static String pickLadderOption(com.rs.cache.loaders.ObjectDefinitions def,
+                                           boolean wantUp, boolean wantDown) {
+        String[] candidatesUp = { "Climb-up", "Walk-up", "Climb up" };
+        String[] candidatesDown = { "Climb-down", "Walk-down", "Climb down", "Open" };
+        if (wantUp) {
+            for (String c : candidatesUp) {
+                if (defContainsOption(def, c)) return c;
+            }
+        }
+        if (wantDown) {
+            for (String c : candidatesDown) {
+                if (defContainsOption(def, c)) return c;
+            }
+        }
+        // "Climb" = ambiguous; engine pops a dialogue. Prefer up if we
+        // can't tell, since that matches normal ladder UX.
+        if (defContainsOption(def, "Climb")) return "Climb";
+        return null;
+    }
+
+    private static boolean defContainsOption(com.rs.cache.loaders.ObjectDefinitions def, String opt) {
+        if (def == null) return false;
+        for (int i = 0; i < 5; i++) {
+            if (def.containsOption(i, opt)) return true;
+        }
+        return false;
+    }
+
+    /** Execute the climb. Mirrors ObjectHandler.handleLadder behaviour for
+     *  the generic plane-shift case: climb-up moves the bot to plane+1
+     *  same XY, climb-down to plane-1 same XY. The hand-rolled hard cases
+     *  (trapdoors with explicit dest tiles like Edge dungeon) are the
+     *  ObjectHandler's concern; for bots we just plane-shift, which gets
+     *  most multi-level buildings + Mining Guild ladder right. */
+    private static boolean executeLadderClimb(AIPlayer bot, WorldObject obj, String option) {
+        try {
+            int plane = bot.getPlane();
+            com.rs.game.WorldTile dest;
+            String opt = option == null ? "" : option;
+            if (opt.startsWith("Climb-up") || opt.startsWith("Walk-up")
+                    || opt.startsWith("Climb up")) {
+                if (plane >= 3) return false;
+                dest = new com.rs.game.WorldTile(bot.getX(), bot.getY(), plane + 1);
+            } else if (opt.startsWith("Climb-down") || opt.startsWith("Walk-down")
+                    || opt.startsWith("Climb down")) {
+                if (plane <= 0) return false;
+                dest = new com.rs.game.WorldTile(bot.getX(), bot.getY(), plane - 1);
+            } else if (opt.equalsIgnoreCase("Climb")) {
+                // Ambiguous - guess up unless we're already at the top.
+                if (plane >= 3) {
+                    dest = new com.rs.game.WorldTile(bot.getX(), bot.getY(), plane - 1);
+                } else {
+                    dest = new com.rs.game.WorldTile(bot.getX(), bot.getY(), plane + 1);
+                }
+            } else if (opt.equalsIgnoreCase("Open")) {
+                // Trapdoor fallthrough - generic Open is mostly for
+                // doors but trapdoors expose it too. Without an explicit
+                // dest mapping we don't move; just open the lid (a real
+                // human would then click Climb-down on the now-opened
+                // tile, which we'll catch on the next walkTo call).
+                com.rs.net.decoders.handlers.ObjectHandler.handleDoor(bot, obj, 60000);
+                return true;
+            } else {
+                return false;
+            }
+            // Force-load the destination region BEFORE the lock fires so
+            // RouteFinder has clipping the moment we land. Same trick we
+            // use for teleports.
+            ensureRegionLoaded(dest.getX(), dest.getY());
+            bot.useStairs(828, dest, 1, 2);
             return true;
         } catch (Throwable t) {
             return false;
