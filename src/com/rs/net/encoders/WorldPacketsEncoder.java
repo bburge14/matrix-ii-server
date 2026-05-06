@@ -1726,17 +1726,19 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendItemsLook() {
-		// Re-enabled per user report that the "old/new items look" toggle
-		// in the Oracle dialogue did nothing. The previous "currently
-		// disabled" comment dropped the session.write so the packet was
-		// constructed but never delivered. If opcode 159 turns out to be
-		// wrong for this 830 cache and clients crash on it, this will
-		// need a cache audit; for now flip it back on so the toggle has
-		// a chance to actually do something.
+		// Disabled - opcode 159 in this 830 cache crashes the client
+		// (ArrayIndexOutOfBoundsException: 30575 in game.Class512).
+		// The previous "currently disabled" comment from the original
+		// codebase was correct - re-enabling broke clients. The right
+		// items-look toggle in modern caches is likely a config var /
+		// cs2 script rather than a dedicated packet, but I haven't
+		// found it yet. Until then, switchItemsLook only flips the
+		// server-side flag for cosmetic display purposes (chat msg).
+		// Build the packet but don't send.
 		OutputStream stream = new OutputStream(2);
 		stream.writePacket(player, 159);
 		stream.writeByte(player.isOldItemsLook() ? 1 : 0);
-		session.write(stream);
+		// session.write(stream);  <- crashes 830 client
 	}
 
 	public void sendLogReq(String file) {

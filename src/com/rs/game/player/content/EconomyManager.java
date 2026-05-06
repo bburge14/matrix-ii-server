@@ -431,6 +431,8 @@ public class EconomyManager {
 					else if (optionId == 3)
 						setTitlePage();
 				} else if (pageId == 2) { // character management
+					// Indices renumbered after dropping the (broken) "Switch
+					// to old/new items look" option from setManagementPage.
 					if (optionId == 0) { // change your password
 						player.getPackets().sendOpenURL(Settings.PASSWORD_LINK);
 					} else if (optionId == 1) { // auth forum acc
@@ -438,47 +440,44 @@ public class EconomyManager {
 						player.getPackets().sendInputLongTextScript("Enter your forum username:");
 					} else if (optionId == 2) { // display name
 						setPage(10, "Here you can set your display name or remove it.", "Set display name", "Remove display name", "Back");
-					} else if (optionId == 3) { // switch items look
-						player.switchItemsLook();
-						setManagementPage();
-					} else if (optionId == 4) { // title select
+					} else if (optionId == 3) { // title select
 						String[] page = getTitlesPage();
 						setPage(11, "Here you can set your title, which will be displayed before or after your characters name.", page);
-					} else if (optionId == 5) { // lock xp
+					} else if (optionId == 4) { // lock xp
 						player.setXpLocked(!player.isXpLocked());
 						setManagementPage();
-					} else if (optionId == 6) { // toogle yellf
+					} else if (optionId == 5) { // toogle yellf
 						player.setYellOff(!player.isYellOff());
 						setManagementPage();
-					} else if (optionId == 7) { // set yell color
+					} else if (optionId == 6) { // set yell color
 						if (!player.isExtremeDonator()) {
 							player.getPackets().sendGameMessage("This feature is only available to extreme donators!");
 							return;
 						}
 						player.getTemporaryAttributtes().put("yellcolor", Boolean.TRUE);
 						player.getPackets().sendInputLongTextScript("Please enter the yell color in HEX format.");
-					} else if (optionId == 8) { // set baby troll name
+					} else if (optionId == 7) { // set baby troll name
 						if (!player.isExtremeDonator()) {
 							player.getPackets().sendGameMessage("This feature is only available to extreme donators!");
 							return;
 						}
 						player.getTemporaryAttributtes().put("change_troll_name", true);
 						player.getPackets().sendInputLongTextScript("Enter your baby troll name (type none for default):");
-					} else if (optionId == 9) { // redesign character
+					} else if (optionId == 8) { // redesign character
 						if (!player.isExtremeDonator()) {
 							player.getPackets().sendGameMessage("This feature is only available to extreme donators!");
 							return;
 						}
 						end();
 						PlayerLook.openCharacterCustomizing(player);
-					} else if (optionId == 10) { // combat mode (legacy / standard)
+					} else if (optionId == 9) { // combat mode (legacy / standard)
 						setPage(20, "Combat mode controls whether abilities are used.<br>"
 							+ "<col=ffaa55>Standard / EOC</col>: full ability bar, adrenaline, momentum.<br>"
 							+ "<col=ffaa55>Legacy</col>: classic auto-attacks, no abilities.<br>"
 							+ "Current: " + (player.isLegacyMode() ? "Legacy" : "Standard / EOC"),
 							player.isLegacyMode() ? "Switch to Standard / EOC" : "Switch to Legacy",
 							"Back");
-					} else if (optionId == 11) { // xp rate
+					} else if (optionId == 10) { // xp rate
 						setPage(21, "Choose your xp + drop rate.<br>"
 							+ "Current: x" + Settings.getXpRate(player)
 							+ " xp, x" + Settings.getCombatXpRate(player) + " combat xp.<br>"
@@ -488,7 +487,7 @@ public class EconomyManager {
 							"x40 xp, x100 combat xp, x1 drop rate (Recommended)",
 							"x100 xp, x500 combat xp, x0.4 drop rate",
 							"Back");
-					} else if (optionId == 12) { // back
+					} else if (optionId == 11) { // back
 						setTitlePage();
 					}
 				} else if (pageId == 20) { // combat mode picker
@@ -630,7 +629,11 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to old items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
+				// "Switch to old/new items look" removed - opcode 159 in this
+				// 830 cache crashes the client (ArrayIndexOutOfBoundsException
+				// 30575). Re-add when the right items-look config var / cs2
+				// script is identified.
+				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
 			}
 
 			private void setTeleportsTitlePage() {
