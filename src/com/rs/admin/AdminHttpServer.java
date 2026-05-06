@@ -82,6 +82,9 @@ public final class AdminHttpServer {
                         + com.rs.utils.DyeRecolors.registeredDyeCount() + "}");
                 }
             })));
+            server.createContext("/admin/items/dyes/scan", auth(new DyeScanHandler()));
+            server.createContext("/admin/items/dyes/autopopulate",
+                auth(postOnly(new DyeAutoPopulateHandler())));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
@@ -1192,6 +1195,177 @@ public final class AdminHttpServer {
                 }
                 sendText(ex, 200, "{\"ok\":true,\"updated\":" + n + "}");
             } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * GET /admin/items/dyes/scan
+     * Walks the item cache and returns every item whose name contains "dye"
+     * OR matches one of the known cosmetic dye keywords (blood / shadow /
+     * ice / third-age / barrows / drygore / fury). Lets the admin see what
+     * dye items + dyed variants actually exist in this cache.
+     *
+     * Body: {"ok":true, "dyes":[{id,name},...], "tints":[{id,name},...]}
+     *   - dyes  = items whose name ends with "dye" (the consumable)
+     *   - tints = items with a known dye keyword in the name (the variants)
+     */
+    private static class DyeScanHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                StringBuilder dyes = new StringBuilder();
+                StringBuilder tints = new StringBuilder();
+                int dyeN = 0, tintN = 0;
+                String[] tintKeywords = {
+                    "blood", "shadow", "ice", "third-age", "third age",
+                    "barrows ", "drygore ", "fury "
+                };
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+                    boolean isDye = lower.endsWith(" dye") || lower.equals("dye")
+                        || lower.contains("blood dye") || lower.contains("shadow dye")
+                        || lower.contains("ice dye")  || lower.contains("third-age dye")
+                        || lower.contains("third age dye") || lower.contains("barrows dye");
+                    boolean isTint = false;
+                    if (!isDye) {
+                        for (String kw : tintKeywords) {
+                            if (lower.contains(kw)) { isTint = true; break; }
+                        }
+                    }
+                    if (isDye) {
+                        if (dyeN > 0) dyes.append(",");
+                        dyes.append("{\"id\":").append(id)
+                            .append(",\"name\":\"").append(jsonEscape(name)).append("\"}");
+                        dyeN++;
+                    } else if (isTint) {
+                        if (tintN > 0) tints.append(",");
+                        tints.append("{\"id\":").append(id)
+                             .append(",\"name\":\"").append(jsonEscape(name)).append("\"}");
+                        tintN++;
+                    }
+                }
+                sendText(ex, 200, "{\"ok\":true,\"dyes\":[" + dyes
+                    + "],\"tints\":[" + tints + "]}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * POST /admin/items/dyes/autopopulate
+     * Walks the cache and matches "<color> dye" items against weapons/armor
+     * whose name contains the dye color or the dye prefix pattern. Writes
+     * the result into data/items/dye_recolors.json and reloads.
+     *
+     * Pattern: for each "<X> dye" item (e.g. "Blood dye"), find every item
+     * whose name starts with "<X> " AND ALSO has a base counterpart whose
+     * name is the suffix without the prefix (e.g. "Blood noxious scythe" +
+     * "Noxious scythe"). Maps base -> dyed.
+     *
+     * Plus the reverse pattern: "Noxious scythe (blood)" -> "Noxious scythe"
+     * + "Blood dye".
+     *
+     * Body: {"ok":true, "added":N, "totalDyes":N}
+     */
+    private static class DyeAutoPopulateHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                // Collect all items with their lowercased names.
+                java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
+                java.util.List<int[]> dyeIds = new java.util.ArrayList<>();
+                java.util.List<String> dyeNames = new java.util.ArrayList<>();
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+                    nameToId.putIfAbsent(lower, id);
+                    if (lower.endsWith(" dye") && !lower.equals("dye")) {
+                        dyeIds.add(new int[]{id});
+                        dyeNames.add(lower);
+                    }
+                }
+                // For each dye, derive the prefix (e.g. "blood" from
+                // "blood dye") and find base/dyed pairs.
+                java.util.Map<Integer, java.util.Map<Integer, Integer>> result =
+                    new java.util.LinkedHashMap<>();
+                int added = 0;
+                for (int i = 0; i < dyeIds.size(); i++) {
+                    int dyeId = dyeIds.get(i)[0];
+                    String dyeName = dyeNames.get(i);
+                    String prefix = dyeName.substring(0, dyeName.length() - 4).trim();
+                    if (prefix.isEmpty()) continue;
+                    java.util.Map<Integer, Integer> sub = new java.util.LinkedHashMap<>();
+                    // Pattern A: "<prefix> X" -> "X"
+                    for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                        String n = e.getKey();
+                        if (!n.startsWith(prefix + " ")) continue;
+                        String tail = n.substring(prefix.length() + 1);
+                        Integer baseId = nameToId.get(tail);
+                        if (baseId != null && baseId != e.getValue()) {
+                            sub.put(baseId, e.getValue());
+                            added++;
+                        }
+                    }
+                    // Pattern B: "X (<prefix>)" -> "X"
+                    String paren = "(" + prefix + ")";
+                    for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                        String n = e.getKey();
+                        if (!n.endsWith(paren)) continue;
+                        String tail = n.substring(0, n.length() - paren.length()).trim();
+                        Integer baseId = nameToId.get(tail);
+                        if (baseId != null && baseId != e.getValue()) {
+                            sub.putIfAbsent(baseId, e.getValue());
+                            added++;
+                        }
+                    }
+                    if (!sub.isEmpty()) result.put(dyeId, sub);
+                }
+                // Write JSON
+                java.io.File f = new java.io.File("data/items/dye_recolors.json");
+                if (f.getParentFile() != null) f.getParentFile().mkdirs();
+                try (java.io.PrintWriter w = new java.io.PrintWriter(f, "UTF-8")) {
+                    w.print("{");
+                    boolean firstDye = true;
+                    for (java.util.Map.Entry<Integer, java.util.Map<Integer, Integer>> e
+                            : result.entrySet()) {
+                        if (!firstDye) w.print(",");
+                        firstDye = false;
+                        w.print("\"" + e.getKey() + "\":{");
+                        boolean firstSrc = true;
+                        for (java.util.Map.Entry<Integer, Integer> p : e.getValue().entrySet()) {
+                            if (!firstSrc) w.print(",");
+                            firstSrc = false;
+                            w.print("\"" + p.getKey() + "\":" + p.getValue());
+                        }
+                        w.print("}");
+                    }
+                    w.println("}");
+                }
+                com.rs.utils.DyeRecolors.reload();
+                sendText(ex, 200, "{\"ok\":true,\"added\":" + added
+                    + ",\"dyes\":" + result.size() + "}");
+            } catch (Throwable t) {
+                t.printStackTrace();
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
             }
         }
