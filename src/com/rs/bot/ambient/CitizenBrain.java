@@ -439,16 +439,30 @@ public class CitizenBrain extends BotBrain {
                     }
                 }
                 if (dedicated) {
-                    // No victim. Walk into / around wildy looking for one.
-                    if (!inWildy) {
-                        // Walk toward Edgeville wildy ditch.
-                        com.rs.bot.ai.BotPathing.walkTo(bot, 3088, 3520);
+                    // No victim - move so the bot doesn't just stand at
+                    // a single tile. Three flavours weighted by archetype
+                    // and current location:
+                    //   * 60% stay near the wildy ditch / Edgeville crossing
+                    //     (most PK bots gather there in real RS)
+                    //   * 30% drift deeper into wildy to hunt
+                    //   * 10% pop back to Edgeville bank to re-stock /
+                    //     re-equip then come back
+                    int roll = Utils.random(100);
+                    int tx, ty;
+                    if (roll < 60) {
+                        // Wildy ditch / level 1-3 area
+                        tx = 3088 + Utils.random(-6, 7);
+                        ty = 3520 + Utils.random(-3, 12);
+                    } else if (roll < 90) {
+                        // Wildy levels 4-15, occasional drift to 25
+                        tx = 3060 + Utils.random(60);
+                        ty = 3540 + Utils.random(80);
                     } else {
-                        // Already in wildy, drift to a hot zone.
-                        int tx = 3070 + Utils.random(40);
-                        int ty = 3520 + Utils.random(60); // wildy levels 1-15
-                        com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
+                        // Edgeville bank for restock
+                        tx = 3094 + Utils.random(-3, 4);
+                        ty = 3494 + Utils.random(-2, 3);
                     }
+                    com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
                     return;
                 }
             }

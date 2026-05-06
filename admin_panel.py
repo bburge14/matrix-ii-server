@@ -971,6 +971,20 @@ class CitizensFrame(ctk.CTkFrame):
             ctk.CTkButton(soc_quick, text=label, width=110, fg_color="#1b6e3a",
                           command=lambda a=arch: self._socialite_spawn(a)).pack(side="left", padx=2)
 
+        # Combatant + PK quick-spawn row
+        com_quick = ctk.CTkFrame(self)
+        com_quick.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(com_quick, text="Quick: combatant ").pack(side="left", padx=4)
+        self.com_count = tk.StringVar(value="10")
+        ctk.CTkEntry(com_quick, textvariable=self.com_count, width=50).pack(side="left", padx=2)
+        for label, arch in [("Pure","COMBATANT_PURE"),
+                            ("Tank","COMBATANT_TANK"),
+                            ("Hybrid","COMBATANT_HYBRID"),
+                            ("PK Bot","COMBATANT_PKER")]:
+            ctk.CTkButton(com_quick, text=label, width=110,
+                          fg_color="#aa3030" if arch == "COMBATANT_PKER" else "#3a5588",
+                          command=lambda a=arch: self._combatant_spawn(a)).pack(side="left", padx=2)
+
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", background="#2b2b2b", foreground="white",
@@ -1258,6 +1272,31 @@ class CitizensFrame(ctk.CTkFrame):
                 resp = self.api.citizens_spawn(n, category=cat, x=x, y=y, plane=p, scatter=12)
                 self.after(0, lambda: messagebox.showinfo("Spawned",
                     f"Spawned {resp.get('spawned',0)} (live total: {resp.get('total',0)})"))
+                self.after(0, self.refresh)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _combatant_spawn(self, archetype_name):
+        """Quick-spawn N combatant / PK bots. PKers spawn in low wildy
+        (3093, 3525) by default; pure / tank / hybrid spawn at the
+        Edgeville / wildy edge (3088, 3491)."""
+        try:
+            n = int(self.com_count.get())
+        except ValueError:
+            messagebox.showerror("Bad input", "count must be a number")
+            return
+        if archetype_name == "COMBATANT_PKER":
+            x, y, p = 3093, 3525, 0
+        else:
+            x, y, p = 3088, 3491, 0
+        def do():
+            try:
+                resp = self.api.citizens_spawn(n, category=archetype_name,
+                    x=x, y=y, plane=p, scatter=10)
+                self.after(0, lambda: messagebox.showinfo("Combatant spawn",
+                    f"Spawned {resp.get('spawned',0)} {archetype_name} "
+                    f"(live total: {resp.get('total',0)})"))
                 self.after(0, self.refresh)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))

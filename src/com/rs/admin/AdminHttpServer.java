@@ -86,6 +86,7 @@ public final class AdminHttpServer {
             server.createContext("/admin/items/dyes/autopopulate",
                 auth(postOnly(new DyeAutoPopulateHandler())));
             server.createContext("/admin/items/oldlook-scan", auth(new ItemsOldLookHandler()));
+            server.createContext("/admin/items/dump", auth(new ItemDefDumpHandler()));
             server.createContext("/admin/items/retro/autopopulate",
                 auth(postOnly(new RetroAutoPopulateHandler())));
             server.createContext("/admin/items/retro/reload", auth(postOnly(new HttpHandler() {
@@ -1586,6 +1587,54 @@ public final class AdminHttpServer {
                 }
                 com.rs.utils.RetroSwaps.save();
                 sendText(ex, 200, "{\"ok\":true,\"added\":" + added + "}");
+            } catch (Throwable t) {
+                t.printStackTrace();
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * GET /admin/items/dump?id=N&id=M&...
+     * Dump a single item's equip-relevant cache fields so we can see if
+     * a retro / replica counterpart is actually wearable. Used to debug
+     * the items-look toggle when the swap target's models aren't loading.
+     */
+    private static class ItemDefDumpHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.util.Map<String,String> q = parseQuery(ex.getRequestURI().getRawQuery());
+                String idsParam = q.get("id");
+                if (idsParam == null) idsParam = q.get("ids");
+                if (idsParam == null) {
+                    sendText(ex, 400, "{\"ok\":false,\"error\":\"need id= param (comma-separated)\"}");
+                    return;
+                }
+                StringBuilder rows = new StringBuilder();
+                int n = 0;
+                for (String s : idsParam.split(",")) {
+                    int id;
+                    try { id = Integer.parseInt(s.trim()); } catch (Throwable t) { continue; }
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    if (n > 0) rows.append(",");
+                    n++;
+                    rows.append("{\"id\":").append(id)
+                        .append(",\"name\":\"").append(jsonEscape(def.getName())).append("\"")
+                        .append(",\"modelId\":").append(def.modelId)
+                        .append(",\"equipSlot\":").append(def.equipSlot)
+                        .append(",\"maleEquip1\":").append(def.maleEquip1)
+                        .append(",\"femaleEquip1\":").append(def.femaleEquip1)
+                        .append(",\"maleEquip2\":").append(def.maleEquip2)
+                        .append(",\"femaleEquip2\":").append(def.femaleEquip2)
+                        .append(",\"maleEquipModelId3\":").append(def.maleEquipModelId3)
+                        .append(",\"femaleEquipModelId3\":").append(def.femaleEquipModelId3)
+                        .append(",\"isWearItem\":").append(def.isWearItem())
+                        .append(",\"hasOldLook\":").append(def.hasOldLook())
+                        .append("}");
+                }
+                sendText(ex, 200, "{\"ok\":true,\"items\":[" + rows + "]}");
             } catch (Throwable t) {
                 t.printStackTrace();
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
