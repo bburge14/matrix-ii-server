@@ -407,23 +407,48 @@ public class CitizenBrain extends BotBrain {
     }
 
     private void tickInteracting(AIPlayer bot) {
-        // PK bot path: combatants in the wildy who haven't already locked
-        // a target try to find a nearby pk-opted-in player first. If none
-        // exists, fall through to the regular method-based combat (NPCs).
-        // Engine still gates via Wilderness.canAttack so opted-out victims
-        // can't be hit, but the bot won't waste time trying.
+        // PK behaviour. Two flavours:
+        //   * Dedicated COMBATANT_PKER - this is their ONLY combat mode.
+        //     They eat / pot, hunt opted-in players in a wider radius
+        //     (12 tiles), and never fall back to NPC training. If no
+        //     player is in range and they're already in wildy, they
+        //     wander to find one. Outside wildy they walk back in.
+        //   * Other combatants - PK is a SECONDARY behaviour. They
+        //     check for a nearby player victim first (8 tiles), if
+        //     none then fall through to NPC training.
+        // Engine still gates via Wilderness.canAttack so opted-out
+        // victims can't be hit, but the bot won't waste time trying.
         try {
             if (archetype != null && archetype.isCombatant()
                     && bot.isPkOptIn()
-                    && bot.getControlerManager().getControler()
-                        instanceof com.rs.game.player.controllers.Wilderness
                     && !(bot.getActionManager().getAction()
                         instanceof com.rs.game.player.actions.PlayerCombatNew)) {
-                Player victim = findNearbyPkVictim(bot, 8);
-                if (victim != null) {
-                    bot.setNextFaceEntity(victim);
-                    bot.getActionManager().setAction(
-                        new com.rs.game.player.actions.PlayerCombatNew(victim));
+                boolean dedicated = archetype.isPker();
+                boolean inWildy = bot.getControlerManager().getControler()
+                    instanceof com.rs.game.player.controllers.Wilderness;
+                if (dedicated || inWildy) {
+                    int radius = dedicated ? 12 : 8;
+                    Player victim = findNearbyPkVictim(bot, radius);
+                    if (victim != null) {
+                        // Dedicated PKers eat + pot before engaging.
+                        if (dedicated) tryPkerPreFight(bot);
+                        bot.setNextFaceEntity(victim);
+                        bot.getActionManager().setAction(
+                            new com.rs.game.player.actions.PlayerCombatNew(victim));
+                        return;
+                    }
+                }
+                if (dedicated) {
+                    // No victim. Walk into / around wildy looking for one.
+                    if (!inWildy) {
+                        // Walk toward Edgeville wildy ditch.
+                        com.rs.bot.ai.BotPathing.walkTo(bot, 3088, 3520);
+                    } else {
+                        // Already in wildy, drift to a hot zone.
+                        int tx = 3070 + Utils.random(40);
+                        int ty = 3520 + Utils.random(60); // wildy levels 1-15
+                        com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
+                    }
                     return;
                 }
             }
@@ -522,6 +547,26 @@ public class CitizenBrain extends BotBrain {
      * Falls back to bare-scanner behaviour for archetypes that don't have
      * matching method kinds (socialite at GE booth, etc).
      */
+    /** Pre-fight buff for dedicated PKers: drink any combat / restore
+     *  pot we own + eat one bite if HP is below half. Lightweight - no
+     *  point pre-buffing if we've got nothing in the inventory. */
+    private void tryPkerPreFight(AIPlayer bot) {
+        try {
+            int hp = bot.getHitpoints();
+            int maxHp = bot.getMaxHitpoints();
+            if (hp < maxHp / 2) {
+                int[] foods = { 385, 391, 379, 7946, 15272 }; // shark, manta, lobster, monkfish, rocktail
+                for (int id : foods) {
+                    if (bot.getInventory().containsItem(id, 1)) {
+                        bot.getInventory().deleteItem(id, 1);
+                        bot.heal(Math.min(maxHp - hp, 200));
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     /** Find a pk-opted-in Player within `radius` tiles that this bot
      *  can attack (combat-level eligible, not the bot itself, not dead).
      *  Used by combatant citizens in the wildy to pick a PK target

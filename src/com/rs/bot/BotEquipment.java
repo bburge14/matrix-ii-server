@@ -495,6 +495,35 @@ public final class BotEquipment {
     // ===== MELEE LOADOUTS =====
 
     private static void applyMelee(Player bot, int cb) {
+        // Tiered structured pool (TieredOutfitPool) is the source of truth
+        // for melee loadouts now. cb < 60 = poor, < 90 = mid, < 110 = rich,
+        // else wealthy. Pool data is in src/com/rs/bot/TieredOutfitPool.java.
+        applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.MELEE, cb);
+    }
+
+    /** Apply one of the structured TieredOutfitPool sets for the given
+     *  style + the bot's combat-level-derived tier. Each slot's option
+     *  array gets a random pick. Empty arrays leave the slot alone. */
+    private static void applyTieredSet(Player bot,
+            com.rs.bot.TieredOutfitPool.Style style, int cb) {
+        com.rs.bot.TieredOutfitPool.Tier tier =
+            com.rs.bot.TieredOutfitPool.tierForCb(cb);
+        com.rs.bot.TieredOutfitPool.Set set =
+            com.rs.bot.TieredOutfitPool.pick(style, tier);
+        if (set.hats   .length > 0) equip(bot, Equipment.SLOT_HAT,    pick(set.hats));
+        if (set.bodies .length > 0) equip(bot, Equipment.SLOT_CHEST,  pick(set.bodies));
+        if (set.legs   .length > 0) equip(bot, Equipment.SLOT_LEGS,   pick(set.legs));
+        if (set.weapons.length > 0) equip(bot, Equipment.SLOT_WEAPON, pick(set.weapons));
+        if (set.shields.length > 0) equip(bot, Equipment.SLOT_SHIELD, pick(set.shields));
+        if (set.capes  .length > 0) equip(bot, Equipment.SLOT_CAPE,   pick(set.capes));
+        if (set.gloves .length > 0) equip(bot, Equipment.SLOT_HANDS,  pick(set.gloves));
+        if (set.feet   .length > 0) equip(bot, Equipment.SLOT_FEET,   pick(set.feet));
+    }
+
+    /** Legacy wealth-tier melee dispatcher - kept for any caller that
+     *  hasn't migrated to TieredOutfitPool yet. New code should use
+     *  applyTieredSet directly. */
+    private static void applyMeleeLegacy(Player bot, int cb) {
         int wealth = rollWealth(cb);
         switch (wealth) {
             case 4: meleeBIS(bot); return;
@@ -624,6 +653,10 @@ public final class BotEquipment {
     // ===== RANGED =====
 
     private static void applyRanger(Player bot, int cb) {
+        applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.RANGED, cb);
+    }
+
+    private static void applyRangerLegacy(Player bot, int cb) {
         int wealth = rollWealth(cb);
         if (wealth >= 4) {
             // Pernix + Royal/Armadyl crossbow
@@ -661,6 +694,10 @@ public final class BotEquipment {
     // ===== MAGIC =====
 
     private static void applyMage(Player bot, int cb) {
+        applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.MAGIC, cb);
+    }
+
+    private static void applyMageLegacy(Player bot, int cb) {
         int wealth = rollWealth(cb);
         // Rune supply for any mage that's not using an unlimited-charge
         // staff. Polypore + Chaotic staffs draw their own ammo, but the
