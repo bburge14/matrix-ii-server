@@ -1726,11 +1726,17 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendItemsLook() {
-		// currently disabled
+		// Re-enabled per user report that the "old/new items look" toggle
+		// in the Oracle dialogue did nothing. The previous "currently
+		// disabled" comment dropped the session.write so the packet was
+		// constructed but never delivered. If opcode 159 turns out to be
+		// wrong for this 830 cache and clients crash on it, this will
+		// need a cache audit; for now flip it back on so the toggle has
+		// a chance to actually do something.
 		OutputStream stream = new OutputStream(2);
 		stream.writePacket(player, 159);
 		stream.writeByte(player.isOldItemsLook() ? 1 : 0);
-		//session.write(stream);
+		session.write(stream);
 	}
 
 	public void sendLogReq(String file) {
