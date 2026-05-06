@@ -280,6 +280,18 @@ public final class CitizenSpawner {
                 if (!sheathed) bot.getCombatDefinitions().switchSheathe();
             } catch (Throwable ignored) {}
 
+            // PK bots opt in to wildy PvP automatically. The pkOptIn flag
+            // gates the symmetric Wilderness.canAttack check - bots only
+            // attack other opted-in players, and they're only attackable
+            // by opted-in players. Combatant bots also need a fresh
+            // wildy controller to flip canPvp on if they spawn inside
+            // the wildy area.
+            try {
+                if (arch.isCombatant()) {
+                    bot.setPkOptIn(true);
+                }
+            } catch (Throwable ignored) {}
+
             bot.setBrain(new CitizenBrain(bot, arch, spawn, wanderRadius));
             liveCitizens.add(bot);
             System.out.println("[CitizenSpawner] spawned " + name + " (" + arch.name()

@@ -194,6 +194,10 @@ class MatrixAPI:
     # variant in the cache; the items-look toggle target list).
     def items_oldlook_scan(self, limit=500):
         return self._get(f"/admin/items/oldlook-scan?limit={int(limit)}")
+    def retro_autopopulate(self):
+        return self._post("/admin/items/retro/autopopulate")
+    def retro_reload(self):
+        return self._post("/admin/items/retro/reload")
 
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
@@ -2177,10 +2181,14 @@ class ItemsFrame(ctk.CTkFrame):
         o = ctk.CTkFrame(self)
         o.pack(fill="x", padx=20, pady=4)
         ctk.CTkLabel(o, text="Retro Look:").pack(side="left", padx=4)
-        ctk.CTkButton(o, text="Scan Cache for Old-Look Items", width=240,
+        ctk.CTkButton(o, text="Scan Cache", width=110,
                       command=self._oldlook_scan).pack(side="left", padx=4)
-        ctk.CTkLabel(o, text="(items with both new + old (retro / 2007-style) "
-                     "model variants. Toggle wiring TBD.)",
+        ctk.CTkButton(o, text="Auto-build Swap Map", width=160, fg_color="#1b6e3a",
+                      command=self._retro_autopopulate).pack(side="left", padx=4)
+        ctk.CTkButton(o, text="Reload Map", width=110,
+                      command=self._retro_reload).pack(side="left", padx=4)
+        ctk.CTkLabel(o, text="(scan = list cache items; auto-build = "
+                     "fill data/items/retro_swaps.json from name pairs)",
                      font=ctk.CTkFont(size=10), text_color="#888"
                      ).pack(side="left", padx=8)
 
@@ -2411,30 +2419,29 @@ class ItemsFrame(ctk.CTkFrame):
     def _oldlook_scan(self):
         def do():
             try:
-                resp = self.api.items_oldlook_scan(limit=500)
-                total = resp.get("totalItems", 0)
-                old   = resp.get("withOldLook", 0)
-                rows  = resp.get("rows", []) or []
+                resp = self.api.items_oldlook_scan(limit=2000)
+                total   = resp.get("totalItems", 0)
+                opcode  = resp.get("withOpcodeOldLook", 0)
+                named   = resp.get("withNamePair", 0)
+                rows    = resp.get("rows", []) or []
                 lines = [
-                    f"Cache total items scanned : {total:,}",
-                    f"Items with old-look variant: {old:,}",
+                    f"Cache total items scanned        : {total:,}",
+                    f"Items with cache-opcode old-look : {opcode:,}",
+                    f"Items with retro/replica name pair: {named:,}",
+                    f"TOTAL retro/old-look candidates  : {opcode + named:,}",
                     "",
-                    "(Showing first " + str(len(rows)) + " rows. Each lists which",
-                    " old-look fields are present: I=oldInvIcon,",
-                    " M1/F1/M2/F2/M3/F3=old equip models, C=old colours.)",
+                    "Rows below: id [source] name -> baseId baseName",
+                    "  source = 'opcode' (cache opcodes 242-251) /",
+                    "           'retro'  (name starts with 'Retro ' or '(retro)') /",
+                    "           'replica' (same for 'Replica ').",
                     "",
                 ]
                 for r in rows:
-                    flags = []
-                    if r.get("oldInv", -1) != -1: flags.append("I")
-                    if r.get("oldM1",  -1) != -1: flags.append("M1")
-                    if r.get("oldF1",  -1) != -1: flags.append("F1")
-                    if r.get("oldM2",  -1) != -1: flags.append("M2")
-                    if r.get("oldF2",  -1) != -1: flags.append("F2")
-                    if r.get("oldM3",  -1) != -1: flags.append("M3")
-                    if r.get("oldF3",  -1) != -1: flags.append("F3")
-                    if r.get("colors"):           flags.append("C")
-                    lines.append(f"  {r['id']:>6}  [{','.join(flags):<14}]  {r.get('name','?')}")
+                    src = r.get("source", "?")
+                    base = r.get("baseId", -1)
+                    bn   = r.get("baseName", "")
+                    base_str = f"-> {base:>6} {bn}" if base >= 0 else ""
+                    lines.append(f"  {r['id']:>6}  [{src:<8}]  {r.get('name','?'):<35}  {base_str}")
                 self.after(0, lambda: self._show_text_window(
                     "Old-Look Items Scan", "\n".join(lines)))
             except Exception as e:
@@ -2442,16 +2449,66 @@ class ItemsFrame(ctk.CTkFrame):
                     "Old-look scan failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
 
+    def _retro_autopopulate(self):
+        if not messagebox.askyesno("Auto-build Retro Swap Map",
+            "Walk the cache + populate data/items/retro_swaps.json from "
+            "every Retro <X> / Replica <X> name pair. Overwrites the "
+            "existing file. Continue?"):
+            return
+        def do():
+            try:
+                resp = self.api.retro_autopopulate()
+                added = resp.get("added", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Done", f"Wrote {added} swap mappings to "
+                    f"data/items/retro_swaps.json. Live now (hot-reloaded).\n\n"
+                    f"Toggle in-game via Oracle of Dawn -> Account & Character "
+                    f"management -> Switch to retro items look."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Auto-build failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _retro_reload(self):
+        def do():
+            try:
+                resp = self.api.retro_reload()
+                n = resp.get("swaps", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Reloaded", f"retro_swaps.json reloaded.\n{n} swap(s) registered."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Reload failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
     def _show_text_window(self, title, body):
+        # Keep a strong reference on self so the popup isn't GC'd the
+        # moment the function returns (the bug where the window
+        # appeared then immediately closed). _open_popups also lets us
+        # not lose track if the user has multiple open at once.
+        if not hasattr(self, "_open_popups"):
+            self._open_popups = []
         win = ctk.CTkToplevel(self)
         win.title(title)
-        win.geometry("700x500")
+        win.geometry("900x600")
+        win.transient(self.winfo_toplevel())
         text = ctk.CTkTextbox(win, font=("Consolas", 11))
         text.pack(fill="both", expand=True, padx=10, pady=10)
-        text.insert("1.0", body)
+        # Tk Text has a default insert limit of ~1MB - chunked for large bodies.
+        for i in range(0, len(body), 50_000):
+            text.insert("end", body[i:i + 50_000])
         text.configure(state="disabled")
-        ctk.CTkButton(win, text="Close", command=win.destroy,
+        def close():
+            try: self._open_popups.remove(win)
+            except Exception: pass
+            win.destroy()
+        ctk.CTkButton(win, text="Close", command=close,
                       width=100).pack(pady=8)
+        win.protocol("WM_DELETE_WINDOW", close)
+        self._open_popups.append(win)
+        # Force visibility - some WMs hide unparented popups behind the
+        # main window if we don't lift + focus explicitly.
+        win.after(50, lambda: (win.lift(), win.focus_force()))
 
 
 # ----- Players tab -----

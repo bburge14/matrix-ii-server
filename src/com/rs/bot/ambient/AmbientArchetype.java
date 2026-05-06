@@ -57,6 +57,15 @@ public enum AmbientArchetype {
         new String[] {"hybrid clan", "looking for a tribrid team",
                       "switching styles", "ranger here", "mage build"}),
 
+    // Dedicated PK archetype - distinct from the other combatants.
+    // Spawns at wildy edge, always opted in to pvp, hunts opted-in
+    // players exclusively. Doesn't fall back to NPC training.
+    COMBATANT_PKER("pker",
+        new int[] {},
+        new String[] {"easy clap", "ez", "pid'd noob", "skull tricked",
+                      "no honor", "ags spec", "rune pure rushing",
+                      "hybriding noobs", "wildy is my home"}),
+
     // === Socialite variants ===
     SOCIALITE_GAMBLER("gambler",
         new int[] {862, 866, 865, 861},                   // cheer/dance/clap/laugh
@@ -161,8 +170,16 @@ public enum AmbientArchetype {
         return chatterPool[Utils.random(chatterPool.length)];
     }
 
+    /** True for any archetype that engages in combat (NPC or PvP). */
     public boolean isCombatant() {
-        return this == COMBATANT_PURE || this == COMBATANT_TANK || this == COMBATANT_HYBRID;
+        return this == COMBATANT_PURE || this == COMBATANT_TANK
+            || this == COMBATANT_HYBRID || this == COMBATANT_PKER;
+    }
+
+    /** True only for dedicated PK bots. They skip NPC fallback combat
+     *  and exclusively hunt opted-in players in the wildy. */
+    public boolean isPker() {
+        return this == COMBATANT_PKER;
     }
 
     public boolean isSkiller() {
@@ -271,6 +288,7 @@ public enum AmbientArchetype {
         switch (category.toLowerCase()) {
             case "skiller":   return new AmbientArchetype[] {SKILLER_EFFICIENT, SKILLER_CASUAL, SKILLER_NOOB}[Utils.random(3)];
             case "combatant": return new AmbientArchetype[] {COMBATANT_PURE, COMBATANT_TANK, COMBATANT_HYBRID}[Utils.random(3)];
+            case "pker":      return COMBATANT_PKER;
             // Mixed socialite category: weighted toward bankstanders + tiered
             // traders (the visible "real" GE crowd) over gamblers/legacy.
             case "socialite": return new AmbientArchetype[] {

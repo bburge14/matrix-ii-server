@@ -58,21 +58,44 @@ public class EconomyManager {
 	public static int[] MANAGER_NPC_IDS = new int[]
 	{ 13930, 15158 };
 
-	/** Cached count of cache items that have an old-look variant.
-	 *  Computed lazily on first call - the cache scan walks every
-	 *  item def so we only do it once per JVM lifetime. */
+	/** Cached count of cache items that have an old-look variant - either
+	 *  via cache opcodes 242-251 (def.hasOldLook()) OR via a name pair
+	 *  (item starts with "retro " / "replica " AND a base item with the
+	 *  remaining name exists). Computed lazily, cached for JVM lifetime. */
 	private static int oldLookCount = -1;
 	public static synchronized int countItemsWithOldLook() {
 		if (oldLookCount >= 0) return oldLookCount;
 		int n = 0;
 		try {
 			int max = Math.min(50000, com.rs.utils.Utils.getItemDefinitionsSize());
+			java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
 			for (int id = 0; id < max; id++) {
 				if (!com.rs.utils.Utils.itemExists(id)) continue;
 				com.rs.cache.loaders.ItemDefinitions def =
 					com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
 				if (def == null || def.isNoted()) continue;
-				if (def.hasOldLook()) n++;
+				String name = def.getName();
+				if (name == null || name.isEmpty()
+						|| name.equalsIgnoreCase("null")) continue;
+				nameToId.putIfAbsent(name.toLowerCase(), id);
+			}
+			for (int id = 0; id < max; id++) {
+				if (!com.rs.utils.Utils.itemExists(id)) continue;
+				com.rs.cache.loaders.ItemDefinitions def =
+					com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+				if (def == null || def.isNoted()) continue;
+				String name = def.getName();
+				if (name == null || name.isEmpty()) continue;
+				if (def.hasOldLook()) { n++; continue; }
+				String lower = name.toLowerCase();
+				String[] prefixes = { "retro ", "replica " };
+				for (String p : prefixes) {
+					if (lower.startsWith(p)) {
+						String tail = lower.substring(p.length()).trim();
+						Integer bid = nameToId.get(tail);
+						if (bid != null && bid != id) { n++; break; }
+					}
+				}
 			}
 		} catch (Throwable ignored) {}
 		oldLookCount = n;
@@ -459,13 +482,16 @@ public class EconomyManager {
 						player.getPackets().sendInputLongTextScript("Enter your forum username:");
 					} else if (optionId == 2) { // display name
 						setPage(10, "Here you can set your display name or remove it.", "Set display name", "Remove display name", "Back");
-					} else if (optionId == 3) { // switch items look (WIP - stub)
-						player.getPackets().sendGameMessage(
-							"<col=ffaa55>Old/new items look toggle is in development.</col>");
-						player.getPackets().sendGameMessage(
-							"Server cache has " + countItemsWithOldLook()
-							+ " items with retro look variants ready, but the client"
-							+ " packet wiring needs more work first.");
+					} else if (optionId == 3) { // switch items look (render-time swap)
+						player.switchItemsLook();
+						// Force inventory + equipment + appearance to re-send
+						// so the swap is visible immediately rather than on
+						// the next slot mutation. RetroSwaps.toOld is a pure
+						// id rewrite at packet-encode time - the underlying
+						// ItemsContainer is unchanged.
+						try { player.getInventory().refresh(); } catch (Throwable ignored) {}
+						try { player.getEquipment().refresh(); } catch (Throwable ignored) {}
+						try { player.getAppearence().generateAppearenceData(); } catch (Throwable ignored) {}
 						setManagementPage();
 					} else if (optionId == 4) { // title select
 						String[] page = getTitlesPage();
@@ -514,7 +540,20 @@ public class EconomyManager {
 							"x40 xp, x100 combat xp, x1 drop rate (Recommended)",
 							"x100 xp, x500 combat xp, x0.4 drop rate",
 							"Back");
-					} else if (optionId == 12) { // back
+					} else if (optionId == 12) { // PK opt-in toggle
+						player.setPkOptIn(!player.isPkOptIn());
+						player.getPackets().sendGameMessage(
+							"PK opt-in is now <col="
+							+ (player.isPkOptIn() ? "00cc00>ON" : "cc3030>OFF") + "</col>. "
+							+ (player.isPkOptIn()
+								? "You can attack and be attacked by other players in the wilderness."
+								: "You can't attack or be attacked by other players, including PK bots."));
+						// If they opted out while currently flagged for pvp, drop the flag now.
+						if (!player.isPkOptIn() && player.isCanPvp()) {
+							player.setCanPvp(false);
+						}
+						setManagementPage();
+					} else if (optionId == 13) { // back
 						setTitlePage();
 					}
 				} else if (pageId == 20) { // combat mode picker
@@ -656,13 +695,21 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				// "Switch to old/new items look" - put back per user request,
-				// but the click handler is currently a no-op stub that prints
-				// a "feature in development" notice. Opcode 159 crashes the
-				// 830 client (AIOOBE 30575). Real wiring needs the cache's
-				// items-look cs2 script + the captured oldInvModelId /
-				// oldEquipModel data we now keep in ItemDefinitions.
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look (WIP)" : "Switch to old items look (WIP)", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
+				setPage(2, "This section contains features, which will help you to manage your account easier.",
+					"Change password",
+					"Authenticate your forum account",
+					"Display name management",
+					player.isOldItemsLook() ? "Switch to new items look" : "Switch to retro items look",
+					"Set your title",
+					player.isXpLocked() ? "Unlock XP" : "Lock XP",
+					player.isYellOff() ? "Toogle yell on" : "Toogle yell off",
+					"Set yell color",
+					"Set baby troll name",
+					"Redesign character",
+					"Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")",
+					"XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)",
+					"PK opt-in: " + (player.isPkOptIn() ? "<col=00cc00>ON</col>" : "<col=cc3030>OFF</col>"),
+					"Back");
 			}
 
 			private void setTeleportsTitlePage() {

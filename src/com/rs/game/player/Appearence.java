@@ -234,7 +234,13 @@ public class Appearence implements Serializable {
 				if (BodyDefinitions.disabledSlots[index] != 0)
 					continue;
 				if (items[index] != null && items[index].getDefinitions().equipSlot != -1) {
-					stream.writeShort(16384 + items[index].getId());
+					// Apply retro-look swap if the player has oldItemsLook
+					// enabled - their worn items render in retro skin both
+					// for themselves and for everyone who sees them.
+					int wornId = items[index].getId();
+					if (player.isOldItemsLook())
+						wornId = com.rs.utils.RetroSwaps.toOld(wornId);
+					stream.writeShort(16384 + wornId);
 					continue;
 				}
 				if(!skipLook[index]) {
