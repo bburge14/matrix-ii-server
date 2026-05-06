@@ -182,6 +182,14 @@ class MatrixAPI:
         body = {"ids": [int(i) for i in ids], "clear": True}
         return self._post("/admin/items/tradeable", body)
 
+    # Dye recolor framework
+    def dyes_scan(self):
+        return self._get("/admin/items/dyes/scan")
+    def dyes_autopopulate(self):
+        return self._post("/admin/items/dyes/autopopulate")
+    def dyes_reload(self):
+        return self._post("/admin/items/dyes/reload")
+
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
     def profiler_stop(self):         return self._post("/admin/profiler/stop")
@@ -2145,6 +2153,21 @@ class ItemsFrame(ctk.CTkFrame):
         ctk.CTkButton(a, text="Set GE Price...", width=120, fg_color="#3a5588",
                       command=self._bulk_set_price).pack(side="left", padx=4)
 
+        # ---- dye action row ----
+        d = ctk.CTkFrame(self)
+        d.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(d, text="Dyes:").pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Scan Cache", width=110,
+                      command=self._dye_scan).pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Auto-populate Mappings", width=170, fg_color="#1b6e3a",
+                      command=self._dye_autopopulate).pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Reload JSON", width=110,
+                      command=self._dye_reload).pack(side="left", padx=4)
+        ctk.CTkLabel(d, text="(scan = list dyes in cache; auto-populate = "
+                     "build dye_recolors.json from name patterns)",
+                     font=ctk.CTkFont(size=10), text_color="#888"
+                     ).pack(side="left", padx=8)
+
         # ---- table (Tk Treeview - faster than custom widgets at 200 rows) ----
         from tkinter import ttk
         cols = ("id", "name", "slot", "wearable", "tradeable", "override", "price")
@@ -2300,6 +2323,85 @@ class ItemsFrame(ctk.CTkFrame):
                 self.after(0, lambda: messagebox.showerror(
                     "Set price failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
+
+    def _dye_scan(self):
+        def do():
+            try:
+                resp = self.api.dyes_scan()
+                dyes = resp.get("dyes", []) if resp else []
+                tints = resp.get("tints", []) if resp else []
+                # Build a readable summary window
+                lines = [f"Found {len(dyes)} dye item(s) and {len(tints)} dyed-variant item(s).\n"]
+                if dyes:
+                    lines.append("=== DYES ===")
+                    for d in dyes[:50]:
+                        lines.append(f"  {d['id']:>6}  {d['name']}")
+                    if len(dyes) > 50:
+                        lines.append(f"  ... and {len(dyes) - 50} more")
+                if tints:
+                    lines.append("\n=== TINTED VARIANTS (first 50) ===")
+                    for t in tints[:50]:
+                        lines.append(f"  {t['id']:>6}  {t['name']}")
+                    if len(tints) > 50:
+                        lines.append(f"  ... and {len(tints) - 50} more")
+                if not dyes and not tints:
+                    lines.append("\nNo dyes / tinted items found in the cache.\n"
+                                 "If your dyes have unusual names (not ending in "
+                                 "' dye'), tell Claude what they're called.")
+                self.after(0, lambda: self._show_text_window(
+                    "Dye Cache Scan", "\n".join(lines)))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Scan failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _dye_autopopulate(self):
+        if not messagebox.askyesno("Auto-populate Dye Mappings",
+            "Walk the cache and auto-build data/items/dye_recolors.json from "
+            "name patterns:\n\n"
+            "  Pattern A: '<prefix> X' + 'X' present  ->  X dyes to '<prefix> X'\n"
+            "  Pattern B: 'X (<prefix>)' + 'X' present  ->  X dyes to 'X (<prefix>)'\n\n"
+            "OVERWRITES the existing JSON file. Continue?"):
+            return
+        def do():
+            try:
+                resp = self.api.dyes_autopopulate()
+                added = resp.get("added", 0) if resp else 0
+                dyes = resp.get("dyes", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Auto-populate done",
+                    f"Wrote {dyes} dye(s) with {added} mapping(s) to "
+                    f"data/items/dye_recolors.json.\n\n"
+                    f"Dyes are live now (hot-reloaded). Test in-game by using "
+                    f"a dye on a matching weapon."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Auto-populate failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _dye_reload(self):
+        def do():
+            try:
+                resp = self.api.dyes_reload()
+                n = resp.get("dyes", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Reloaded", f"data/items/dye_recolors.json reloaded.\n"
+                    f"{n} dye(s) registered."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Reload failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _show_text_window(self, title, body):
+        win = ctk.CTkToplevel(self)
+        win.title(title)
+        win.geometry("700x500")
+        text = ctk.CTkTextbox(win, font=("Consolas", 11))
+        text.pack(fill="both", expand=True, padx=10, pady=10)
+        text.insert("1.0", body)
+        text.configure(state="disabled")
+        ctk.CTkButton(win, text="Close", command=win.destroy,
+                      width=100).pack(pady=8)
 
 
 # ----- Players tab -----
