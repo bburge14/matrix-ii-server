@@ -98,6 +98,23 @@ public final class ItemDefinitions {
 	public boolean noted;
 	public boolean lended;
 
+	// Old-look (pre-2014 / "retro" / 2007-style) model + colour variants.
+	// Cache opcodes 242-251 carry these for items that had a graphical
+	// rework. The original parser READ them into local vars and threw
+	// them away, so server code couldn't tell which items even had a
+	// retro look. Storing them here lets the admin panel scan + list
+	// every item with an old-look counterpart and (eventually) wire the
+	// items-look toggle to actually swap models.
+	public int oldInvModelId = -1;
+	public int oldMaleEquipModelId1 = -1;
+	public int oldFemaleEquipModelId1 = -1;
+	public int oldMaleEquipModelId2 = -1;
+	public int oldFemaleEquipModelId2 = -1;
+	public int oldMaleEquipModelId3 = -1;
+	public int oldFemaleEquipModelId3 = -1;
+	public int[] oldOriginalModelColors;
+	public int[] oldModifiedModelColors;
+
 	public HashMap<Integer, Object> clientScriptData;
 	public HashMap<Integer, Integer> itemRequiriments;
 	public int[] unknownArray5;
@@ -1096,26 +1113,26 @@ public final class ItemDefinitions {
 		} else if (opcode == 165) {//new
 			stackable = 2;
 		} else if (opcode == 242) {
-			int oldInvModel = stream.readBigSmart();
+			oldInvModelId = stream.readBigSmart();
 		} else if (opcode == 243) {
-			int oldMaleEquipModelId3 = stream.readBigSmart();
+			oldMaleEquipModelId3 = stream.readBigSmart();
 		} else if (opcode == 244) {
-			int oldFemaleEquipModelId3 = stream.readBigSmart();
+			oldFemaleEquipModelId3 = stream.readBigSmart();
 		} else if (opcode == 245) {
-			int oldMaleEquipModelId2 = stream.readBigSmart();
+			oldMaleEquipModelId2 = stream.readBigSmart();
 		} else if (opcode == 246) {
-			int oldFemaleEquipModelId2 = stream.readBigSmart();
+			oldFemaleEquipModelId2 = stream.readBigSmart();
 		} else if (opcode == 247) {
-			int oldMaleEquipModelId1 = stream.readBigSmart();
+			oldMaleEquipModelId1 = stream.readBigSmart();
 		} else if (opcode == 248) {
-			int oldFemaleEquipModelId1 = stream.readBigSmart();
+			oldFemaleEquipModelId1 = stream.readBigSmart();
 		} else if (opcode == 251) {
 			int length = stream.readUnsignedByte();
-			int[] oldoriginalModelColors = new int[length];
-			int[] oldmodifiedModelColors = new int[length];
+			oldOriginalModelColors = new int[length];
+			oldModifiedModelColors = new int[length];
 			for (int index = 0; index < length; index++) {
-				oldoriginalModelColors[index] = stream.readUnsignedShort();
-				oldmodifiedModelColors[index] = stream.readUnsignedShort();
+				oldOriginalModelColors[index] = stream.readUnsignedShort();
+				oldModifiedModelColors[index] = stream.readUnsignedShort();
 			}
 		} else if (opcode == 252) {
 			int length = stream.readUnsignedByte();
@@ -1201,6 +1218,19 @@ public final class ItemDefinitions {
 
 	public boolean isNoted() {
 		return noted;
+	}
+
+	/**
+	 * True if this item has an alternate "old / retro" look defined in
+	 * the cache (any of opcodes 242-251 present). Used by the admin
+	 * panel's items-look toggle planning + scanning.
+	 */
+	public boolean hasOldLook() {
+		return oldInvModelId != -1
+			|| oldMaleEquipModelId1 != -1   || oldFemaleEquipModelId1 != -1
+			|| oldMaleEquipModelId2 != -1   || oldFemaleEquipModelId2 != -1
+			|| oldMaleEquipModelId3 != -1   || oldFemaleEquipModelId3 != -1
+			|| oldOriginalModelColors != null;
 	}
 
 	public int getLendId() {

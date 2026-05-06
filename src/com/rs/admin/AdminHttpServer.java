@@ -85,6 +85,7 @@ public final class AdminHttpServer {
             server.createContext("/admin/items/dyes/scan", auth(new DyeScanHandler()));
             server.createContext("/admin/items/dyes/autopopulate",
                 auth(postOnly(new DyeAutoPopulateHandler())));
+            server.createContext("/admin/items/oldlook-scan", auth(new ItemsOldLookHandler()));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
@@ -1383,6 +1384,73 @@ public final class AdminHttpServer {
                 com.rs.utils.DyeRecolors.reload();
                 sendText(ex, 200, "{\"ok\":true,\"added\":" + added
                     + ",\"dyes\":" + result.size() + "}");
+            } catch (Throwable t) {
+                t.printStackTrace();
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * GET /admin/items/oldlook-scan
+     * Walks the entire cache and lists every item that has a retro / old
+     * look variant defined (any of opcodes 242-251). Also reports a
+     * summary count so the admin panel can show "N items have an old
+     * look in this cache" without enumerating all of them.
+     *
+     * Query params:
+     *   limit=N  cap the rows returned (default 500, set 0 = no rows just count)
+     *
+     * Body:
+     *   {"ok":true, "totalItems":N, "withOldLook":N, "rows":[
+     *      {"id":I, "name":"...", "oldInv":I, "oldM1":I, "oldF1":I,
+     *       "oldM2":I, "oldF2":I, "oldM3":I, "oldF3":I, "colors":bool},
+     *      ...]}
+     */
+    private static class ItemsOldLookHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.util.Map<String,String> q = parseQuery(ex.getRequestURI().getRawQuery());
+                int limit = 500;
+                try { String v = q.get("limit"); if (v != null) limit = Integer.parseInt(v); }
+                catch (Throwable ignored) {}
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                int total = 0, oldCount = 0;
+                StringBuilder rows = new StringBuilder();
+                int rowsAdded = 0;
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    total++;
+                    if (!def.hasOldLook()) continue;
+                    oldCount++;
+                    if (limit > 0 && rowsAdded < limit) {
+                        if (rowsAdded > 0) rows.append(",");
+                        rows.append("{\"id\":").append(id)
+                            .append(",\"name\":\"").append(jsonEscape(name)).append("\"")
+                            .append(",\"oldInv\":").append(def.oldInvModelId)
+                            .append(",\"oldM1\":").append(def.oldMaleEquipModelId1)
+                            .append(",\"oldF1\":").append(def.oldFemaleEquipModelId1)
+                            .append(",\"oldM2\":").append(def.oldMaleEquipModelId2)
+                            .append(",\"oldF2\":").append(def.oldFemaleEquipModelId2)
+                            .append(",\"oldM3\":").append(def.oldMaleEquipModelId3)
+                            .append(",\"oldF3\":").append(def.oldFemaleEquipModelId3)
+                            .append(",\"colors\":").append(def.oldOriginalModelColors != null)
+                            .append("}");
+                        rowsAdded++;
+                    }
+                }
+                sendText(ex, 200, "{\"ok\":true"
+                    + ",\"totalItems\":" + total
+                    + ",\"withOldLook\":" + oldCount
+                    + ",\"rows\":[" + rows + "]}");
             } catch (Throwable t) {
                 t.printStackTrace();
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");

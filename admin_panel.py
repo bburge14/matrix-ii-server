@@ -190,6 +190,11 @@ class MatrixAPI:
     def dyes_reload(self):
         return self._post("/admin/items/dyes/reload")
 
+    # Old/retro look scan (every item with an alternate "old" model
+    # variant in the cache; the items-look toggle target list).
+    def items_oldlook_scan(self, limit=500):
+        return self._get(f"/admin/items/oldlook-scan?limit={int(limit)}")
+
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
     def profiler_stop(self):         return self._post("/admin/profiler/stop")
@@ -2168,6 +2173,17 @@ class ItemsFrame(ctk.CTkFrame):
                      font=ctk.CTkFont(size=10), text_color="#888"
                      ).pack(side="left", padx=8)
 
+        # ---- old/retro look scan row ----
+        o = ctk.CTkFrame(self)
+        o.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(o, text="Retro Look:").pack(side="left", padx=4)
+        ctk.CTkButton(o, text="Scan Cache for Old-Look Items", width=240,
+                      command=self._oldlook_scan).pack(side="left", padx=4)
+        ctk.CTkLabel(o, text="(items with both new + old (retro / 2007-style) "
+                     "model variants. Toggle wiring TBD.)",
+                     font=ctk.CTkFont(size=10), text_color="#888"
+                     ).pack(side="left", padx=8)
+
         # ---- table (Tk Treeview - faster than custom widgets at 200 rows) ----
         from tkinter import ttk
         cols = ("id", "name", "slot", "wearable", "tradeable", "override", "price")
@@ -2390,6 +2406,40 @@ class ItemsFrame(ctk.CTkFrame):
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror(
                     "Reload failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _oldlook_scan(self):
+        def do():
+            try:
+                resp = self.api.items_oldlook_scan(limit=500)
+                total = resp.get("totalItems", 0)
+                old   = resp.get("withOldLook", 0)
+                rows  = resp.get("rows", []) or []
+                lines = [
+                    f"Cache total items scanned : {total:,}",
+                    f"Items with old-look variant: {old:,}",
+                    "",
+                    "(Showing first " + str(len(rows)) + " rows. Each lists which",
+                    " old-look fields are present: I=oldInvIcon,",
+                    " M1/F1/M2/F2/M3/F3=old equip models, C=old colours.)",
+                    "",
+                ]
+                for r in rows:
+                    flags = []
+                    if r.get("oldInv", -1) != -1: flags.append("I")
+                    if r.get("oldM1",  -1) != -1: flags.append("M1")
+                    if r.get("oldF1",  -1) != -1: flags.append("F1")
+                    if r.get("oldM2",  -1) != -1: flags.append("M2")
+                    if r.get("oldF2",  -1) != -1: flags.append("F2")
+                    if r.get("oldM3",  -1) != -1: flags.append("M3")
+                    if r.get("oldF3",  -1) != -1: flags.append("F3")
+                    if r.get("colors"):           flags.append("C")
+                    lines.append(f"  {r['id']:>6}  [{','.join(flags):<14}]  {r.get('name','?')}")
+                self.after(0, lambda: self._show_text_window(
+                    "Old-Look Items Scan", "\n".join(lines)))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Old-look scan failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
 
     def _show_text_window(self, title, body):
