@@ -444,9 +444,44 @@ public class EconomyManager {
 						}
 						end();
 						PlayerLook.openCharacterCustomizing(player);
-					} else if (optionId == 10) { // back
+					} else if (optionId == 10) { // combat mode (legacy / standard)
+						setPage(20, "Combat mode controls whether abilities are used.<br>"
+							+ "<col=ffaa55>Standard / EOC</col>: full ability bar, adrenaline, momentum.<br>"
+							+ "<col=ffaa55>Legacy</col>: classic auto-attacks, no abilities.<br>"
+							+ "Current: " + (player.isLegacyMode() ? "Legacy" : "Standard / EOC"),
+							player.isLegacyMode() ? "Switch to Standard / EOC" : "Switch to Legacy",
+							"Back");
+					} else if (optionId == 11) { // xp rate
+						setPage(21, "Choose your xp + drop rate.<br>"
+							+ "Current: x" + Settings.getXpRate(player)
+							+ " xp, x" + Settings.getCombatXpRate(player) + " combat xp.<br>"
+							+ "<col=ff5555>Picking a new rate stays for the rest of your account's life.</col>",
+							"x5 xp, x5 combat xp, x2.5 drop rate",
+							"x20 xp, x40 combat xp, x2 drop rate",
+							"x40 xp, x100 combat xp, x1 drop rate (Recommended)",
+							"x100 xp, x500 combat xp, x0.4 drop rate",
+							"Back");
+					} else if (optionId == 12) { // back
 						setTitlePage();
 					}
+				} else if (pageId == 20) { // combat mode picker
+					if (optionId == 0) {
+						player.switchLegacyMode();
+						player.getPackets().sendGameMessage("Combat mode set to "
+							+ (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ".");
+					}
+					setManagementPage();
+				} else if (pageId == 21) { // xp rate picker
+					if (optionId == 0)      player.setXpRateMode(4); // x5
+					else if (optionId == 1) player.setXpRateMode(1); // x20/x40
+					else if (optionId == 2) player.setXpRateMode(2); // x40/x100 (recommended)
+					else if (optionId == 3) player.setXpRateMode(3); // x100/x500
+					if (optionId >= 0 && optionId <= 3) {
+						player.getPackets().sendGameMessage("Your xp rate mode is now: x"
+							+ Settings.getXpRate(player) + " xp, x"
+							+ Settings.getCombatXpRate(player) + " combat xp.");
+					}
+					setManagementPage();
 				} else if (pageId == 3) { // teleports
 					if (optionId == 0) { // current event
 						if (tileEventHappening) {
@@ -568,7 +603,7 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to old items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Back");
+				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to old items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
 			}
 
 			private void setTeleportsTitlePage() {

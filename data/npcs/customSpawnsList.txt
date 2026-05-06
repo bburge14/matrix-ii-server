@@ -190,3 +190,30 @@
 2234 - 2659 3380 0
 // ^ Master farmer (Ardougne market)
 2234 - 2661 3381 0
+
+// === Burthorpe combat training spawns ===
+// Imps for the lowbie imp combat method (TrainingMethods coord 2898,3554)
+708 - 2897 3553 0
+708 - 2898 3554 0
+708 - 2899 3554 0
+708 - 2898 3555 0
+708 - 2897 3555 0
+709 - 2899 3555 0
+// Goblins at the plateau goblin camp (TrainingMethods coord 2880,3546)
+100 - 2879 3545 0
+100 - 2880 3546 0
+101 - 2881 3546 0
+101 - 2879 3547 0
+102 - 2880 3547 0
+102 - 2881 3545 0
+// Mountain trolls on Death Plateau (TrainingMethods coord 2853,3582)
+1095 - 2852 3581 0
+1095 - 2853 3582 0
+1096 - 2854 3582 0
+1097 - 2853 3583 0
+1098 - 2854 3581 0
+
+// === Burthorpe master farmer spawn for the pickpocket method ===
+// Method coord 2923,3459 had no master farmer NPC, bots scanned + found nothing
+2234 - 2922 3458 0
+2235 - 2923 3459 0
