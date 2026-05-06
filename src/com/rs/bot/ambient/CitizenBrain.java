@@ -407,6 +407,28 @@ public class CitizenBrain extends BotBrain {
     }
 
     private void tickInteracting(AIPlayer bot) {
+        // PK bot path: combatants in the wildy who haven't already locked
+        // a target try to find a nearby pk-opted-in player first. If none
+        // exists, fall through to the regular method-based combat (NPCs).
+        // Engine still gates via Wilderness.canAttack so opted-out victims
+        // can't be hit, but the bot won't waste time trying.
+        try {
+            if (archetype != null && archetype.isCombatant()
+                    && bot.isPkOptIn()
+                    && bot.getControlerManager().getControler()
+                        instanceof com.rs.game.player.controllers.Wilderness
+                    && !(bot.getActionManager().getAction()
+                        instanceof com.rs.game.player.actions.PlayerCombatNew)) {
+                Player victim = findNearbyPkVictim(bot, 8);
+                if (victim != null) {
+                    bot.setNextFaceEntity(victim);
+                    bot.getActionManager().setAction(
+                        new com.rs.game.player.actions.PlayerCombatNew(victim));
+                    return;
+                }
+            }
+        } catch (Throwable ignored) {}
+
         // If we have a TrainingMethods.Method, fire the SAME real Action
         // Legends fire. This is the key parity move: Citizens chop real
         // trees, gain real XP, drop real logs, take real damage, can die.
@@ -500,6 +522,35 @@ public class CitizenBrain extends BotBrain {
      * Falls back to bare-scanner behaviour for archetypes that don't have
      * matching method kinds (socialite at GE booth, etc).
      */
+    /** Find a pk-opted-in Player within `radius` tiles that this bot
+     *  can attack (combat-level eligible, not the bot itself, not dead).
+     *  Used by combatant citizens in the wildy to pick a PK target
+     *  before falling back to NPC combat. */
+    private Player findNearbyPkVictim(AIPlayer bot, int radius) {
+        try {
+            int botCb = bot.getSkills().getCombatLevel();
+            int wildLevel = com.rs.game.player.controllers.Wilderness.getWildLevel(bot);
+            if (wildLevel < 1) return null;
+            Player best = null;
+            int bestSq = Integer.MAX_VALUE;
+            for (Player other : World.getPlayers()) {
+                if (other == null || other == bot || other.hasFinished()) continue;
+                if (other.isDead()) continue;
+                if (other.getPlane() != bot.getPlane()) continue;
+                if (!other.isPkOptIn()) continue;          // respects victim opt-out
+                if (Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel) continue;
+                int dx = other.getX() - bot.getX();
+                int dy = other.getY() - bot.getY();
+                int sq = dx * dx + dy * dy;
+                if (sq > radius * radius) continue;
+                if (sq < bestSq) { best = other; bestSq = sq; }
+            }
+            return best;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private WorldTile findInteractionDestination(AIPlayer bot) {
         // Try the TrainingMethods route first (shared with Legends)
         // Re-pick only when (a) we have no method, OR (b) we've been AT
