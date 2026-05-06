@@ -324,67 +324,75 @@ public class EconomyManager {
 			private int pageId = 0;
 			private String[] currentOptions;
 			private int currentOptionsOffset;
+			private String currentTip;
+
+			// Page sizes for the chatbox sendOptionsDialogue (max 5 slots).
+			// If the page has more than 5 options, we show 4 + a "Next ▶"
+			// button that advances by 4. Last partial page shows up to 5
+			// without a Next button.
+			private static final int CHATBOX_PAGE_FIRST  = 4;  // 4 options + Next
+			private static final int CHATBOX_PAGE_LAST   = 5;  // 5 options if final
 
 			@Override
 			public void start() {
-				sendOptionsInterface(player);
+				// Skip the cs2-conflicting central interface (1312) entirely
+				// and use chatbox sendOptionsDialogue (interface 1188) which
+				// has no fortune-cookie text bleeding through.
 				setTitlePage();
 			}
 
 			@Override
 			public void run(int interfaceId, int componentId) {
-				int buttonId = -1;
-				for (int i = 0; i < CLICK_COMPONENTS.length; i++) {
-					if (componentId == CLICK_COMPONENTS[i]) {
-						buttonId = i;
-						break;
-					}
-				}
-
-				if (currentOptions == null || buttonId == -1)
+				if (currentOptions == null) return;
+				// chatbox option ids are 3..7 = OPTION_1..OPTION_5
+				int slot;
+				if      (componentId == OPTION_1) slot = 0;
+				else if (componentId == OPTION_2) slot = 1;
+				else if (componentId == OPTION_3) slot = 2;
+				else if (componentId == OPTION_4) slot = 3;
+				else if (componentId == OPTION_5) slot = 4;
+				else return;
+				int total = currentOptions.length;
+				int remaining = total - currentOptionsOffset;
+				boolean hasNext = remaining > CHATBOX_PAGE_LAST;
+				if (hasNext && slot == CHATBOX_PAGE_FIRST) {
+					// Next button - advance by 4, wrap to 0 at the end.
+					currentOptionsOffset += CHATBOX_PAGE_FIRST;
+					if (currentOptionsOffset >= total) currentOptionsOffset = 0;
+					updateCurrentPage();
 					return;
-
-				int length = currentOptions.length - currentOptionsOffset;
-				if (currentOptionsOffset != 0 || length > ROOT_COMPONENTS.length) {
-					if (buttonId >= 0 && buttonId <= (ROOT_COMPONENTS.length - 2)) {
-						if ((buttonId + currentOptionsOffset) >= currentOptions.length || currentOptions[buttonId + currentOptionsOffset] == null)
-							return;
-						handlePage(currentOptionsOffset + buttonId);
-					} else {
-						// more button
-						if ((currentOptionsOffset + (ROOT_COMPONENTS.length - 1)) >= currentOptions.length) {
-							currentOptionsOffset = 0;
-						} else {
-							currentOptionsOffset += ROOT_COMPONENTS.length - 1;
-						}
-						updateCurrentPage();
-					}
-				} else {
-					if ((buttonId + currentOptionsOffset) >= currentOptions.length || currentOptions[buttonId + currentOptionsOffset] == null)
-						return;
-					handlePage(currentOptionsOffset + buttonId);
 				}
+				int absolute = currentOptionsOffset + slot;
+				if (absolute >= total || currentOptions[absolute] == null) return;
+				handlePage(absolute);
 			}
 
 			private void setPage(int page, String tip, String... options) {
 				pageId = page;
 				currentOptions = options;
 				currentOptionsOffset = 0;
-				sendEntityDialogueNoContinue(player, Dialogue.IS_NPC, "Oracle of Dawn", npcId, 9810, tip);
+				currentTip = tip;
 				updateCurrentPage();
 			}
 
 			private void updateCurrentPage() {
-				String[] buffer = new String[ROOT_COMPONENTS.length];
-				int length = currentOptions.length - currentOptionsOffset;
-				if (currentOptionsOffset != 0 || length > ROOT_COMPONENTS.length) {
-					System.arraycopy(currentOptions, currentOptionsOffset, buffer, 0, Math.min(length, ROOT_COMPONENTS.length - 1));
-					buffer[ROOT_COMPONENTS.length - 1] = "More"; // copy up to (len-1) options + more button
-				} else {
-					System.arraycopy(currentOptions, currentOptionsOffset, buffer, 0, length);
+				int total = currentOptions.length;
+				int remaining = total - currentOptionsOffset;
+				boolean hasNext = remaining > CHATBOX_PAGE_LAST;
+				int show = hasNext ? CHATBOX_PAGE_FIRST : Math.min(remaining, CHATBOX_PAGE_LAST);
+				String[] buffer = new String[hasNext ? 5 : show];
+				for (int i = 0; i < show; i++) {
+					buffer[i] = currentOptions[currentOptionsOffset + i];
 				}
-
-				setupInterface(player, buffer);
+				if (hasNext) buffer[CHATBOX_PAGE_FIRST] = "Next ▶";
+				// Title shows tip + page indicator if multi-page.
+				String title = currentTip;
+				if (total > CHATBOX_PAGE_LAST) {
+					int page = currentOptionsOffset / CHATBOX_PAGE_FIRST + 1;
+					int pages = (total + CHATBOX_PAGE_FIRST - 1) / CHATBOX_PAGE_FIRST;
+					title = title + "  (page " + page + "/" + pages + ")";
+				}
+				sendOptionsDialogue(title, buffer);
 			}
 
 			private void handlePage(int optionId) {
