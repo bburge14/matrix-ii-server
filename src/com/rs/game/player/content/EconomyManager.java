@@ -482,13 +482,16 @@ public class EconomyManager {
 						player.getPackets().sendInputLongTextScript("Enter your forum username:");
 					} else if (optionId == 2) { // display name
 						setPage(10, "Here you can set your display name or remove it.", "Set display name", "Remove display name", "Back");
-					} else if (optionId == 3) { // switch items look (WIP - stub)
-						player.getPackets().sendGameMessage(
-							"<col=ffaa55>Old/new items look toggle is in development.</col>");
-						player.getPackets().sendGameMessage(
-							"Server cache has " + countItemsWithOldLook()
-							+ " items with retro look variants ready, but the client"
-							+ " packet wiring needs more work first.");
+					} else if (optionId == 3) { // switch items look (render-time swap)
+						player.switchItemsLook();
+						// Force inventory + equipment + appearance to re-send
+						// so the swap is visible immediately rather than on
+						// the next slot mutation. RetroSwaps.toOld is a pure
+						// id rewrite at packet-encode time - the underlying
+						// ItemsContainer is unchanged.
+						try { player.getInventory().refresh(); } catch (Throwable ignored) {}
+						try { player.getEquipment().refresh(); } catch (Throwable ignored) {}
+						try { player.getAppearence().generateAppearenceData(); } catch (Throwable ignored) {}
 						setManagementPage();
 					} else if (optionId == 4) { // title select
 						String[] page = getTitlesPage();
@@ -679,13 +682,11 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				// "Switch to old/new items look" - put back per user request,
-				// but the click handler is currently a no-op stub that prints
-				// a "feature in development" notice. Opcode 159 crashes the
-				// 830 client (AIOOBE 30575). Real wiring needs the cache's
-				// items-look cs2 script + the captured oldInvModelId /
-				// oldEquipModel data we now keep in ItemDefinitions.
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look (WIP)" : "Switch to old items look (WIP)", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
+				// "Switch to old/new items look" - render-time swap via
+				// RetroSwaps. Inventory / equipment / appearance encoders
+				// rewrite item ids on the way out based on the player flag,
+				// no actual storage mutation.
+				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to retro items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
 			}
 
 			private void setTeleportsTitlePage() {

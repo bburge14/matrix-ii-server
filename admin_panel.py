@@ -194,6 +194,10 @@ class MatrixAPI:
     # variant in the cache; the items-look toggle target list).
     def items_oldlook_scan(self, limit=500):
         return self._get(f"/admin/items/oldlook-scan?limit={int(limit)}")
+    def retro_autopopulate(self):
+        return self._post("/admin/items/retro/autopopulate")
+    def retro_reload(self):
+        return self._post("/admin/items/retro/reload")
 
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
@@ -2177,10 +2181,14 @@ class ItemsFrame(ctk.CTkFrame):
         o = ctk.CTkFrame(self)
         o.pack(fill="x", padx=20, pady=4)
         ctk.CTkLabel(o, text="Retro Look:").pack(side="left", padx=4)
-        ctk.CTkButton(o, text="Scan Cache for Old-Look Items", width=240,
+        ctk.CTkButton(o, text="Scan Cache", width=110,
                       command=self._oldlook_scan).pack(side="left", padx=4)
-        ctk.CTkLabel(o, text="(items with both new + old (retro / 2007-style) "
-                     "model variants. Toggle wiring TBD.)",
+        ctk.CTkButton(o, text="Auto-build Swap Map", width=160, fg_color="#1b6e3a",
+                      command=self._retro_autopopulate).pack(side="left", padx=4)
+        ctk.CTkButton(o, text="Reload Map", width=110,
+                      command=self._retro_reload).pack(side="left", padx=4)
+        ctk.CTkLabel(o, text="(scan = list cache items; auto-build = "
+                     "fill data/items/retro_swaps.json from name pairs)",
                      font=ctk.CTkFont(size=10), text_color="#888"
                      ).pack(side="left", padx=8)
 
@@ -2439,6 +2447,38 @@ class ItemsFrame(ctk.CTkFrame):
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror(
                     "Old-look scan failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _retro_autopopulate(self):
+        if not messagebox.askyesno("Auto-build Retro Swap Map",
+            "Walk the cache + populate data/items/retro_swaps.json from "
+            "every Retro <X> / Replica <X> name pair. Overwrites the "
+            "existing file. Continue?"):
+            return
+        def do():
+            try:
+                resp = self.api.retro_autopopulate()
+                added = resp.get("added", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Done", f"Wrote {added} swap mappings to "
+                    f"data/items/retro_swaps.json. Live now (hot-reloaded).\n\n"
+                    f"Toggle in-game via Oracle of Dawn -> Account & Character "
+                    f"management -> Switch to retro items look."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Auto-build failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _retro_reload(self):
+        def do():
+            try:
+                resp = self.api.retro_reload()
+                n = resp.get("swaps", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Reloaded", f"retro_swaps.json reloaded.\n{n} swap(s) registered."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Reload failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
 
     def _show_text_window(self, title, body):

@@ -1408,6 +1408,8 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendItemsContainer(int key, ItemsContainerNew container) {//77
+		// retro / replica id swap per oldItemsLook flag - see sendItems below.
+		boolean oldLook = player.isOldItemsLook();
 		OutputStream stream = new OutputStream();
 		stream.writePacketVarShort(player, 147);
 		stream.writeShort(key);
@@ -1418,7 +1420,9 @@ public class WorldPacketsEncoder extends Encoder {
 			int amount = 0;
 			Item item = container.get(i);
 			if (item != null) {
-				id = item.getId();
+				id = oldLook
+					? com.rs.utils.RetroSwaps.toOld(item.getId())
+					: item.getId();
 				amount = item.getAmount();
 			}
 			stream.writeShortLE128(id + 1);
@@ -1431,6 +1435,11 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendItems(int key, boolean negativeKey, Item[] items) {//77
+		// If the player has oldItemsLook = true, render-time swap each
+		// item id to its retro / replica counterpart from RetroSwaps.
+		// The actual stored Item[] is unchanged so the player still
+		// holds 4151 (whip) etc. - they just SEE 31xxx in their UI.
+		boolean oldLook = player.isOldItemsLook();
 		OutputStream stream = new OutputStream();
 		stream.writePacketVarShort(player, 147);
 		stream.writeShort(key); // negativeKey ? -key : key
@@ -1441,7 +1450,9 @@ public class WorldPacketsEncoder extends Encoder {
 			int id = -1;
 			int amount = 0;
 			if (item != null) {
-				id = item.getId();
+				id = oldLook
+					? com.rs.utils.RetroSwaps.toOld(item.getId())
+					: item.getId();
 				amount = item.getAmount();
 			}
 			stream.writeShortLE128(id + 1);

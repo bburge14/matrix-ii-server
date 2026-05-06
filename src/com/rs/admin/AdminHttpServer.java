@@ -86,6 +86,15 @@ public final class AdminHttpServer {
             server.createContext("/admin/items/dyes/autopopulate",
                 auth(postOnly(new DyeAutoPopulateHandler())));
             server.createContext("/admin/items/oldlook-scan", auth(new ItemsOldLookHandler()));
+            server.createContext("/admin/items/retro/autopopulate",
+                auth(postOnly(new RetroAutoPopulateHandler())));
+            server.createContext("/admin/items/retro/reload", auth(postOnly(new HttpHandler() {
+                @Override public void handle(HttpExchange ex) throws IOException {
+                    com.rs.utils.RetroSwaps.reload();
+                    sendText(ex, 200, "{\"ok\":true,\"swaps\":"
+                        + com.rs.utils.RetroSwaps.size() + "}");
+                }
+            })));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
@@ -1511,6 +1520,72 @@ public final class AdminHttpServer {
                     + ",\"withOpcodeOldLook\":" + opcodeCount
                     + ",\"withNamePair\":" + nameCount
                     + ",\"rows\":[" + rows + "]}");
+            } catch (Throwable t) {
+                t.printStackTrace();
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * POST /admin/items/retro/autopopulate
+     * Walks the cache, builds the (baseId -> retro/replicaId) map from
+     * name patterns, writes data/items/retro_swaps.json, and reloads.
+     */
+    private static class RetroAutoPopulateHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null || def.isNoted()) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    nameToId.putIfAbsent(name.toLowerCase(), id);
+                }
+                com.rs.utils.RetroSwaps.clearAll();
+                int added = 0;
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null || def.isNoted()) continue;
+                    String name = def.getName();
+                    if (name == null) continue;
+                    String lower = name.toLowerCase();
+                    String[] prefixes = { "retro ", "replica " };
+                    Integer baseId = null;
+                    for (String p : prefixes) {
+                        if (!lower.startsWith(p)) continue;
+                        String tail = lower.substring(p.length()).trim();
+                        Integer bId = nameToId.get(tail);
+                        if (bId != null && bId != id) { baseId = bId; break; }
+                    }
+                    if (baseId == null) {
+                        String[] suffixes = { "(retro)", "(replica)" };
+                        for (String s : suffixes) {
+                            if (!lower.endsWith(s)) continue;
+                            String tail = lower.substring(0, lower.length() - s.length()).trim();
+                            Integer bId = nameToId.get(tail);
+                            if (bId != null && bId != id) { baseId = bId; break; }
+                        }
+                    }
+                    if (baseId == null) continue;
+                    // First mapping per base wins. Some bases have two
+                    // candidates (the duplicate-name 30191 / 30192 etc.) -
+                    // pick the lower id arbitrarily.
+                    if (com.rs.utils.RetroSwaps.toOld(baseId) == baseId) {
+                        com.rs.utils.RetroSwaps.put(baseId, id);
+                        added++;
+                    }
+                }
+                com.rs.utils.RetroSwaps.save();
+                sendText(ex, 200, "{\"ok\":true,\"added\":" + added + "}");
             } catch (Throwable t) {
                 t.printStackTrace();
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
