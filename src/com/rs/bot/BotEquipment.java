@@ -503,21 +503,81 @@ public final class BotEquipment {
 
     /** Apply one of the structured TieredOutfitPool sets for the given
      *  style + the bot's combat-level-derived tier. Each slot's option
-     *  array gets a random pick. Empty arrays leave the slot alone. */
+     *  array is filtered through ItemRequirements first - if nothing
+     *  in the bot's tier matches its skill levels (e.g. a level-1
+     *  ranger getting WEALTHY tier with zaryte bow), drop down a tier
+     *  for THAT slot. POOR has no requirements so the dropdown always
+     *  terminates. */
     private static void applyTieredSet(Player bot,
             com.rs.bot.TieredOutfitPool.Style style, int cb) {
         com.rs.bot.TieredOutfitPool.Tier tier =
             com.rs.bot.TieredOutfitPool.tierForCb(cb);
-        com.rs.bot.TieredOutfitPool.Set set =
-            com.rs.bot.TieredOutfitPool.pick(style, tier);
-        if (set.hats   .length > 0) equip(bot, Equipment.SLOT_HAT,    pick(set.hats));
-        if (set.bodies .length > 0) equip(bot, Equipment.SLOT_CHEST,  pick(set.bodies));
-        if (set.legs   .length > 0) equip(bot, Equipment.SLOT_LEGS,   pick(set.legs));
-        if (set.weapons.length > 0) equip(bot, Equipment.SLOT_WEAPON, pick(set.weapons));
-        if (set.shields.length > 0) equip(bot, Equipment.SLOT_SHIELD, pick(set.shields));
-        if (set.capes  .length > 0) equip(bot, Equipment.SLOT_CAPE,   pick(set.capes));
-        if (set.gloves .length > 0) equip(bot, Equipment.SLOT_HANDS,  pick(set.gloves));
-        if (set.feet   .length > 0) equip(bot, Equipment.SLOT_FEET,   pick(set.feet));
+        equipFromTierStack(bot, Equipment.SLOT_HAT,    style, tier, SlotKind.HAT);
+        equipFromTierStack(bot, Equipment.SLOT_CHEST,  style, tier, SlotKind.BODY);
+        equipFromTierStack(bot, Equipment.SLOT_LEGS,   style, tier, SlotKind.LEGS);
+        equipFromTierStack(bot, Equipment.SLOT_WEAPON, style, tier, SlotKind.WEAPON);
+        equipFromTierStack(bot, Equipment.SLOT_SHIELD, style, tier, SlotKind.SHIELD);
+        equipFromTierStack(bot, Equipment.SLOT_CAPE,   style, tier, SlotKind.CAPE);
+        equipFromTierStack(bot, Equipment.SLOT_HANDS,  style, tier, SlotKind.GLOVES);
+        equipFromTierStack(bot, Equipment.SLOT_FEET,   style, tier, SlotKind.FEET);
+    }
+
+    private enum SlotKind { HAT, BODY, LEGS, WEAPON, SHIELD, CAPE, GLOVES, FEET }
+
+    /** Walk down the tier stack (WEALTHY -> RICH -> MIDDLE -> POOR)
+     *  picking the highest tier where the bot's skill levels qualify
+     *  for at least one item in the slot's pool. If even POOR has no
+     *  qualifying items (rare - POOR has no skill reqs by design),
+     *  leave the slot empty. */
+    private static void equipFromTierStack(Player bot, int slot,
+            com.rs.bot.TieredOutfitPool.Style style,
+            com.rs.bot.TieredOutfitPool.Tier startTier, SlotKind kind) {
+        com.rs.bot.TieredOutfitPool.Tier[] order = tierStackFrom(startTier);
+        for (com.rs.bot.TieredOutfitPool.Tier t : order) {
+            com.rs.bot.TieredOutfitPool.Set set =
+                com.rs.bot.TieredOutfitPool.pick(style, t);
+            int[] pool = poolFor(set, kind);
+            if (pool == null || pool.length == 0) continue;
+            int[] filtered = com.rs.bot.ItemRequirements.filter(bot, pool);
+            if (filtered == null || filtered.length == 0) continue;
+            equip(bot, slot, pick(filtered));
+            return;
+        }
+    }
+
+    private static com.rs.bot.TieredOutfitPool.Tier[] tierStackFrom(
+            com.rs.bot.TieredOutfitPool.Tier t) {
+        switch (t) {
+            case WEALTHY: return new com.rs.bot.TieredOutfitPool.Tier[]{
+                com.rs.bot.TieredOutfitPool.Tier.WEALTHY,
+                com.rs.bot.TieredOutfitPool.Tier.RICH,
+                com.rs.bot.TieredOutfitPool.Tier.MIDDLE,
+                com.rs.bot.TieredOutfitPool.Tier.POOR };
+            case RICH: return new com.rs.bot.TieredOutfitPool.Tier[]{
+                com.rs.bot.TieredOutfitPool.Tier.RICH,
+                com.rs.bot.TieredOutfitPool.Tier.MIDDLE,
+                com.rs.bot.TieredOutfitPool.Tier.POOR };
+            case MIDDLE: return new com.rs.bot.TieredOutfitPool.Tier[]{
+                com.rs.bot.TieredOutfitPool.Tier.MIDDLE,
+                com.rs.bot.TieredOutfitPool.Tier.POOR };
+            case POOR:
+            default:    return new com.rs.bot.TieredOutfitPool.Tier[]{
+                com.rs.bot.TieredOutfitPool.Tier.POOR };
+        }
+    }
+
+    private static int[] poolFor(com.rs.bot.TieredOutfitPool.Set set, SlotKind k) {
+        switch (k) {
+            case HAT:    return set.hats;
+            case BODY:   return set.bodies;
+            case LEGS:   return set.legs;
+            case WEAPON: return set.weapons;
+            case SHIELD: return set.shields;
+            case CAPE:   return set.capes;
+            case GLOVES: return set.gloves;
+            case FEET:   return set.feet;
+        }
+        return null;
     }
 
     /** Legacy wealth-tier melee dispatcher - kept for any caller that

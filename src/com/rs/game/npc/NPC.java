@@ -244,20 +244,24 @@ public class NPC extends Entity implements Serializable {
 					&& who.getPlane() == getPlane()
 					&& getDefinitions() != null) {
 				setTarget(who);
-				if (combat.getTarget() == null && com.rs.utils.Utils.random(20) == 0) {
+				if (combat.getTarget() == null) {
 					// setTarget called combat.checkAll which immediately
-					// removed the target - log why so the user can see
-					// what's blocking retaliation in their setup.
-					System.out.println("[NPC-RETAL] " + getId() + " " + getDefinitions().name
-						+ " setTarget(" + who.getX() + "," + who.getY() + ",p" + who.getPlane()
-						+ ") -> target=null. mapArea=" + getMapAreaNameHash()
-						+ " respawnDist=" + (Math.abs(getX()-getRespawnTile().getX())+Math.abs(getY()-getRespawnTile().getY()))
-						+ " forceWalking=" + isForceWalking()
-						+ " cantInteract=" + isCantInteract());
+					// removed the target - log why. Sampled at 1-in-5
+					// since this is the primary diagnostic, routed
+					// through BotLog so it lands in data/logs/bots.log
+					// where the user is already tailing.
+					if (com.rs.utils.Utils.random(5) == 0) {
+						com.rs.bot.BotLog.log("NPC-RETAL", getId() + " " + getDefinitions().name
+							+ " setTarget(" + who.getX() + "," + who.getY() + ",p" + who.getPlane()
+							+ ") -> target=null. mapArea=" + getMapAreaNameHash()
+							+ " respawnDist=" + (Math.abs(getX()-getRespawnTile().getX())+Math.abs(getY()-getRespawnTile().getY()))
+							+ " forceWalking=" + isForceWalking()
+							+ " cantInteract=" + isCantInteract());
+					}
 				}
 			}
 		} catch (Throwable t) {
-			System.err.println("[NPC-RETAL] hook threw: " + t);
+			com.rs.bot.BotLog.log("NPC-RETAL", "hook threw: " + t);
 		}
 		if (!combat.process()) { // if not under combat
 			if (!isForceWalking()) {// combat still processed for attack delay
@@ -390,15 +394,18 @@ public class NPC extends Entity implements Serializable {
 						&& !isCantInteract() && !isForceWalking()
 						&& getDefinitions() != null) {
 					setTarget(source);
-					if (com.rs.utils.Utils.random(20) == 0) {
-						System.out.println("[NPC-RETAL-HIT] " + getId()
+					// 1-in-5 sample (was 1-in-20), routed through BotLog
+					// so it lands in data/logs/bots.log alongside other
+					// bot diagnostics. tail -f data/logs/bots.log to watch.
+					if (com.rs.utils.Utils.random(5) == 0) {
+						com.rs.bot.BotLog.log("NPC-RETAL-HIT", getId()
 							+ " " + getDefinitions().name
-							+ " took damage from player " + ((Player) source).getDisplayName()
+							+ " hit by " + ((Player) source).getDisplayName()
 							+ " - target now=" + (combat.getTarget() == null ? "null" : "set"));
 					}
 				}
 			} catch (Throwable t) {
-				System.err.println("[NPC-RETAL-HIT] hook threw: " + t);
+				com.rs.bot.BotLog.log("NPC-RETAL-HIT", "hook threw: " + t);
 			}
 		}
 
