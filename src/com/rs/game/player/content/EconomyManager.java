@@ -287,7 +287,26 @@ public class EconomyManager {
 		player.getPackets().sendHideIComponent(1312, 26, true);
 	}
 
-	public static void setupInterface(Player player, String[] options) {
+	public static void setupInterface(final Player player, final String[] options) {
+		writeOptionsImmediate(player, options);
+		// Interface 1312 has a cs2 onLoad that pre-populates the option
+		// text with fortune-cookie / motivational lines from the cache.
+		// Without re-applying our text after the cs2 runs, those lines
+		// bleed through and the menu shows "Working towards a party
+		// hat" / "Born to PK" interleaved with our real options. One
+		// tick later we KNOW the cs2 has finished, so we write again -
+		// our text wins.
+		com.rs.game.tasks.WorldTasksManager.schedule(
+			new com.rs.game.tasks.WorldTask() {
+				@Override public void run() {
+					if (player == null || player.hasFinished()) { stop(); return; }
+					writeOptionsImmediate(player, options);
+					stop();
+				}
+			}, 1);
+	}
+
+	private static void writeOptionsImmediate(Player player, String[] options) {
 		for (int i = 0; i < ROOT_COMPONENTS.length; i++) {
 			if (options[i] == null) {
 				player.getPackets().sendHideIComponent(1312, ROOT_COMPONENTS[i], true);
