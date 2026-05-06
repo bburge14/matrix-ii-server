@@ -1314,28 +1314,47 @@ public final class AdminHttpServer {
                     String dyeName = dyeNames.get(i);
                     String prefix = dyeName.substring(0, dyeName.length() - 4).trim();
                     if (prefix.isEmpty()) continue;
+                    // Build prefix variants for hyphen/space normalisation.
+                    // Cache uses inconsistent forms: dye name "Third-age dye"
+                    // but variant names use "(third age)" with a SPACE.
+                    java.util.Set<String> prefixForms = new java.util.LinkedHashSet<>();
+                    prefixForms.add(prefix);
+                    prefixForms.add(prefix.replace('-', ' '));
+                    prefixForms.add(prefix.replace(' ', '-'));
                     java.util.Map<Integer, Integer> sub = new java.util.LinkedHashMap<>();
-                    // Pattern A: "<prefix> X" -> "X"
-                    for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
-                        String n = e.getKey();
-                        if (!n.startsWith(prefix + " ")) continue;
-                        String tail = n.substring(prefix.length() + 1);
-                        Integer baseId = nameToId.get(tail);
-                        if (baseId != null && baseId != e.getValue()) {
-                            sub.put(baseId, e.getValue());
-                            added++;
+                    // Skip "broken" / clearly non-equipped variants - those
+                    // shouldn't be the dye target. The (X, broken) form is
+                    // the post-degrade item and its presence shouldn't pull
+                    // mappings.
+                    for (String pf : prefixForms) {
+                        // Pattern A: "<prefix> X" -> "X"
+                        for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                            String n = e.getKey();
+                            if (n.contains(", broken")) continue;
+                            if (!n.startsWith(pf + " ")) continue;
+                            String tail = n.substring(pf.length() + 1);
+                            Integer baseId = nameToId.get(tail);
+                            if (baseId != null && baseId != e.getValue()) {
+                                if (!sub.containsKey(baseId)) {
+                                    sub.put(baseId, e.getValue());
+                                    added++;
+                                }
+                            }
                         }
-                    }
-                    // Pattern B: "X (<prefix>)" -> "X"
-                    String paren = "(" + prefix + ")";
-                    for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
-                        String n = e.getKey();
-                        if (!n.endsWith(paren)) continue;
-                        String tail = n.substring(0, n.length() - paren.length()).trim();
-                        Integer baseId = nameToId.get(tail);
-                        if (baseId != null && baseId != e.getValue()) {
-                            sub.putIfAbsent(baseId, e.getValue());
-                            added++;
+                        // Pattern B: "X (<prefix>)" -> "X"
+                        String paren = "(" + pf + ")";
+                        for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                            String n = e.getKey();
+                            if (n.contains(", broken")) continue;
+                            if (!n.endsWith(paren)) continue;
+                            String tail = n.substring(0, n.length() - paren.length()).trim();
+                            Integer baseId = nameToId.get(tail);
+                            if (baseId != null && baseId != e.getValue()) {
+                                if (!sub.containsKey(baseId)) {
+                                    sub.put(baseId, e.getValue());
+                                    added++;
+                                }
+                            }
                         }
                     }
                     if (!sub.isEmpty()) result.put(dyeId, sub);
