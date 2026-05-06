@@ -2442,15 +2442,33 @@ class ItemsFrame(ctk.CTkFrame):
         threading.Thread(target=do, daemon=True).start()
 
     def _show_text_window(self, title, body):
+        # Keep a strong reference on self so the popup isn't GC'd the
+        # moment the function returns (the bug where the window
+        # appeared then immediately closed). _open_popups also lets us
+        # not lose track if the user has multiple open at once.
+        if not hasattr(self, "_open_popups"):
+            self._open_popups = []
         win = ctk.CTkToplevel(self)
         win.title(title)
-        win.geometry("700x500")
+        win.geometry("900x600")
+        win.transient(self.winfo_toplevel())
         text = ctk.CTkTextbox(win, font=("Consolas", 11))
         text.pack(fill="both", expand=True, padx=10, pady=10)
-        text.insert("1.0", body)
+        # Tk Text has a default insert limit of ~1MB - chunked for large bodies.
+        for i in range(0, len(body), 50_000):
+            text.insert("end", body[i:i + 50_000])
         text.configure(state="disabled")
-        ctk.CTkButton(win, text="Close", command=win.destroy,
+        def close():
+            try: self._open_popups.remove(win)
+            except Exception: pass
+            win.destroy()
+        ctk.CTkButton(win, text="Close", command=close,
                       width=100).pack(pady=8)
+        win.protocol("WM_DELETE_WINDOW", close)
+        self._open_popups.append(win)
+        # Force visibility - some WMs hide unparented popups behind the
+        # main window if we don't lift + focus explicitly.
+        win.after(50, lambda: (win.lift(), win.focus_force()))
 
 
 # ----- Players tab -----
