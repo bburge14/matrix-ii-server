@@ -58,21 +58,44 @@ public class EconomyManager {
 	public static int[] MANAGER_NPC_IDS = new int[]
 	{ 13930, 15158 };
 
-	/** Cached count of cache items that have an old-look variant.
-	 *  Computed lazily on first call - the cache scan walks every
-	 *  item def so we only do it once per JVM lifetime. */
+	/** Cached count of cache items that have an old-look variant - either
+	 *  via cache opcodes 242-251 (def.hasOldLook()) OR via a name pair
+	 *  (item starts with "retro " / "replica " AND a base item with the
+	 *  remaining name exists). Computed lazily, cached for JVM lifetime. */
 	private static int oldLookCount = -1;
 	public static synchronized int countItemsWithOldLook() {
 		if (oldLookCount >= 0) return oldLookCount;
 		int n = 0;
 		try {
 			int max = Math.min(50000, com.rs.utils.Utils.getItemDefinitionsSize());
+			java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
 			for (int id = 0; id < max; id++) {
 				if (!com.rs.utils.Utils.itemExists(id)) continue;
 				com.rs.cache.loaders.ItemDefinitions def =
 					com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
 				if (def == null || def.isNoted()) continue;
-				if (def.hasOldLook()) n++;
+				String name = def.getName();
+				if (name == null || name.isEmpty()
+						|| name.equalsIgnoreCase("null")) continue;
+				nameToId.putIfAbsent(name.toLowerCase(), id);
+			}
+			for (int id = 0; id < max; id++) {
+				if (!com.rs.utils.Utils.itemExists(id)) continue;
+				com.rs.cache.loaders.ItemDefinitions def =
+					com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+				if (def == null || def.isNoted()) continue;
+				String name = def.getName();
+				if (name == null || name.isEmpty()) continue;
+				if (def.hasOldLook()) { n++; continue; }
+				String lower = name.toLowerCase();
+				String[] prefixes = { "retro ", "replica " };
+				for (String p : prefixes) {
+					if (lower.startsWith(p)) {
+						String tail = lower.substring(p.length()).trim();
+						Integer bid = nameToId.get(tail);
+						if (bid != null && bid != id) { n++; break; }
+					}
+				}
 			}
 		} catch (Throwable ignored) {}
 		oldLookCount = n;

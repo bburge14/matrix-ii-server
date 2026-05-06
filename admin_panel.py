@@ -2411,30 +2411,29 @@ class ItemsFrame(ctk.CTkFrame):
     def _oldlook_scan(self):
         def do():
             try:
-                resp = self.api.items_oldlook_scan(limit=500)
-                total = resp.get("totalItems", 0)
-                old   = resp.get("withOldLook", 0)
-                rows  = resp.get("rows", []) or []
+                resp = self.api.items_oldlook_scan(limit=2000)
+                total   = resp.get("totalItems", 0)
+                opcode  = resp.get("withOpcodeOldLook", 0)
+                named   = resp.get("withNamePair", 0)
+                rows    = resp.get("rows", []) or []
                 lines = [
-                    f"Cache total items scanned : {total:,}",
-                    f"Items with old-look variant: {old:,}",
+                    f"Cache total items scanned        : {total:,}",
+                    f"Items with cache-opcode old-look : {opcode:,}",
+                    f"Items with retro/replica name pair: {named:,}",
+                    f"TOTAL retro/old-look candidates  : {opcode + named:,}",
                     "",
-                    "(Showing first " + str(len(rows)) + " rows. Each lists which",
-                    " old-look fields are present: I=oldInvIcon,",
-                    " M1/F1/M2/F2/M3/F3=old equip models, C=old colours.)",
+                    "Rows below: id [source] name -> baseId baseName",
+                    "  source = 'opcode' (cache opcodes 242-251) /",
+                    "           'retro'  (name starts with 'Retro ' or '(retro)') /",
+                    "           'replica' (same for 'Replica ').",
                     "",
                 ]
                 for r in rows:
-                    flags = []
-                    if r.get("oldInv", -1) != -1: flags.append("I")
-                    if r.get("oldM1",  -1) != -1: flags.append("M1")
-                    if r.get("oldF1",  -1) != -1: flags.append("F1")
-                    if r.get("oldM2",  -1) != -1: flags.append("M2")
-                    if r.get("oldF2",  -1) != -1: flags.append("F2")
-                    if r.get("oldM3",  -1) != -1: flags.append("M3")
-                    if r.get("oldF3",  -1) != -1: flags.append("F3")
-                    if r.get("colors"):           flags.append("C")
-                    lines.append(f"  {r['id']:>6}  [{','.join(flags):<14}]  {r.get('name','?')}")
+                    src = r.get("source", "?")
+                    base = r.get("baseId", -1)
+                    bn   = r.get("baseName", "")
+                    base_str = f"-> {base:>6} {bn}" if base >= 0 else ""
+                    lines.append(f"  {r['id']:>6}  [{src:<8}]  {r.get('name','?'):<35}  {base_str}")
                 self.after(0, lambda: self._show_text_window(
                     "Old-Look Items Scan", "\n".join(lines)))
             except Exception as e:

@@ -1393,32 +1393,40 @@ public final class AdminHttpServer {
 
     /**
      * GET /admin/items/oldlook-scan
-     * Walks the entire cache and lists every item that has a retro / old
-     * look variant defined (any of opcodes 242-251). Also reports a
-     * summary count so the admin panel can show "N items have an old
-     * look in this cache" without enumerating all of them.
+     *
+     * Two-phase scan:
+     *   Phase A - cache-opcode based: every item that has opcodes 242-251
+     *             populated (oldInvModel / oldEquipModelN / oldColours).
+     *   Phase B - NAME based: every item whose name contains "retro" or
+     *             "replica" plus a base counterpart (e.g. "Retro plate
+     *             body" + "Plate body" -> register that pair as an
+     *             old-look mapping). This is how Matrix's cache stores
+     *             retro variants - separate item ids, not opcode 242
+     *             alternates.
      *
      * Query params:
-     *   limit=N  cap the rows returned (default 500, set 0 = no rows just count)
+     *   limit=N  cap rows returned (default 1000, 0 = count only)
      *
      * Body:
-     *   {"ok":true, "totalItems":N, "withOldLook":N, "rows":[
-     *      {"id":I, "name":"...", "oldInv":I, "oldM1":I, "oldF1":I,
-     *       "oldM2":I, "oldF2":I, "oldM3":I, "oldF3":I, "colors":bool},
-     *      ...]}
+     *   {"ok":true,
+     *    "totalItems":N, "withOpcodeOldLook":N, "withNamePair":N,
+     *    "rows":[{"id":I, "name":"...", "source":"opcode|retro|replica",
+     *             "baseId":I, "baseName":"..."} ...]}
      */
     private static class ItemsOldLookHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) throws IOException {
             try {
                 java.util.Map<String,String> q = parseQuery(ex.getRequestURI().getRawQuery());
-                int limit = 500;
+                int limit = 1000;
                 try { String v = q.get("limit"); if (v != null) limit = Integer.parseInt(v); }
                 catch (Throwable ignored) {}
                 int max = com.rs.utils.Utils.getItemDefinitionsSize();
                 if (max > 50000) max = 50000;
-                int total = 0, oldCount = 0;
-                StringBuilder rows = new StringBuilder();
-                int rowsAdded = 0;
+
+                // First pass: build a name->id index (lowercase) so we can
+                // match retro / replica variants to their base item.
+                java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
+                int total = 0;
                 for (int id = 0; id < max; id++) {
                     if (!com.rs.utils.Utils.itemExists(id)) continue;
                     com.rs.cache.loaders.ItemDefinitions def =
@@ -1429,27 +1437,79 @@ public final class AdminHttpServer {
                             || name.equalsIgnoreCase("null")) continue;
                     if (def.isNoted()) continue;
                     total++;
-                    if (!def.hasOldLook()) continue;
-                    oldCount++;
+                    nameToId.putIfAbsent(name.toLowerCase(), id);
+                }
+
+                int opcodeCount = 0, nameCount = 0, rowsAdded = 0;
+                StringBuilder rows = new StringBuilder();
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+
+                    String source = null;
+                    int baseId = -1;
+                    String baseName = "";
+
+                    // Phase A: opcode 242-251 alternates.
+                    if (def.hasOldLook()) {
+                        source = "opcode";
+                        opcodeCount++;
+                    } else {
+                        // Phase B: name patterns. Try several variants.
+                        String[] prefixes = { "retro ", "replica " };
+                        for (String p : prefixes) {
+                            if (!lower.startsWith(p)) continue;
+                            String tail = lower.substring(p.length()).trim();
+                            Integer bId = nameToId.get(tail);
+                            if (bId != null && bId != id) {
+                                source = p.trim();
+                                baseId = bId;
+                                baseName = tail;
+                                nameCount++;
+                                break;
+                            }
+                        }
+                        // Some caches use "<item> (retro)" / "(replica)" suffix.
+                        if (source == null) {
+                            String[] suffixes = { "(retro)", "(replica)" };
+                            for (String s : suffixes) {
+                                if (!lower.endsWith(s)) continue;
+                                String tail = lower.substring(0, lower.length() - s.length()).trim();
+                                Integer bId = nameToId.get(tail);
+                                if (bId != null && bId != id) {
+                                    source = s.replace("(", "").replace(")", "");
+                                    baseId = bId;
+                                    baseName = tail;
+                                    nameCount++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (source == null) continue;
+
                     if (limit > 0 && rowsAdded < limit) {
                         if (rowsAdded > 0) rows.append(",");
                         rows.append("{\"id\":").append(id)
                             .append(",\"name\":\"").append(jsonEscape(name)).append("\"")
-                            .append(",\"oldInv\":").append(def.oldInvModelId)
-                            .append(",\"oldM1\":").append(def.oldMaleEquipModelId1)
-                            .append(",\"oldF1\":").append(def.oldFemaleEquipModelId1)
-                            .append(",\"oldM2\":").append(def.oldMaleEquipModelId2)
-                            .append(",\"oldF2\":").append(def.oldFemaleEquipModelId2)
-                            .append(",\"oldM3\":").append(def.oldMaleEquipModelId3)
-                            .append(",\"oldF3\":").append(def.oldFemaleEquipModelId3)
-                            .append(",\"colors\":").append(def.oldOriginalModelColors != null)
+                            .append(",\"source\":\"").append(source).append("\"")
+                            .append(",\"baseId\":").append(baseId)
+                            .append(",\"baseName\":\"").append(jsonEscape(baseName)).append("\"")
                             .append("}");
                         rowsAdded++;
                     }
                 }
                 sendText(ex, 200, "{\"ok\":true"
                     + ",\"totalItems\":" + total
-                    + ",\"withOldLook\":" + oldCount
+                    + ",\"withOpcodeOldLook\":" + opcodeCount
+                    + ",\"withNamePair\":" + nameCount
                     + ",\"rows\":[" + rows + "]}");
             } catch (Throwable t) {
                 t.printStackTrace();
