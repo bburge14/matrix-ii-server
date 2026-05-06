@@ -1967,6 +1967,15 @@ public class Player extends Entity {
 	return canPvp;
     }
 
+    /** Persistent player setting: true = the player has opted in to PvP.
+     *  When false, even in the wilderness the controller will leave
+     *  canPvp at false, and Wilderness.canAttack rejects both sides
+     *  attacking each other (including PK bots vs the opted-out
+     *  player). Toggleable via the Oracle of Dawn dialogue. */
+    private boolean pkOptIn = false;
+    public boolean isPkOptIn() { return pkOptIn; }
+    public void setPkOptIn(boolean v) { this.pkOptIn = v; }
+
     public void setCanPvp(boolean canPvp) {
 	if (this.canPvp == canPvp)
 	    return;

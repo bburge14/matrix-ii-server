@@ -540,7 +540,20 @@ public class EconomyManager {
 							"x40 xp, x100 combat xp, x1 drop rate (Recommended)",
 							"x100 xp, x500 combat xp, x0.4 drop rate",
 							"Back");
-					} else if (optionId == 12) { // back
+					} else if (optionId == 12) { // PK opt-in toggle
+						player.setPkOptIn(!player.isPkOptIn());
+						player.getPackets().sendGameMessage(
+							"PK opt-in is now <col="
+							+ (player.isPkOptIn() ? "00cc00>ON" : "cc3030>OFF") + "</col>. "
+							+ (player.isPkOptIn()
+								? "You can attack and be attacked by other players in the wilderness."
+								: "You can't attack or be attacked by other players, including PK bots."));
+						// If they opted out while currently flagged for pvp, drop the flag now.
+						if (!player.isPkOptIn() && player.isCanPvp()) {
+							player.setCanPvp(false);
+						}
+						setManagementPage();
+					} else if (optionId == 13) { // back
 						setTitlePage();
 					}
 				} else if (pageId == 20) { // combat mode picker
@@ -682,11 +695,21 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				// "Switch to old/new items look" - render-time swap via
-				// RetroSwaps. Inventory / equipment / appearance encoders
-				// rewrite item ids on the way out based on the player flag,
-				// no actual storage mutation.
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to retro items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
+				setPage(2, "This section contains features, which will help you to manage your account easier.",
+					"Change password",
+					"Authenticate your forum account",
+					"Display name management",
+					player.isOldItemsLook() ? "Switch to new items look" : "Switch to retro items look",
+					"Set your title",
+					player.isXpLocked() ? "Unlock XP" : "Lock XP",
+					player.isYellOff() ? "Toogle yell on" : "Toogle yell off",
+					"Set yell color",
+					"Set baby troll name",
+					"Redesign character",
+					"Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")",
+					"XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)",
+					"PK opt-in: " + (player.isPkOptIn() ? "<col=00cc00>ON</col>" : "<col=cc3030>OFF</col>"),
+					"Back");
 			}
 
 			private void setTeleportsTitlePage() {

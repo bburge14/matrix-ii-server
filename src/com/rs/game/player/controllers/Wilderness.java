@@ -79,6 +79,18 @@ public class Wilderness extends Controller {
 	public boolean canAttack(Entity target) {
 		if (target instanceof Player) {
 			Player p2 = (Player) target;
+			// PK opt-in gate. If either side hasn't opted in to PvP,
+			// neither can attack the other - holds for real players
+			// AND for PK bots (they get rejected at this same check
+			// when their target is opted out, and vice versa).
+			if (!player.isPkOptIn()) {
+				player.getPackets().sendGameMessage("You haven't opted in to PvP. Talk to the Oracle of Dawn to enable it.");
+				return false;
+			}
+			if (!p2.isPkOptIn()) {
+				player.getPackets().sendGameMessage("That player has not opted in to PvP.");
+				return false;
+			}
 			if (player.isCanPvp() && !p2.isCanPvp()) {
 				player.getPackets().sendGameMessage("That player is not in the wilderness.");
 				return false;
@@ -357,7 +369,11 @@ public class Wilderness extends Controller {
 		boolean isAtWildSafe = isAtWildSafe(player);
 		if (!showingSkull && isAtWild && !isAtWildSafe) {
 			showingSkull = true;
-			player.setCanPvp(true);
+			// Only flip canPvp on if the player has opted in.
+			// Opted-out players still see the wildy skull / icon
+			// (so they know they're in the area) but the engine
+			// won't let them attack or be attacked.
+			if (player.isPkOptIn()) player.setCanPvp(true);
 			showSkull();
 		}
 		else if (showingSkull && (isAtWildSafe || !isAtWild)) {
