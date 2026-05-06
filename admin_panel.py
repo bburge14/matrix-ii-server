@@ -182,6 +182,19 @@ class MatrixAPI:
         body = {"ids": [int(i) for i in ids], "clear": True}
         return self._post("/admin/items/tradeable", body)
 
+    # Dye recolor framework
+    def dyes_scan(self):
+        return self._get("/admin/items/dyes/scan")
+    def dyes_autopopulate(self):
+        return self._post("/admin/items/dyes/autopopulate")
+    def dyes_reload(self):
+        return self._post("/admin/items/dyes/reload")
+
+    # Old/retro look scan (every item with an alternate "old" model
+    # variant in the cache; the items-look toggle target list).
+    def items_oldlook_scan(self, limit=500):
+        return self._get(f"/admin/items/oldlook-scan?limit={int(limit)}")
+
     # World tick profiler
     def profiler_start(self):        return self._post("/admin/profiler/start")
     def profiler_stop(self):         return self._post("/admin/profiler/stop")
@@ -1629,11 +1642,39 @@ class PhantomGEFrame(ctk.CTkFrame):
             width=160, command=self._toggle)
         self.toggle_btn.pack(side="left", padx=4)
 
-        ctk.CTkLabel(self,
-            text="Shadow matcher fills player offers without bot players. "
-                 "Edits push immediately. Curl-equivalent docs in PhantomMarket.java.",
-            font=ctk.CTkFont(size=11), text_color="#888", justify="left"
-            ).pack(fill="x", padx=20, pady=(0, 4))
+        # ------- How-it-works explainer -------
+        explainer = ctk.CTkFrame(self, fg_color="#1a1d22")
+        explainer.pack(fill="x", padx=20, pady=(0, 8))
+        ctk.CTkLabel(explainer, text="How Phantom GE works",
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color="#e0a93f", anchor="w").pack(
+                     anchor="w", padx=12, pady=(8, 2))
+        ctk.CTkLabel(explainer, justify="left", anchor="w", wraplength=900,
+            font=ctk.CTkFont(size=11), text_color="#cccccc",
+            text=(
+"Player places a GE offer. Phantom GE rolls TWO chances to fill it from a virtual counter-party:\n"
+"\n"
+"  1. ON PLACE  (~5s after Confirm):  rate = fillRateOnPlace × tierMultiplier   (capped at 100%)\n"
+"  2. AGING TICK (every 30s, after offer is minAgeBeforeFillMs old):\n"
+"                                     rate = fillRatePerTick × tierMultiplier\n"
+"\n"
+"Tiers come from the item's GE reference price:\n"
+"  cheap < 1k  | bulk < 10k | low < 100k | mid < 1m | high < 10m | rare ≥ 10m\n"
+"\n"
+"Each tier has its own multiplier (below).  Example with current defaults:\n"
+"  • bulk item (logs):  on-place = 0.50 × 6 = 100% (instant);  per-tick = 0.25 × 6 = 100% (instant if it survived).\n"
+"  • mid item (whip):   on-place = 0.50 × 1.5 = 75%;  per-tick = 37.5% per 30s → ~80s expected.\n"
+"  • rare (partyhat):   on-place = 0.50 × 0.3 = 15%;  per-tick = 7.5% per 30s → ~7 min expected.\n"
+"\n"
+"Items NEVER fill if:\n"
+"  (a) item not in the bot trader catalog (no reference price → tryFill returns)\n"
+"  (b) listed price outside ±acceptableSpread of catalog (default ±30%)\n"
+"  (c) hit a cap: maxFillsPerPlayerPerHour or maxFillsPerItemPerHour\n"
+"  (d) owner logged out\n"
+"  (e) Phantom GE disabled\n"
+"\n"
+"Add missing items via the GE Prices tab (sets reference price) or the Items tab (tradeable + price).")
+            ).pack(anchor="w", padx=12, pady=(0, 8), fill="x")
 
         # Two columns: left = config knobs, right = fill log
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -1654,46 +1695,45 @@ class PhantomGEFrame(ctk.CTkFrame):
                 "entirely (no auto-fills, P2P matching still works)."),
             ("fillRateOnPlace",
                 "Base chance an offer fills ~5s after placement. "
-                "Multiplied by the tier mult below. e.g. 0.30 with bulk 5x = "
-                "150% (capped at 100%) - bulk items insta-fill on placement."),
+                "Multiplied by the tier mult below. Default 0.50 → "
+                "bulk = 100%, mid = 75%, high = 50%, rare = 15%."),
             ("fillRatePerTick",
                 "Base chance per 30s tick that an aging offer fills. "
-                "Same tier-mult math. e.g. 0.10 with mid 1x = 10% per 30s, "
-                "so mid-tier offers usually fill within ~5 minutes."),
+                "Default 0.25 → mid = 37%/30s (~80s avg), high = 25%/30s "
+                "(~2 min avg), rare = 7.5%/30s (~7 min avg)."),
             ("acceptableSpread",
                 "Price tolerance vs the GE reference. 0.30 = phantom only "
                 "fills if player's price is within ±30%. Rejects 'wtb phat 1gp' "
-                "trolls. Lower = stricter."),
+                "trolls. Lower = stricter, raise to allow extreme listings."),
             ("minAgeBeforeFillMs",
-                "Offer must sit this long before any phantom fill. Lets "
-                "players cancel misclicks. 30000 = 30s default."),
+                "Offer must sit this long before any phantom fill or aging "
+                "tick. Lets players cancel misclicks. Default 10000 = 10s."),
             ("cheapMultiplier",
-                "Items < 1k gp (eg copper ore, raw shrimps). Multiplier on "
-                "both base rates. 10x = effectively instant fills always."),
+                "Items < 1k gp (eg copper ore, raw shrimps). 10x default = "
+                "always instant on placement (capped at 100%)."),
             ("bulkMultiplier",
-                "Items < 10k gp (logs, ores, runes, raw fish). 5x default = "
-                "very fast fills, 1-2 min typically."),
+                "Items < 10k gp (logs, ores, runes, raw fish). 6x default = "
+                "instant on placement, fills any aging offer in 1-2 ticks."),
             ("lowMultiplier",
-                "Items < 100k gp (rune armor pieces, dragon scim, basic "
-                "amulets). 2x default = fills within a few minutes."),
+                "Items < 100k gp (rune armor, dragon scim, basic amulets). "
+                "3x default = ~150% on place (instant), ~75%/tick aging."),
             ("midMultiplier",
                 "Items < 1m gp (whips, dragon weapons, mystic, mid jewelry). "
-                "1x default = base rate, ~5-10 min typical fill."),
+                "1.5x default = 75% on place, ~37%/30s aging (1-2 min avg)."),
             ("highMultiplier",
-                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 0.5x "
-                "default = slow, 30+ min for full fill."),
+                "Items < 10m gp (bandos, armadyl, fury, ags/bgs). 1.0x "
+                "default = 50% on place, 25%/30s aging (~2 min avg)."),
             ("rareMultiplier",
-                "Items ≥ 10m gp (partyhats, hween masks, christmas crackers, "
-                "phats). 0.1x default = days to fill - rare items shouldn't "
-                "auto-flip cheaply."),
+                "Items ≥ 10m gp (partyhats, hween masks, third age, phats). "
+                "0.3x default = 15% on place, 7.5%/30s aging (~7 min avg)."),
             ("maxFillsPerPlayerPerHour",
                 "Anti-abuse: max phantom fills any one player can receive per "
-                "hour. Stops sitting at GE flipping infinitely against the "
-                "phantom. Resets every hour. 50 default."),
+                "hour. Default 200 (was 50) - matches the higher fill rates "
+                "so casual flippers don't hit the cap."),
             ("maxFillsPerItemPerHour",
                 "Anti-abuse: max phantom fills total for any one item id per "
-                "hour. Stops draining 'phantom inventory' on a hot item. "
-                "20 default."),
+                "hour. Default 100 (was 20). Stops draining a single hot "
+                "item's phantom inventory."),
             ("partialFillChance",
                 "When phantom DOES fill, this is the chance it only fills "
                 "20-70% of the offer instead of all. Mimics multiple small "
@@ -2118,6 +2158,32 @@ class ItemsFrame(ctk.CTkFrame):
         ctk.CTkButton(a, text="Set GE Price...", width=120, fg_color="#3a5588",
                       command=self._bulk_set_price).pack(side="left", padx=4)
 
+        # ---- dye action row ----
+        d = ctk.CTkFrame(self)
+        d.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(d, text="Dyes:").pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Scan Cache", width=110,
+                      command=self._dye_scan).pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Auto-populate Mappings", width=170, fg_color="#1b6e3a",
+                      command=self._dye_autopopulate).pack(side="left", padx=4)
+        ctk.CTkButton(d, text="Reload JSON", width=110,
+                      command=self._dye_reload).pack(side="left", padx=4)
+        ctk.CTkLabel(d, text="(scan = list dyes in cache; auto-populate = "
+                     "build dye_recolors.json from name patterns)",
+                     font=ctk.CTkFont(size=10), text_color="#888"
+                     ).pack(side="left", padx=8)
+
+        # ---- old/retro look scan row ----
+        o = ctk.CTkFrame(self)
+        o.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(o, text="Retro Look:").pack(side="left", padx=4)
+        ctk.CTkButton(o, text="Scan Cache for Old-Look Items", width=240,
+                      command=self._oldlook_scan).pack(side="left", padx=4)
+        ctk.CTkLabel(o, text="(items with both new + old (retro / 2007-style) "
+                     "model variants. Toggle wiring TBD.)",
+                     font=ctk.CTkFont(size=10), text_color="#888"
+                     ).pack(side="left", padx=8)
+
         # ---- table (Tk Treeview - faster than custom widgets at 200 rows) ----
         from tkinter import ttk
         cols = ("id", "name", "slot", "wearable", "tradeable", "override", "price")
@@ -2273,6 +2339,119 @@ class ItemsFrame(ctk.CTkFrame):
                 self.after(0, lambda: messagebox.showerror(
                     "Set price failed", f"{type(e).__name__}: {e}"))
         threading.Thread(target=do, daemon=True).start()
+
+    def _dye_scan(self):
+        def do():
+            try:
+                resp = self.api.dyes_scan()
+                dyes = resp.get("dyes", []) if resp else []
+                tints = resp.get("tints", []) if resp else []
+                # Build a readable summary window
+                lines = [f"Found {len(dyes)} dye item(s) and {len(tints)} dyed-variant item(s).\n"]
+                if dyes:
+                    lines.append("=== DYES ===")
+                    for d in dyes[:50]:
+                        lines.append(f"  {d['id']:>6}  {d['name']}")
+                    if len(dyes) > 50:
+                        lines.append(f"  ... and {len(dyes) - 50} more")
+                if tints:
+                    lines.append("\n=== TINTED VARIANTS (first 50) ===")
+                    for t in tints[:50]:
+                        lines.append(f"  {t['id']:>6}  {t['name']}")
+                    if len(tints) > 50:
+                        lines.append(f"  ... and {len(tints) - 50} more")
+                if not dyes and not tints:
+                    lines.append("\nNo dyes / tinted items found in the cache.\n"
+                                 "If your dyes have unusual names (not ending in "
+                                 "' dye'), tell Claude what they're called.")
+                self.after(0, lambda: self._show_text_window(
+                    "Dye Cache Scan", "\n".join(lines)))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Scan failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _dye_autopopulate(self):
+        if not messagebox.askyesno("Auto-populate Dye Mappings",
+            "Walk the cache and auto-build data/items/dye_recolors.json from "
+            "name patterns:\n\n"
+            "  Pattern A: '<prefix> X' + 'X' present  ->  X dyes to '<prefix> X'\n"
+            "  Pattern B: 'X (<prefix>)' + 'X' present  ->  X dyes to 'X (<prefix>)'\n\n"
+            "OVERWRITES the existing JSON file. Continue?"):
+            return
+        def do():
+            try:
+                resp = self.api.dyes_autopopulate()
+                added = resp.get("added", 0) if resp else 0
+                dyes = resp.get("dyes", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Auto-populate done",
+                    f"Wrote {dyes} dye(s) with {added} mapping(s) to "
+                    f"data/items/dye_recolors.json.\n\n"
+                    f"Dyes are live now (hot-reloaded). Test in-game by using "
+                    f"a dye on a matching weapon."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Auto-populate failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _dye_reload(self):
+        def do():
+            try:
+                resp = self.api.dyes_reload()
+                n = resp.get("dyes", 0) if resp else 0
+                self.after(0, lambda: messagebox.showinfo(
+                    "Reloaded", f"data/items/dye_recolors.json reloaded.\n"
+                    f"{n} dye(s) registered."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Reload failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _oldlook_scan(self):
+        def do():
+            try:
+                resp = self.api.items_oldlook_scan(limit=500)
+                total = resp.get("totalItems", 0)
+                old   = resp.get("withOldLook", 0)
+                rows  = resp.get("rows", []) or []
+                lines = [
+                    f"Cache total items scanned : {total:,}",
+                    f"Items with old-look variant: {old:,}",
+                    "",
+                    "(Showing first " + str(len(rows)) + " rows. Each lists which",
+                    " old-look fields are present: I=oldInvIcon,",
+                    " M1/F1/M2/F2/M3/F3=old equip models, C=old colours.)",
+                    "",
+                ]
+                for r in rows:
+                    flags = []
+                    if r.get("oldInv", -1) != -1: flags.append("I")
+                    if r.get("oldM1",  -1) != -1: flags.append("M1")
+                    if r.get("oldF1",  -1) != -1: flags.append("F1")
+                    if r.get("oldM2",  -1) != -1: flags.append("M2")
+                    if r.get("oldF2",  -1) != -1: flags.append("F2")
+                    if r.get("oldM3",  -1) != -1: flags.append("M3")
+                    if r.get("oldF3",  -1) != -1: flags.append("F3")
+                    if r.get("colors"):           flags.append("C")
+                    lines.append(f"  {r['id']:>6}  [{','.join(flags):<14}]  {r.get('name','?')}")
+                self.after(0, lambda: self._show_text_window(
+                    "Old-Look Items Scan", "\n".join(lines)))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Old-look scan failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _show_text_window(self, title, body):
+        win = ctk.CTkToplevel(self)
+        win.title(title)
+        win.geometry("700x500")
+        text = ctk.CTkTextbox(win, font=("Consolas", 11))
+        text.pack(fill="both", expand=True, padx=10, pady=10)
+        text.insert("1.0", body)
+        text.configure(state="disabled")
+        ctk.CTkButton(win, text="Close", command=win.destroy,
+                      width=100).pack(pady=8)
 
 
 # ----- Players tab -----

@@ -2887,6 +2887,9 @@ public class Player extends Entity {
     public void switchItemsLook() {
 	oldItemsLook = !oldItemsLook;
 	getPackets().sendItemsLook();
+	getPackets().sendGameMessage("You are now playing with "
+		+ (oldItemsLook ? "<col=ffaa55>old</col>" : "<col=ffaa55>new</col>")
+		+ " item looks. Reopen your inventory / equipment to refresh icons.");
     }
 
     /**

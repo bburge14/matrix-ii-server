@@ -75,6 +75,17 @@ public final class AdminHttpServer {
             server.createContext("/admin/items/scan",       auth(new ItemScanHandler()));
             server.createContext("/admin/items/all",        auth(new ItemsAllHandler()));
             server.createContext("/admin/items/tradeable",  auth(postOnly(new ItemsTradeableHandler())));
+            server.createContext("/admin/items/dyes/reload", auth(postOnly(new HttpHandler() {
+                @Override public void handle(HttpExchange ex) throws IOException {
+                    com.rs.utils.DyeRecolors.reload();
+                    sendText(ex, 200, "{\"ok\":true,\"dyes\":"
+                        + com.rs.utils.DyeRecolors.registeredDyeCount() + "}");
+                }
+            })));
+            server.createContext("/admin/items/dyes/scan", auth(new DyeScanHandler()));
+            server.createContext("/admin/items/dyes/autopopulate",
+                auth(postOnly(new DyeAutoPopulateHandler())));
+            server.createContext("/admin/items/oldlook-scan", auth(new ItemsOldLookHandler()));
             server.createContext("/admin/players/inspect", auth(new PlayerInspectHandler()));
             server.createContext("/admin/players/heal",    auth(postOnly(new PlayerHealHandler())));
             server.createContext("/admin/players/teleport",auth(postOnly(new PlayerTeleportHandler())));
@@ -1185,6 +1196,263 @@ public final class AdminHttpServer {
                 }
                 sendText(ex, 200, "{\"ok\":true,\"updated\":" + n + "}");
             } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * GET /admin/items/dyes/scan
+     * Walks the item cache and returns every item whose name contains "dye"
+     * OR matches one of the known cosmetic dye keywords (blood / shadow /
+     * ice / third-age / barrows / drygore / fury). Lets the admin see what
+     * dye items + dyed variants actually exist in this cache.
+     *
+     * Body: {"ok":true, "dyes":[{id,name},...], "tints":[{id,name},...]}
+     *   - dyes  = items whose name ends with "dye" (the consumable)
+     *   - tints = items with a known dye keyword in the name (the variants)
+     */
+    private static class DyeScanHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                StringBuilder dyes = new StringBuilder();
+                StringBuilder tints = new StringBuilder();
+                int dyeN = 0, tintN = 0;
+                String[] tintKeywords = {
+                    "blood", "shadow", "ice", "third-age", "third age",
+                    "barrows ", "drygore ", "fury "
+                };
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+                    boolean isDye = lower.endsWith(" dye") || lower.equals("dye")
+                        || lower.contains("blood dye") || lower.contains("shadow dye")
+                        || lower.contains("ice dye")  || lower.contains("third-age dye")
+                        || lower.contains("third age dye") || lower.contains("barrows dye");
+                    boolean isTint = false;
+                    if (!isDye) {
+                        for (String kw : tintKeywords) {
+                            if (lower.contains(kw)) { isTint = true; break; }
+                        }
+                    }
+                    if (isDye) {
+                        if (dyeN > 0) dyes.append(",");
+                        dyes.append("{\"id\":").append(id)
+                            .append(",\"name\":\"").append(jsonEscape(name)).append("\"}");
+                        dyeN++;
+                    } else if (isTint) {
+                        if (tintN > 0) tints.append(",");
+                        tints.append("{\"id\":").append(id)
+                             .append(",\"name\":\"").append(jsonEscape(name)).append("\"}");
+                        tintN++;
+                    }
+                }
+                sendText(ex, 200, "{\"ok\":true,\"dyes\":[" + dyes
+                    + "],\"tints\":[" + tints + "]}");
+            } catch (Throwable t) {
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * POST /admin/items/dyes/autopopulate
+     * Walks the cache and matches "<color> dye" items against weapons/armor
+     * whose name contains the dye color or the dye prefix pattern. Writes
+     * the result into data/items/dye_recolors.json and reloads.
+     *
+     * Pattern: for each "<X> dye" item (e.g. "Blood dye"), find every item
+     * whose name starts with "<X> " AND ALSO has a base counterpart whose
+     * name is the suffix without the prefix (e.g. "Blood noxious scythe" +
+     * "Noxious scythe"). Maps base -> dyed.
+     *
+     * Plus the reverse pattern: "Noxious scythe (blood)" -> "Noxious scythe"
+     * + "Blood dye".
+     *
+     * Body: {"ok":true, "added":N, "totalDyes":N}
+     */
+    private static class DyeAutoPopulateHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                // Collect all items with their lowercased names.
+                java.util.Map<String, Integer> nameToId = new java.util.HashMap<>();
+                java.util.List<int[]> dyeIds = new java.util.ArrayList<>();
+                java.util.List<String> dyeNames = new java.util.ArrayList<>();
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    String lower = name.toLowerCase();
+                    nameToId.putIfAbsent(lower, id);
+                    if (lower.endsWith(" dye") && !lower.equals("dye")) {
+                        dyeIds.add(new int[]{id});
+                        dyeNames.add(lower);
+                    }
+                }
+                // For each dye, derive the prefix (e.g. "blood" from
+                // "blood dye") and find base/dyed pairs.
+                java.util.Map<Integer, java.util.Map<Integer, Integer>> result =
+                    new java.util.LinkedHashMap<>();
+                int added = 0;
+                for (int i = 0; i < dyeIds.size(); i++) {
+                    int dyeId = dyeIds.get(i)[0];
+                    String dyeName = dyeNames.get(i);
+                    String prefix = dyeName.substring(0, dyeName.length() - 4).trim();
+                    if (prefix.isEmpty()) continue;
+                    // Build prefix variants for hyphen/space normalisation.
+                    // Cache uses inconsistent forms: dye name "Third-age dye"
+                    // but variant names use "(third age)" with a SPACE.
+                    java.util.Set<String> prefixForms = new java.util.LinkedHashSet<>();
+                    prefixForms.add(prefix);
+                    prefixForms.add(prefix.replace('-', ' '));
+                    prefixForms.add(prefix.replace(' ', '-'));
+                    java.util.Map<Integer, Integer> sub = new java.util.LinkedHashMap<>();
+                    // Skip "broken" / clearly non-equipped variants - those
+                    // shouldn't be the dye target. The (X, broken) form is
+                    // the post-degrade item and its presence shouldn't pull
+                    // mappings.
+                    for (String pf : prefixForms) {
+                        // Pattern A: "<prefix> X" -> "X"
+                        for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                            String n = e.getKey();
+                            if (n.contains(", broken")) continue;
+                            if (!n.startsWith(pf + " ")) continue;
+                            String tail = n.substring(pf.length() + 1);
+                            Integer baseId = nameToId.get(tail);
+                            if (baseId != null && baseId != e.getValue()) {
+                                if (!sub.containsKey(baseId)) {
+                                    sub.put(baseId, e.getValue());
+                                    added++;
+                                }
+                            }
+                        }
+                        // Pattern B: "X (<prefix>)" -> "X"
+                        String paren = "(" + pf + ")";
+                        for (java.util.Map.Entry<String, Integer> e : nameToId.entrySet()) {
+                            String n = e.getKey();
+                            if (n.contains(", broken")) continue;
+                            if (!n.endsWith(paren)) continue;
+                            String tail = n.substring(0, n.length() - paren.length()).trim();
+                            Integer baseId = nameToId.get(tail);
+                            if (baseId != null && baseId != e.getValue()) {
+                                if (!sub.containsKey(baseId)) {
+                                    sub.put(baseId, e.getValue());
+                                    added++;
+                                }
+                            }
+                        }
+                    }
+                    if (!sub.isEmpty()) result.put(dyeId, sub);
+                }
+                // Write JSON
+                java.io.File f = new java.io.File("data/items/dye_recolors.json");
+                if (f.getParentFile() != null) f.getParentFile().mkdirs();
+                try (java.io.PrintWriter w = new java.io.PrintWriter(f, "UTF-8")) {
+                    w.print("{");
+                    boolean firstDye = true;
+                    for (java.util.Map.Entry<Integer, java.util.Map<Integer, Integer>> e
+                            : result.entrySet()) {
+                        if (!firstDye) w.print(",");
+                        firstDye = false;
+                        w.print("\"" + e.getKey() + "\":{");
+                        boolean firstSrc = true;
+                        for (java.util.Map.Entry<Integer, Integer> p : e.getValue().entrySet()) {
+                            if (!firstSrc) w.print(",");
+                            firstSrc = false;
+                            w.print("\"" + p.getKey() + "\":" + p.getValue());
+                        }
+                        w.print("}");
+                    }
+                    w.println("}");
+                }
+                com.rs.utils.DyeRecolors.reload();
+                sendText(ex, 200, "{\"ok\":true,\"added\":" + added
+                    + ",\"dyes\":" + result.size() + "}");
+            } catch (Throwable t) {
+                t.printStackTrace();
+                sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
+            }
+        }
+    }
+
+    /**
+     * GET /admin/items/oldlook-scan
+     * Walks the entire cache and lists every item that has a retro / old
+     * look variant defined (any of opcodes 242-251). Also reports a
+     * summary count so the admin panel can show "N items have an old
+     * look in this cache" without enumerating all of them.
+     *
+     * Query params:
+     *   limit=N  cap the rows returned (default 500, set 0 = no rows just count)
+     *
+     * Body:
+     *   {"ok":true, "totalItems":N, "withOldLook":N, "rows":[
+     *      {"id":I, "name":"...", "oldInv":I, "oldM1":I, "oldF1":I,
+     *       "oldM2":I, "oldF2":I, "oldM3":I, "oldF3":I, "colors":bool},
+     *      ...]}
+     */
+    private static class ItemsOldLookHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) throws IOException {
+            try {
+                java.util.Map<String,String> q = parseQuery(ex.getRequestURI().getRawQuery());
+                int limit = 500;
+                try { String v = q.get("limit"); if (v != null) limit = Integer.parseInt(v); }
+                catch (Throwable ignored) {}
+                int max = com.rs.utils.Utils.getItemDefinitionsSize();
+                if (max > 50000) max = 50000;
+                int total = 0, oldCount = 0;
+                StringBuilder rows = new StringBuilder();
+                int rowsAdded = 0;
+                for (int id = 0; id < max; id++) {
+                    if (!com.rs.utils.Utils.itemExists(id)) continue;
+                    com.rs.cache.loaders.ItemDefinitions def =
+                        com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+                    if (def == null) continue;
+                    String name = def.getName();
+                    if (name == null || name.isEmpty()
+                            || name.equalsIgnoreCase("null")) continue;
+                    if (def.isNoted()) continue;
+                    total++;
+                    if (!def.hasOldLook()) continue;
+                    oldCount++;
+                    if (limit > 0 && rowsAdded < limit) {
+                        if (rowsAdded > 0) rows.append(",");
+                        rows.append("{\"id\":").append(id)
+                            .append(",\"name\":\"").append(jsonEscape(name)).append("\"")
+                            .append(",\"oldInv\":").append(def.oldInvModelId)
+                            .append(",\"oldM1\":").append(def.oldMaleEquipModelId1)
+                            .append(",\"oldF1\":").append(def.oldFemaleEquipModelId1)
+                            .append(",\"oldM2\":").append(def.oldMaleEquipModelId2)
+                            .append(",\"oldF2\":").append(def.oldFemaleEquipModelId2)
+                            .append(",\"oldM3\":").append(def.oldMaleEquipModelId3)
+                            .append(",\"oldF3\":").append(def.oldFemaleEquipModelId3)
+                            .append(",\"colors\":").append(def.oldOriginalModelColors != null)
+                            .append("}");
+                        rowsAdded++;
+                    }
+                }
+                sendText(ex, 200, "{\"ok\":true"
+                    + ",\"totalItems\":" + total
+                    + ",\"withOldLook\":" + oldCount
+                    + ",\"rows\":[" + rows + "]}");
+            } catch (Throwable t) {
+                t.printStackTrace();
                 sendText(ex, 500, "{\"ok\":false,\"error\":\"" + jsonEscape(t.toString()) + "\"}");
             }
         }

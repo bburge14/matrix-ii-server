@@ -49,42 +49,45 @@ public final class PhantomMarket {
 
     /** Per-tick fill probability when rolling on placement (within ~5s).
      *  This is the BASE; tier multipliers below apply on top so cheap
-     *  items fill instantly more often than rares. */
-    private static volatile double fillRateOnPlace = 0.30;
+     *  items fill instantly more often than rares. Bumped from 0.30 to
+     *  0.50 per user request - they don't want to wait long. */
+    private static volatile double fillRateOnPlace = 0.50;
 
     /** Per-30s-tick base fill rate for an aging offer. Multiplied by the
-     *  per-tier rate. */
-    private static volatile double fillRatePerTick = 0.10;
+     *  per-tier rate. Bumped from 0.10 to 0.25 - mid-tier offers now
+     *  fill in ~1-2 minutes typically instead of 5-10. */
+    private static volatile double fillRatePerTick = 0.25;
 
     /** Spread tolerance: phantom fills only if player's price is within
      *  +/- this fraction of the catalog reference. */
     private static volatile double acceptableSpread = 0.30;
 
     /** Min age (ms) before phantom-fill can fire. Lets player cancel a
-     *  misclick before the market eats it. */
-    private static volatile long minAgeBeforeFillMs = 30_000L;
+     *  misclick before the market eats it. Lowered to 10s so the
+     *  aging-fill cycle starts kicking in faster. */
+    private static volatile long minAgeBeforeFillMs = 10_000L;
 
     /** Per-tier fill rate multipliers. Applied to BOTH on-place and
-     *  per-tick rolls so cheap items have a high instant-fill chance
-     *  AND fast aging fills, while rare items take their time on both
-     *  paths. Refprice tiers:
-     *    cheap   < 1k       -> 10.0x  (effectively instant for tutorials)
-     *    bulk    < 10k      -> 5.0x   (logs / ores / runes / fish)
-     *    low     < 100k     -> 2.0x   (basic dragon, rune armor pieces)
-     *    mid     < 1m       -> 1.0x   (whips, dragon weapons, mid jewelry)
-     *    high    < 10m      -> 0.5x   (bandos, armadyl, fury)
-     *    rare    >= 10m     -> 0.1x   (godswords, partyhats, hween masks)
+     *  per-tick rolls. Bumped across the board per user "higher
+     *  chance for buy/sell, don't want to wait long":
+     *    cheap   < 1k       -> 10.0x  (effectively instant)
+     *    bulk    < 10k      -> 6.0x   (was 5.0)
+     *    low     < 100k     -> 3.0x   (was 2.0)
+     *    mid     < 1m       -> 1.5x   (was 1.0)
+     *    high    < 10m      -> 1.0x   (was 0.5 - now base rate)
+     *    rare    >= 10m     -> 0.3x   (was 0.1 - rares fill in ~7 min not days)
      */
     private static volatile double cheapMultiplier  = 10.0;
-    private static volatile double bulkMultiplier   = 5.0;
-    private static volatile double lowMultiplier    = 2.0;
-    private static volatile double midMultiplier    = 1.0;
-    private static volatile double highMultiplier   = 0.5;
-    private static volatile double rareMultiplier   = 0.1;
+    private static volatile double bulkMultiplier   = 6.0;
+    private static volatile double lowMultiplier    = 3.0;
+    private static volatile double midMultiplier    = 1.5;
+    private static volatile double highMultiplier   = 1.0;
+    private static volatile double rareMultiplier   = 0.3;
 
-    /** Anti-abuse caps. */
-    private static volatile int maxFillsPerPlayerPerHour = 50;
-    private static volatile int maxFillsPerItemPerHour   = 20;
+    /** Anti-abuse caps. Bumped to match higher fill rates so a normal
+     *  player flipping a few items doesn't smack into the cap. */
+    private static volatile int maxFillsPerPlayerPerHour = 200;
+    private static volatile int maxFillsPerItemPerHour   = 100;
 
     /** When filling, chance to do a partial fill instead of full. */
     private static volatile double partialFillChance = 0.40;

@@ -441,13 +441,13 @@ public final class TrainingMethods {
         // so bots aggro the right pack on arrival.
         ALL.add(b("Train combat - Burthorpe imps", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 20).at(2898, 3554).xp(7000).cb(1)
-            .npcs(414, 7878).build());
+            .npcs(708, 709).build()); // 708 imp, 709 vicious imp (414 was wrong)
         ALL.add(b("Train combat - Burthorpe goblins", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 25).at(2880, 3546).xp(9000).cb(1)
-            .npcs(4481, 4482, 4485, 4486, 4488, 4491, 4493).build());
+            .npcs(100, 101, 102).build()); // 100/101 goblin, 102 strong goblin
         ALL.add(b("Train combat - Death Plateau trolls", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(60, 99).at(2853, 3582).xp(35000).cb(60)
-            .npcs(941, 942, 943, 944, 945).build());
+            .npcs(1095, 1096, 1097, 1098).build()); // mountain trolls (941-945 were wrong)
 
         // Tier 2 (cb 30-60): guards, knights, hill giants
         ALL.add(b("Train combat - Falador guards", Kind.COMBAT)

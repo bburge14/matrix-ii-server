@@ -1726,11 +1726,19 @@ public class WorldPacketsEncoder extends Encoder {
 	}
 
 	public void sendItemsLook() {
-		// currently disabled
+		// Disabled - opcode 159 in this 830 cache crashes the client
+		// (ArrayIndexOutOfBoundsException: 30575 in game.Class512).
+		// The previous "currently disabled" comment from the original
+		// codebase was correct - re-enabling broke clients. The right
+		// items-look toggle in modern caches is likely a config var /
+		// cs2 script rather than a dedicated packet, but I haven't
+		// found it yet. Until then, switchItemsLook only flips the
+		// server-side flag for cosmetic display purposes (chat msg).
+		// Build the packet but don't send.
 		OutputStream stream = new OutputStream(2);
 		stream.writePacket(player, 159);
 		stream.writeByte(player.isOldItemsLook() ? 1 : 0);
-		//session.write(stream);
+		// session.write(stream);  <- crashes 830 client
 	}
 
 	public void sendLogReq(String file) {

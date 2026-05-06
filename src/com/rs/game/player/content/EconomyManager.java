@@ -57,6 +57,27 @@ public class EconomyManager {
 
 	public static int[] MANAGER_NPC_IDS = new int[]
 	{ 13930, 15158 };
+
+	/** Cached count of cache items that have an old-look variant.
+	 *  Computed lazily on first call - the cache scan walks every
+	 *  item def so we only do it once per JVM lifetime. */
+	private static int oldLookCount = -1;
+	public static synchronized int countItemsWithOldLook() {
+		if (oldLookCount >= 0) return oldLookCount;
+		int n = 0;
+		try {
+			int max = Math.min(50000, com.rs.utils.Utils.getItemDefinitionsSize());
+			for (int id = 0; id < max; id++) {
+				if (!com.rs.utils.Utils.itemExists(id)) continue;
+				com.rs.cache.loaders.ItemDefinitions def =
+					com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(id);
+				if (def == null || def.isNoted()) continue;
+				if (def.hasOldLook()) n++;
+			}
+		} catch (Throwable ignored) {}
+		oldLookCount = n;
+		return n;
+	}
 	public static String[] MANAGER_NPC_TEXTS = new String[]
 	{ "I seek the evil power!", "I smell the darkness...", "I sense the darkness...", "Evil forces are getting stronger...", "Come to me, traveler!" };
 
@@ -287,7 +308,26 @@ public class EconomyManager {
 		player.getPackets().sendHideIComponent(1312, 26, true);
 	}
 
-	public static void setupInterface(Player player, String[] options) {
+	public static void setupInterface(final Player player, final String[] options) {
+		writeOptionsImmediate(player, options);
+		// Interface 1312 has a cs2 onLoad that pre-populates the option
+		// text with fortune-cookie / motivational lines from the cache.
+		// Without re-applying our text after the cs2 runs, those lines
+		// bleed through and the menu shows "Working towards a party
+		// hat" / "Born to PK" interleaved with our real options. One
+		// tick later we KNOW the cs2 has finished, so we write again -
+		// our text wins.
+		com.rs.game.tasks.WorldTasksManager.schedule(
+			new com.rs.game.tasks.WorldTask() {
+				@Override public void run() {
+					if (player == null || player.hasFinished()) { stop(); return; }
+					writeOptionsImmediate(player, options);
+					stop();
+				}
+			}, 1);
+	}
+
+	private static void writeOptionsImmediate(Player player, String[] options) {
 		for (int i = 0; i < ROOT_COMPONENTS.length; i++) {
 			if (options[i] == null) {
 				player.getPackets().sendHideIComponent(1312, ROOT_COMPONENTS[i], true);
@@ -305,67 +345,75 @@ public class EconomyManager {
 			private int pageId = 0;
 			private String[] currentOptions;
 			private int currentOptionsOffset;
+			private String currentTip;
+
+			// Page sizes for the chatbox sendOptionsDialogue (max 5 slots).
+			// If the page has more than 5 options, we show 4 + a "Next ▶"
+			// button that advances by 4. Last partial page shows up to 5
+			// without a Next button.
+			private static final int CHATBOX_PAGE_FIRST  = 4;  // 4 options + Next
+			private static final int CHATBOX_PAGE_LAST   = 5;  // 5 options if final
 
 			@Override
 			public void start() {
-				sendOptionsInterface(player);
+				// Skip the cs2-conflicting central interface (1312) entirely
+				// and use chatbox sendOptionsDialogue (interface 1188) which
+				// has no fortune-cookie text bleeding through.
 				setTitlePage();
 			}
 
 			@Override
 			public void run(int interfaceId, int componentId) {
-				int buttonId = -1;
-				for (int i = 0; i < CLICK_COMPONENTS.length; i++) {
-					if (componentId == CLICK_COMPONENTS[i]) {
-						buttonId = i;
-						break;
-					}
-				}
-
-				if (currentOptions == null || buttonId == -1)
+				if (currentOptions == null) return;
+				// chatbox option ids are 3..7 = OPTION_1..OPTION_5
+				int slot;
+				if      (componentId == OPTION_1) slot = 0;
+				else if (componentId == OPTION_2) slot = 1;
+				else if (componentId == OPTION_3) slot = 2;
+				else if (componentId == OPTION_4) slot = 3;
+				else if (componentId == OPTION_5) slot = 4;
+				else return;
+				int total = currentOptions.length;
+				int remaining = total - currentOptionsOffset;
+				boolean hasNext = remaining > CHATBOX_PAGE_LAST;
+				if (hasNext && slot == CHATBOX_PAGE_FIRST) {
+					// Next button - advance by 4, wrap to 0 at the end.
+					currentOptionsOffset += CHATBOX_PAGE_FIRST;
+					if (currentOptionsOffset >= total) currentOptionsOffset = 0;
+					updateCurrentPage();
 					return;
-
-				int length = currentOptions.length - currentOptionsOffset;
-				if (currentOptionsOffset != 0 || length > ROOT_COMPONENTS.length) {
-					if (buttonId >= 0 && buttonId <= (ROOT_COMPONENTS.length - 2)) {
-						if ((buttonId + currentOptionsOffset) >= currentOptions.length || currentOptions[buttonId + currentOptionsOffset] == null)
-							return;
-						handlePage(currentOptionsOffset + buttonId);
-					} else {
-						// more button
-						if ((currentOptionsOffset + (ROOT_COMPONENTS.length - 1)) >= currentOptions.length) {
-							currentOptionsOffset = 0;
-						} else {
-							currentOptionsOffset += ROOT_COMPONENTS.length - 1;
-						}
-						updateCurrentPage();
-					}
-				} else {
-					if ((buttonId + currentOptionsOffset) >= currentOptions.length || currentOptions[buttonId + currentOptionsOffset] == null)
-						return;
-					handlePage(currentOptionsOffset + buttonId);
 				}
+				int absolute = currentOptionsOffset + slot;
+				if (absolute >= total || currentOptions[absolute] == null) return;
+				handlePage(absolute);
 			}
 
 			private void setPage(int page, String tip, String... options) {
 				pageId = page;
 				currentOptions = options;
 				currentOptionsOffset = 0;
-				sendEntityDialogueNoContinue(player, Dialogue.IS_NPC, "Oracle of Dawn", npcId, 9810, tip);
+				currentTip = tip;
 				updateCurrentPage();
 			}
 
 			private void updateCurrentPage() {
-				String[] buffer = new String[ROOT_COMPONENTS.length];
-				int length = currentOptions.length - currentOptionsOffset;
-				if (currentOptionsOffset != 0 || length > ROOT_COMPONENTS.length) {
-					System.arraycopy(currentOptions, currentOptionsOffset, buffer, 0, Math.min(length, ROOT_COMPONENTS.length - 1));
-					buffer[ROOT_COMPONENTS.length - 1] = "More"; // copy up to (len-1) options + more button
-				} else {
-					System.arraycopy(currentOptions, currentOptionsOffset, buffer, 0, length);
+				int total = currentOptions.length;
+				int remaining = total - currentOptionsOffset;
+				boolean hasNext = remaining > CHATBOX_PAGE_LAST;
+				int show = hasNext ? CHATBOX_PAGE_FIRST : Math.min(remaining, CHATBOX_PAGE_LAST);
+				String[] buffer = new String[hasNext ? 5 : show];
+				for (int i = 0; i < show; i++) {
+					buffer[i] = currentOptions[currentOptionsOffset + i];
 				}
-
-				setupInterface(player, buffer);
+				if (hasNext) buffer[CHATBOX_PAGE_FIRST] = "Next ▶";
+				// Title shows tip + page indicator if multi-page.
+				String title = currentTip;
+				if (total > CHATBOX_PAGE_LAST) {
+					int page = currentOptionsOffset / CHATBOX_PAGE_FIRST + 1;
+					int pages = (total + CHATBOX_PAGE_FIRST - 1) / CHATBOX_PAGE_FIRST;
+					title = title + "  (page " + page + "/" + pages + ")";
+				}
+				sendOptionsDialogue(title, buffer);
 			}
 
 			private void handlePage(int optionId) {
@@ -411,8 +459,13 @@ public class EconomyManager {
 						player.getPackets().sendInputLongTextScript("Enter your forum username:");
 					} else if (optionId == 2) { // display name
 						setPage(10, "Here you can set your display name or remove it.", "Set display name", "Remove display name", "Back");
-					} else if (optionId == 3) { // switch items look
-						player.switchItemsLook();
+					} else if (optionId == 3) { // switch items look (WIP - stub)
+						player.getPackets().sendGameMessage(
+							"<col=ffaa55>Old/new items look toggle is in development.</col>");
+						player.getPackets().sendGameMessage(
+							"Server cache has " + countItemsWithOldLook()
+							+ " items with retro look variants ready, but the client"
+							+ " packet wiring needs more work first.");
 						setManagementPage();
 					} else if (optionId == 4) { // title select
 						String[] page = getTitlesPage();
@@ -444,9 +497,44 @@ public class EconomyManager {
 						}
 						end();
 						PlayerLook.openCharacterCustomizing(player);
-					} else if (optionId == 10) { // back
+					} else if (optionId == 10) { // combat mode (legacy / standard)
+						setPage(20, "Combat mode controls whether abilities are used.<br>"
+							+ "<col=ffaa55>Standard / EOC</col>: full ability bar, adrenaline, momentum.<br>"
+							+ "<col=ffaa55>Legacy</col>: classic auto-attacks, no abilities.<br>"
+							+ "Current: " + (player.isLegacyMode() ? "Legacy" : "Standard / EOC"),
+							player.isLegacyMode() ? "Switch to Standard / EOC" : "Switch to Legacy",
+							"Back");
+					} else if (optionId == 11) { // xp rate
+						setPage(21, "Choose your xp + drop rate.<br>"
+							+ "Current: x" + Settings.getXpRate(player)
+							+ " xp, x" + Settings.getCombatXpRate(player) + " combat xp.<br>"
+							+ "<col=ff5555>Picking a new rate stays for the rest of your account's life.</col>",
+							"x5 xp, x5 combat xp, x2.5 drop rate",
+							"x20 xp, x40 combat xp, x2 drop rate",
+							"x40 xp, x100 combat xp, x1 drop rate (Recommended)",
+							"x100 xp, x500 combat xp, x0.4 drop rate",
+							"Back");
+					} else if (optionId == 12) { // back
 						setTitlePage();
 					}
+				} else if (pageId == 20) { // combat mode picker
+					if (optionId == 0) {
+						player.switchLegacyMode();
+						player.getPackets().sendGameMessage("Combat mode set to "
+							+ (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ".");
+					}
+					setManagementPage();
+				} else if (pageId == 21) { // xp rate picker
+					if (optionId == 0)      player.setXpRateMode(4); // x5
+					else if (optionId == 1) player.setXpRateMode(1); // x20/x40
+					else if (optionId == 2) player.setXpRateMode(2); // x40/x100 (recommended)
+					else if (optionId == 3) player.setXpRateMode(3); // x100/x500
+					if (optionId >= 0 && optionId <= 3) {
+						player.getPackets().sendGameMessage("Your xp rate mode is now: x"
+							+ Settings.getXpRate(player) + " xp, x"
+							+ Settings.getCombatXpRate(player) + " combat xp.");
+					}
+					setManagementPage();
 				} else if (pageId == 3) { // teleports
 					if (optionId == 0) { // current event
 						if (tileEventHappening) {
@@ -568,7 +656,13 @@ public class EconomyManager {
 			}
 
 			private void setManagementPage() {
-				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look" : "Switch to old items look", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Back");
+				// "Switch to old/new items look" - put back per user request,
+				// but the click handler is currently a no-op stub that prints
+				// a "feature in development" notice. Opcode 159 crashes the
+				// 830 client (AIOOBE 30575). Real wiring needs the cache's
+				// items-look cs2 script + the captured oldInvModelId /
+				// oldEquipModel data we now keep in ItemDefinitions.
+				setPage(2, "This section contains features, which will help you to manage your account easier.", "Change password", "Authenticate your forum account", "Display name management", player.isOldItemsLook() ? "Switch to new items look (WIP)" : "Switch to old items look (WIP)", "Set your title", player.isXpLocked() ? "Unlock XP" : "Lock XP", player.isYellOff() ? "Toogle yell on" : "Toogle yell off", "Set yell color", "Set baby troll name", "Redesign character", "Combat mode (" + (player.isLegacyMode() ? "Legacy" : "Standard / EOC") + ")", "XP rate (current: x" + Settings.getXpRate(player) + " / x" + Settings.getCombatXpRate(player) + " combat)", "Back");
 			}
 
 			private void setTeleportsTitlePage() {
