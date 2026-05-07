@@ -34,7 +34,7 @@ public final class CitizenBudget {
      *  this version (or with a lower one) get auto-replaced with the new
      *  defaults on load. Avoids requiring users to manually `rm` the file
      *  every time we ship new GE socialite anchor coords. */
-    private static final int CURRENT_SCHEMA_VERSION = 3;
+    private static final int CURRENT_SCHEMA_VERSION = 4;
 
     public static final class Slot {
         public String archetype;     // AmbientArchetype enum name
@@ -335,64 +335,116 @@ public final class CitizenBudget {
         return sb.toString();
     }
 
-    /** Default budget seed: a small mixed-population spawn at GE so first-time
-     *  users see SOMETHING rather than an empty world.
+    /** Default budget seed.
      *
-     *  GE socialite anchors (per user spec):
-     *    Bankstanders - 4 GE bank counters (archetype picks one)
-     *    SKILL trader - SW counter quadrant (3157, 3477)
-     *    COMBAT trader - SW counter quadrant (3157, 3477)
-     *    RARE trader - NW corner near tree (3147, 3472)
-     *    Gambler GE  - north of rare traders (3142, 3487) or center fountain (3163, 3489)
-     *    Gambler Edge - Edgeville bank (3094, 3491) [legacy spot] */
+     *  Population matches the user's tested baseline:
+     *    Skillers     - 50 noob + 80 casual + 80 efficient = 210 across
+     *                    ~10 multi-anchor skill spots so they spread
+     *                    naturally across the world map.
+     *    Combatants   - 100 pure + 50 tank + 100 hybrid = 250
+     *                    spawned at training spots (rock crabs, sand
+     *                    crabs, slayer tower, stronghold, dragons).
+     *    PKers        - 50 split 30 LURE + 20 HUNTER. LURE multi-
+     *                    anchored across 6 ditch-cluster tiles so the
+     *                    wildy lvl 1-3 strip stays active. HUNTER
+     *                    multi-anchored across 8 mid-deep tiles
+     *                    spread from lvl 5 to lvl 50.
+     *    Socialites   - 4 bankstand + 4 gambler at GE for crowd flavour.
+     *
+     *  All slots autospawn=true so the server boots with a populated
+     *  world. Quick-spawn overrides + named profiles let admins layer
+     *  scenarios on top.
+     */
     private static void seedDefaults() {
         slots.clear();
-        // ===== GE socialites (most of the population) =====
-        // Bankstanders: random of 4 GE counters via socialiteAnchor() so
-        // they spread across all sides of the building, not stacked on one.
-        slots.add(new Slot("SOCIALITE_BANKSTAND",            30, 3164, 3486, 0, 12, true));
-        // Tier 1: bulk skilling supplies traders (most common)
-        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",      20, 3157, 3477, 0, 12, true));
-        // Tier 2: combat gear traders
-        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",     12, 3157, 3477, 0, 12, true));
-        // Tier 3: rare/endgame traders (fewer, premium pricing)
-        slots.add(new Slot("SOCIALITE_GE_TRADER_RARE",        6, 3147, 3472, 0,  8, true));
-        // Gamblers at GE - randomized between fountain/north anchor
-        slots.add(new Slot("SOCIALITE_GAMBLER",              10, 3142, 3487, 0, 10, true));
-        // ===== Edgeville bank socialites (smaller crowd) =====
-        // Anchor moved to 3087,3490 - just OUTSIDE the bank entrance per
-        // user spec. Was 3094,3491 (inside the bank counter area which
-        // ended up looking weird with traders standing on bankers).
-        slots.add(new Slot("SOCIALITE_GE_TRADER_SKILL",       3, 3087, 3490, 0,  6, true));
-        slots.add(new Slot("SOCIALITE_GE_TRADER_COMBAT",      2, 3087, 3490, 0,  6, true));
-        slots.add(new Slot("SOCIALITE_BANKSTAND",             4, 3087, 3490, 0,  6, true));
-        slots.add(new Slot("SOCIALITE_GAMBLER",               4, 3087, 3490, 0,  5, true));
-        // Lumbridge skillers
-        slots.add(new Slot("SKILLER_NOOB",          15, 3222, 3218, 0, 10, false));
-        slots.add(new Slot("SKILLER_CASUAL",        15, 3222, 3218, 0, 10, false));
-        // Edgeville combat / wilderness edge
-        slots.add(new Slot("COMBATANT_PURE",        10, 3088, 3491, 0, 8, false));
-        slots.add(new Slot("COMBATANT_TANK",        10, 3088, 3491, 0, 8, false));
-        slots.add(new Slot("COMBATANT_HYBRID",      8,  3088, 3491, 0, 8, false));
-        // Dedicated PKers - two flavours.
-        //   LURE   anchored just north of the wildy ditch (Edgeville)
-        //          at 3093,3525 - low wildy levels, picks fights with
-        //          opted-in players walking by. 6-tile drift.
-        //   HUNTER anchored deeper at 3076,3580 - active roamer that
-        //          patrols mid-to-deep wilderness for victims. Wider
-        //          drift radius.
-        slots.add(new Slot("COMBATANT_PKER_LURE",   8, 3093, 3525, 0,  6, false));
-        slots.add(new Slot("COMBATANT_PKER_HUNTER", 6, 3076, 3580, 0, 18, false));
+
+        // ===== Skillers (210 total, multi-anchored across guilds + spots) =====
+        Slot sNoob = new Slot("SKILLER_NOOB",      50, 3225, 3220, 0, 14, true);
+        sNoob.extraAnchors.add(new int[] { 3088, 3232, 0 });   // Draynor willows
+        sNoob.extraAnchors.add(new int[] { 3175, 3413, 0 });   // Varrock west park
+        sNoob.extraAnchors.add(new int[] { 3253, 3266, 0 });   // Lumby cow field
+        sNoob.extraAnchors.add(new int[] { 3046, 3322, 0 });   // Falador east oaks
+        sNoob.extraAnchors.add(new int[] { 3214, 3247, 0 });   // Lumby general store area
+        slots.add(sNoob);
+
+        Slot sCasual = new Slot("SKILLER_CASUAL",  80, 2706, 3464, 0, 14, true);
+        sCasual.extraAnchors.add(new int[] { 2841, 3434, 0 });  // Catherby fishing
+        sCasual.extraAnchors.add(new int[] { 3047, 9762, 0 });  // Mining guild
+        sCasual.extraAnchors.add(new int[] { 2599, 3422, 0 });  // Fishing guild
+        sCasual.extraAnchors.add(new int[] { 3145, 3450, 0 });  // Cooks' guild
+        sCasual.extraAnchors.add(new int[] { 2933, 3287, 0 });  // Crafting guild
+        sCasual.extraAnchors.add(new int[] { 3127, 3404, 0 });  // Air altar
+        slots.add(sCasual);
+
+        Slot sEff = new Slot("SKILLER_EFFICIENT", 80, 3651, 5117, 0, 14, true);
+        sEff.extraAnchors.add(new int[] { 2929, 4824, 0 });    // Living rock caverns
+        sEff.extraAnchors.add(new int[] { 2156, 3863, 0 });    // Astral altar
+        sEff.extraAnchors.add(new int[] { 2841, 3434, 0 });    // Catherby fishing
+        sEff.extraAnchors.add(new int[] { 3651, 5117, 0 });    // Living rock
+        slots.add(sEff);
+
+        // ===== Combatants (250 total, multi-anchored across training spots) =====
+        Slot cPure = new Slot("COMBATANT_PURE",  100, 2670, 3712, 0, 14, true);
+        cPure.extraAnchors.add(new int[] { 1779, 3469, 0 });   // Sand crabs Hosidius
+        cPure.extraAnchors.add(new int[] { 3081, 3421, 0 });   // Stronghold of security
+        cPure.extraAnchors.add(new int[] { 3168, 2981, 0 });   // Bandit camp
+        cPure.extraAnchors.add(new int[] { 3428, 3537, 0 });   // Slayer tower
+        slots.add(cPure);
+
+        Slot cTank = new Slot("COMBATANT_TANK",   50, 2670, 3712, 0, 14, true);
+        cTank.extraAnchors.add(new int[] { 1779, 3469, 0 });
+        cTank.extraAnchors.add(new int[] { 3081, 3421, 0 });
+        cTank.extraAnchors.add(new int[] { 3060, 9572, 0 });   // Frost dragons
+        slots.add(cTank);
+
+        Slot cHybrid = new Slot("COMBATANT_HYBRID", 100, 2670, 3712, 0, 14, true);
+        cHybrid.extraAnchors.add(new int[] { 1779, 3469, 0 });
+        cHybrid.extraAnchors.add(new int[] { 3081, 3421, 0 });
+        cHybrid.extraAnchors.add(new int[] { 3168, 2981, 0 });
+        cHybrid.extraAnchors.add(new int[] { 3428, 3537, 0 });
+        cHybrid.extraAnchors.add(new int[] { 3060, 9572, 0 });
+        slots.add(cHybrid);
+
+        // ===== PK bots (50 total, ditch + mid-deep wildy spread) =====
+        // LURE - 30 across the lvl 1-3 wildy strip north of Edge ditch.
+        // 6 anchors so a batch of 30 spawns ~5 per anchor instead of
+        // stacking on one tile.
+        Slot pkLure = new Slot("COMBATANT_PKER_LURE", 30, 3088, 3525, 0, 8, true);
+        pkLure.extraAnchors.add(new int[] { 3082, 3528, 0 });
+        pkLure.extraAnchors.add(new int[] { 3094, 3530, 0 });
+        pkLure.extraAnchors.add(new int[] { 3076, 3534, 0 });
+        pkLure.extraAnchors.add(new int[] { 3100, 3535, 0 });
+        pkLure.extraAnchors.add(new int[] { 3072, 3540, 0 });
+        slots.add(pkLure);
+
+        // HUNTER - 20 across mid-deep wildy. 8 anchors covering lvl 5-50
+        // so they patrol the entire wilderness ladder from Bandit camp
+        // through Lava maze and on to deep wildy.
+        Slot pkHunter = new Slot("COMBATANT_PKER_HUNTER", 20, 3076, 3580, 0, 18, true);
+        pkHunter.extraAnchors.add(new int[] { 3036, 3713, 0 });   // Bandit camp lvl ~13
+        pkHunter.extraAnchors.add(new int[] { 3076, 3856, 0 });   // Lava maze lvl ~36
+        pkHunter.extraAnchors.add(new int[] { 3105, 3954, 0 });   // Mage arena lvl ~50
+        pkHunter.extraAnchors.add(new int[] { 3294, 3886, 0 });   // Demonic ruins lvl ~46
+        pkHunter.extraAnchors.add(new int[] { 3186, 3933, 0 });   // Resource area
+        pkHunter.extraAnchors.add(new int[] { 3041, 3949, 0 });   // Wildy bandits lvl ~50
+        pkHunter.extraAnchors.add(new int[] { 3120, 3680, 0 });   // mid-wildy lvl ~25
+        slots.add(pkHunter);
+
+        // ===== GE socialites (small crowd for visual flavour) =====
+        // Bankstand auto-picks one of 4 GE counters per spawn (socialiteAnchor).
+        slots.add(new Slot("SOCIALITE_BANKSTAND", 4, 3164, 3486, 0, 12, true));
+        slots.add(new Slot("SOCIALITE_GAMBLER",   4, 3142, 3487, 0, 10, true));
+
         // Per-minigame lobbies. Anchor is the lobby tile - CitizenSpawner
         // pins minigame archetypes to AmbientArchetype.lobbyTile() at spawn
-        // time so anchor here is mostly informational.
+        // time so anchor here is mostly informational. Default off so admins
+        // toggle them per-test.
         slots.add(new Slot("MINIGAMER_CASTLEWARS_RUSHER",        4,  2442, 3090, 0, 6, false));
         slots.add(new Slot("MINIGAMER_CASTLEWARS_DEFENDER",      4,  2442, 3090, 0, 6, false));
         slots.add(new Slot("MINIGAMER_SOULWARS_RUSHER",          4,  2210, 3056, 0, 6, false));
         slots.add(new Slot("MINIGAMER_SOULWARS_DEFENDER",        4,  2210, 3056, 0, 6, false));
         slots.add(new Slot("MINIGAMER_STEALINGCREATION_RUSHER",  4,  2860, 5567, 0, 6, false));
         slots.add(new Slot("MINIGAMER_STEALINGCREATION_DEFENDER",4,  2860, 5567, 0, 6, false));
-        // Generic catch-all (legacy + bots that pick a random minigame)
         slots.add(new Slot("MINIGAMER_RUSHER",                   4,  2440, 3093, 0, 8, false));
         slots.add(new Slot("MINIGAMER_DEFENDER",                 4,  2440, 3093, 0, 8, false));
     }
