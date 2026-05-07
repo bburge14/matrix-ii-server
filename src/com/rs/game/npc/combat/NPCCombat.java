@@ -100,17 +100,43 @@ public final class NPCCombat {
 		}
 		// MAGE_FOLLOW and RANGE_FOLLOW follow close but can attack far unlike
 		// melee
-		int maxDistance = npc.isCantFollowUnderCombat() ? 16 : 
+		int maxDistance = npc.isCantFollowUnderCombat() ? 16 :
 			npc.getAttackStyle() != Combat.MELEE_TYPE ?
 				9 : 0;//attackStyle == NPCCombatDefinitions.MELEE ? 0 : npc.isCantFollowUnderCombat() ? 16 : 9;
 		//player is walking to atm
-		if ((!npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target))) 
-				|| !Utils.isOnRange(npc, target, maxDistance
-		//correct extra distance for walk. no glitches this way ^^. even if frozen
-		+ (npc.hasWalkSteps() && target.hasWalkSteps() ? (npc.getRun() && target.getRun() ? 2 : 1) : 0)) || (!npc.isCantFollowUnderCombat() && Utils.colides(npc, target))) {//doesnt let u attack when u under / while walking out, remove this check if u want
+		boolean clip = npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target));
+		int extra = (npc.hasWalkSteps() && target.hasWalkSteps() ? (npc.getRun() && target.getRun() ? 2 : 1) : 0);
+		boolean inRange = Utils.isOnRange(npc, target, maxDistance + extra);
+		boolean colides = !npc.isCantFollowUnderCombat() && Utils.colides(npc, target);
+		if (!clip || !inRange || colides) {
+			// Diagnostic: NPC has a target but combatAttack is rejecting
+			// the swing. Tell us which gate fired so we can pinpoint why
+			// "monsters don't fight back". 1-in-6 sample.
+			try {
+				if (com.rs.utils.Utils.random(6) == 0) {
+					String reason;
+					if (!clip)        reason = "NO_CLIP";
+					else if (!inRange) reason = "OUT_OF_RANGE(maxD=" + maxDistance + " extra=" + extra
+						+ " npc=" + npc.getX() + "," + npc.getY()
+						+ " tgt=" + target.getX() + "," + target.getY() + ")";
+					else               reason = "COLLIDES";
+					com.rs.bot.BotLog.log("NPC-COMBAT", npc.getId()
+						+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+						+ " combatAttack rejected: " + reason);
+				}
+			} catch (Throwable ignored) {}
 			return 0;
-			
+
 		}
+		// Log a successful swing kick-off so we can confirm combatAttack
+		// reached the actual attack call. 1-in-6 sample.
+		try {
+			if (com.rs.utils.Utils.random(6) == 0) {
+				com.rs.bot.BotLog.log("NPC-COMBAT", npc.getId()
+					+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+					+ " ATTACKING (style=" + npc.getAttackStyle() + ")");
+			}
+		} catch (Throwable ignored) {}
 		addAttackedByDelay(target);
 		return CombatScriptsHandler.specialAttack(npc, target);
 	}
