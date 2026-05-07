@@ -53,6 +53,11 @@ public final class BotEquipment {
             // the bot's combat level. Makes mid-tier bots feel like real
             // accounts with accumulated stuff, not freshly-loaded NPCs.
             applyAccumulatedWealth(bot, combatLevel);
+            // Skill prerequisite stack (logs / raw food / ores / herbs /
+            // essence / bones). Without this, bots picked a firemaking /
+            // cooking / smithing method and instantly bailed with "no
+            // logs to burn" / "no raw food to cook" / "no ores to smelt".
+            applySkillStartupKit(bot);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
         }
@@ -180,6 +185,140 @@ public final class BotEquipment {
         } catch (Throwable t) {
             System.err.println("[BotEquipment] accumulated wealth failed: " + t);
         }
+    }
+
+    /**
+     * Stock a bot's inventory with the prerequisites for any skill it
+     * might pick up. User report: bots saying "no logs to burn", "no
+     * raw food to cook", "no ores to smelt" - they spawned without
+     * the materials needed for the action they tried.
+     *
+     * Strategy: based on the bot's actual skill levels, push the
+     * highest-tier-they-can-use raw resource straight into the inventory
+     * (or bank when inventory would overflow). This way a level 60
+     * firemaker has yew logs, not regular logs they outgrew.
+     *
+     * Inventory is small (28 slots) so we cap each stack at 5 of each
+     * material type and let the rest spill to bank. Tools already came
+     * from applyGatheringToolkit - this is materials only.
+     */
+    public static void applySkillStartupKit(Player bot) {
+        try {
+            int fmLvl   = safeLvl(bot, com.rs.game.player.Skills.FIREMAKING);
+            int cookLvl = safeLvl(bot, com.rs.game.player.Skills.COOKING);
+            int smLvl   = safeLvl(bot, com.rs.game.player.Skills.SMITHING);
+            int crLvl   = safeLvl(bot, com.rs.game.player.Skills.CRAFTING);
+            int flLvl   = safeLvl(bot, com.rs.game.player.Skills.FLETCHING);
+            int hbLvl   = safeLvl(bot, com.rs.game.player.Skills.HERBLORE);
+            int rcLvl   = safeLvl(bot, com.rs.game.player.Skills.RUNECRAFTING);
+            int praLvl  = safeLvl(bot, com.rs.game.player.Skills.PRAYER);
+
+            // Logs: matches the firemaking + fletching pool. Pick best
+            // tier the bot can use; stack 28 so a session of FM produces
+            // a noticeable amount of XP before the bot blacklists.
+            int logId = bestLogIdForLevel(fmLvl);
+            stockMaterial(bot, logId, 28);
+
+            // Raw food for cooking. A bot at cooking 80 should be cooking
+            // sharks (level 80 raw shark) not shrimp.
+            int rawFoodId = bestRawFoodForLevel(cookLvl);
+            stockMaterial(bot, rawFoodId, 28);
+
+            // Smithing: ores AND coal pairs to smelt at the furnace.
+            // We stock both halves so the bot can actually make bars.
+            int oreId = bestOreForLevel(smLvl);
+            stockMaterial(bot, oreId, 14);
+            if (smLvl >= 20) stockMaterial(bot, 453, 14); // coal for steel+
+
+            // Crafting: leather + thread for the lvl 1-30 path. Higher
+            // crafters get hides/d'hide. Cheap and easy to satisfy.
+            if (crLvl >= 1)  stockMaterial(bot, 1739, 14); // soft leather
+            if (crLvl >= 1)  stockMaterial(bot, 1734, 1);  // thread
+            if (crLvl >= 57) stockMaterial(bot, 1745, 14); // green dragonhide
+
+            // Fletching: logs already covered above + a knife in the
+            // toolbelt would be ideal but knife is already in starter
+            // gathering toolkit (item 946).
+            if (flLvl >= 1) stockMaterial(bot, 946, 1); // knife (in case toolkit missed it)
+
+            // Herblore: clean herb stack for the herb-cleaning auto-XP
+            // method. Picks the highest-level herb the bot qualifies for.
+            int herbId = bestGrimyHerbForLevel(hbLvl);
+            if (herbId > 0) stockMaterial(bot, herbId, 28);
+
+            // Runecrafting: pure essence (matches RC altar method).
+            if (rcLvl >= 1) stockMaterial(bot, 7936, 28);
+
+            // Prayer: bones for an altar burial method. Big bones for
+            // higher prayer levels.
+            int boneId = praLvl >= 30 ? 532 /*big bones*/ : 526 /*regular bones*/;
+            stockMaterial(bot, boneId, 28);
+        } catch (Throwable t) {
+            System.err.println("[BotEquipment] startup kit failed: " + t);
+        }
+    }
+
+    private static int safeLvl(Player bot, int skill) {
+        try { return bot.getSkills().getLevel(skill); }
+        catch (Throwable t) { return 1; }
+    }
+
+    /** Add to inventory if there's room (each call uses a fresh slot
+     *  so a stackable can always fit), else spill to bank. We don't
+     *  refuse if both are full - bot was already over-loaded. */
+    private static void stockMaterial(Player bot, int itemId, int amount) {
+        if (itemId <= 0 || amount <= 0) return;
+        try {
+            // 8-slot ceiling for inventory items - leaves room for food,
+            // potions, runes, secondary tools that load later.
+            int invFree = 28 - bot.getInventory().getItems().getUsedSlots();
+            if (invFree >= 1) {
+                bot.getInventory().addItem(itemId, amount);
+            } else {
+                bot.getBank().addItem(itemId, amount, true);
+            }
+        } catch (Throwable t) {
+            try { bot.getBank().addItem(itemId, amount, true); } catch (Throwable ignored) {}
+        }
+    }
+
+    private static int bestLogIdForLevel(int fm) {
+        if (fm >= 75) return 3239; // arctic pine
+        if (fm >= 60) return 1513; // magic
+        if (fm >= 50) return 1515; // yew
+        if (fm >= 35) return 1517; // maple
+        if (fm >= 30) return 1519; // willow (yes, willow is FM 30 in this cache)
+        if (fm >= 15) return 1521; // oak
+        return 1511;               // regular log
+    }
+
+    private static int bestRawFoodForLevel(int ck) {
+        if (ck >= 80) return 383;  // raw shark
+        if (ck >= 62) return 397;  // raw monkfish
+        if (ck >= 35) return 371;  // raw swordfish
+        if (ck >= 25) return 377;  // raw lobster
+        if (ck >= 15) return 359;  // raw trout
+        if (ck >= 5)  return 355;  // raw sardine
+        return 317;                // raw shrimp
+    }
+
+    private static int bestOreForLevel(int sm) {
+        if (sm >= 70) return 451; // runite
+        if (sm >= 50) return 449; // adamantite
+        if (sm >= 30) return 447; // mithril
+        if (sm >= 20) return 441; // iron
+        return 437;               // copper
+    }
+
+    private static int bestGrimyHerbForLevel(int hb) {
+        if (hb >= 75) return 220;   // grimy torstol
+        if (hb >= 65) return 218;   // grimy dwarf weed
+        if (hb >= 50) return 216;   // grimy lantadyme
+        if (hb >= 38) return 212;   // grimy avantoe
+        if (hb >= 25) return 208;   // grimy ranarr
+        if (hb >= 15) return 206;   // grimy harralander
+        if (hb >= 5)  return 204;   // grimy marrentill
+        return 199;                  // grimy guam
     }
 
     /** Pickaxe item ID at-or-below the bot's mining level. */
