@@ -230,6 +230,52 @@ public class CitizenBrain extends BotBrain {
             }
         } catch (Throwable ignored) {}
 
+        // Pet follow babysitter. Pet.processNPC's follow logic relies on
+        // owner.getPackets() / getInterfaceManager() / getVarsManager()
+        // packet sends that route through MockChannel for AIPlayers - in
+        // theory harmless, in practice user reports "pets are stuck and
+        // not following their owner". Force the pet to track the bot
+        // here every tick:
+        //   - too far (>12 tiles) -> teleport-call to a free tile next
+        //     to the bot
+        //   - in range -> calcFollow + face the bot
+        // This is purely additive - if Pet.processNPC's own follow
+        // works, this is a no-op (calcFollow won't queue duplicate
+        // steps for an already-adjacent pet).
+        try {
+            com.rs.game.npc.others.Pet pet = bot.getPet();
+            if (pet != null && !pet.hasFinished()) {
+                int dx = pet.getX() - bot.getX();
+                int dy = pet.getY() - bot.getY();
+                int sq = dx * dx + dy * dy;
+                if (sq > 144 || pet.getPlane() != bot.getPlane()) {
+                    // Too far OR wrong plane - teleport adjacent.
+                    com.rs.game.WorldTile teleTile = null;
+                    int[] dxs = {0, 1, -1, 0, 0, 1, -1, 1, -1};
+                    int[] dys = {0, 0, 0, 1, -1, 1, 1, -1, -1};
+                    for (int i = 0; i < dxs.length; i++) {
+                        com.rs.game.WorldTile cand = new com.rs.game.WorldTile(
+                            bot.getX() + dxs[i], bot.getY() + dys[i], bot.getPlane());
+                        if (com.rs.game.World.isTileFree(cand.getPlane(),
+                                cand.getX(), cand.getY(), 1)) {
+                            teleTile = cand;
+                            break;
+                        }
+                    }
+                    if (teleTile != null) pet.setNextWorldTile(teleTile);
+                } else if (sq > 4 && !pet.hasWalkSteps()) {
+                    // Not adjacent (>2 tiles diagonal) - tell pet to walk
+                    // toward the bot. calcFollow uses RouteFinder under
+                    // the hood so it handles obstacles.
+                    pet.calcFollow(bot, 2, true, false);
+                }
+                // Always face the bot so the pet looks attached.
+                if (pet.getLastFaceEntity() != bot.getClientIndex()) {
+                    pet.setNextFaceEntity(bot);
+                }
+            }
+        } catch (Throwable ignored) {}
+
         // Mid-combat survival for PKers: if HP drops below 50% while
         // already in a fight (PlayerCombatNew action active), eat a
         // food. Without this, bots only ate at pre-fight and then died
