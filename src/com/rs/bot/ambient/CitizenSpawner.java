@@ -222,6 +222,11 @@ public final class CitizenSpawner {
             // Match BotPool.spawn() order exactly: hydrate -> start -> setBrain.
             bot.hydrate(name); // single init() - same path Legends use
             bot.start();       // bot.start() finalizes the entry into world
+            // Force HP to max post-hydrate. BotFactory already does this,
+            // but hydrate's init() flow sometimes resets HP to the
+            // Player ctor default (START_PLAYER_HITPOINTS=10) for paths
+            // that go through reset(false) somewhere. Belt-and-suspenders.
+            try { bot.setHitpoints(bot.getMaxHitpoints()); } catch (Throwable ignored) {}
             // Bots default to walking. Toggle run on so they actually
             // RUN to far-away training spots / GE / etc instead of
             // shuffling. Player.run() ticks regenerate energy when
