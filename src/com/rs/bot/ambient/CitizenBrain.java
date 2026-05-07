@@ -700,9 +700,9 @@ public class CitizenBrain extends BotBrain {
                     // requires a Potion subclass per id which is more
                     // surgery than this band-aid is worth.
                     try {
-                        bot.getSkills().setLevel(com.rs.game.player.Skills.ATTACK,
+                        bot.getSkills().set(com.rs.game.player.Skills.ATTACK,
                             Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.ATTACK) + 15));
-                        bot.getSkills().setLevel(com.rs.game.player.Skills.STRENGTH,
+                        bot.getSkills().set(com.rs.game.player.Skills.STRENGTH,
                             Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.STRENGTH) + 15));
                     } catch (Throwable ignored) {}
                     break;

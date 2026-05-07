@@ -199,7 +199,7 @@ public class AIPlayer extends Player {
     public void sendDeath(final com.rs.game.Entity source) {
         try {
             stopAll();
-            setNextAnimation(new com.rs.game.Animation(getDeathAnimation()));
+            setNextAnimation(getDeathAnimation());
             // Mirror Wilderness drop behaviour: PK bot was hit/killed so
             // their carried items go to the floor under them, like a
             // real wildy death. Skip if not in wildy (PvE death keeps gear).
