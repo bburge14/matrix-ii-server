@@ -143,6 +143,17 @@ public final class CitizenSpawner {
         if (arch != null && arch.isSocialite()) {
             scatter = Math.max(scatter, 12);
         }
+        // PK bots ALWAYS spawn just south of the wildy ditch (3088,3518)
+        // and walk in. User report: spawning them deep meant they
+        // skipped the controller hookup + couldn't return after death.
+        // The Edge-side ditch tile lets them appear naturally and run
+        // into wildy under their own brain. Their homeAnchor (used
+        // for wander targeting + respawn) stays at the original deep
+        // tile so they navigate to that area on their own.
+        if (arch != null && arch.isPker()) {
+            anchor = new com.rs.game.WorldTile(3088, 3518, 0);
+            scatter = Math.max(scatter, 4);
+        }
         scatter = Math.max(2, scatter);
         // Pick a spawn tile that's (a) walkable, (b) not stacked on another
         // bot. Try up to 16 attempts; falls back to anchor on exhaustion.

@@ -212,6 +212,24 @@ public class CitizenBrain extends BotBrain {
             }
         } catch (Throwable ignored) {}
 
+        // Wilderness controller auto-start. PK bots now spawn at the
+        // Edge side of the ditch (3088,3518) and walk INTO wildy via
+        // wander pattern. Crossing the ditch tile doesn't fire the
+        // ObjectHandler.startControler("Wilderness") path that real
+        // players hit because bots don't click the ditch object.
+        // Detect the wildy crossing and start the controller manually.
+        // Same logic kicks in after a respawn at Edge bank when the
+        // bot walks back to wildy.
+        try {
+            if (archetype != null && archetype.isCombatant()
+                    && com.rs.game.player.controllers.Wilderness.isAtWild(bot)
+                    && !(bot.getControlerManager().getControler()
+                        instanceof com.rs.game.player.controllers.Wilderness)) {
+                bot.getControlerManager().startControler("Wilderness");
+                bot.setCanPvp(true);
+            }
+        } catch (Throwable ignored) {}
+
         // Mid-combat survival for PKers: if HP drops below 50% while
         // already in a fight (PlayerCombatNew action active), eat a
         // food. Without this, bots only ate at pre-fight and then died
