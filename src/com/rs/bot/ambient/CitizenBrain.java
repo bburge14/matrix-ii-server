@@ -466,36 +466,37 @@ public class CitizenBrain extends BotBrain {
                 if (dedicated) {
                     // No victim - move so the bot doesn't just stand at
                     // a single tile. Wander pattern depends on PK type:
-                    //   LURE   - 80% stays around ditch (3088,3520 area),
-                    //            10% drifts a few tiles deeper, 10% pops
-                    //            back to Edgeville bank for restock.
-                    //   HUNTER - 75% roams mid-to-deep wildy, 15% near
-                    //            ditch (catches hunters cutting back),
-                    //            10% restocks at the bank.
+                    //   LURE   - 90% stays in lvl 1-3 wildy north of the
+                    //            ditch, 10% pushes a few tiles deeper.
+                    //            NEVER leaves wildy (Edge bank trip would
+                    //            put them at y<3525 which is OUT of wildy
+                    //            and they'd lose canPvp).
+                    //   HUNTER - 85% roams mid-to-deep wildy, 15% near
+                    //            ditch (so hunters can engage lure cluster).
+                    // Restocking now happens via the death-respawn flow,
+                    // so no need for a periodic Edge bank trip.
                     int roll = Utils.random(100);
                     int tx, ty;
                     if (archetype.isPkerLure()) {
-                        if (roll < 80) {
-                            tx = 3088 + Utils.random(-6, 7);
-                            ty = 3520 + Utils.random(-3, 8);
-                        } else if (roll < 90) {
-                            tx = 3080 + Utils.random(20);
-                            ty = 3535 + Utils.random(20);
+                        if (roll < 90) {
+                            // Wildy lvl 1-3 (y 3525-3540)
+                            tx = 3085 + Utils.random(-5, 10);
+                            ty = 3525 + Utils.random(0, 16);
                         } else {
-                            tx = 3094 + Utils.random(-3, 4);
-                            ty = 3494 + Utils.random(-2, 3);
+                            // Wildy lvl 4-8 (push deeper occasionally)
+                            tx = 3080 + Utils.random(20);
+                            ty = 3540 + Utils.random(20);
                         }
                     } else {
-                        // HUNTER - active roamer
-                        if (roll < 75) {
+                        // HUNTER - active roamer, mid-deep wildy
+                        if (roll < 85) {
+                            // Wildy lvl 5-25 (y 3560-3700)
                             tx = 3060 + Utils.random(70);
-                            ty = 3540 + Utils.random(90);
-                        } else if (roll < 90) {
-                            tx = 3088 + Utils.random(-6, 7);
-                            ty = 3520 + Utils.random(-3, 8);
+                            ty = 3560 + Utils.random(140);
                         } else {
-                            tx = 3094 + Utils.random(-3, 4);
-                            ty = 3494 + Utils.random(-2, 3);
+                            // Cut back near ditch to fight lures
+                            tx = 3085 + Utils.random(-5, 10);
+                            ty = 3525 + Utils.random(0, 12);
                         }
                     }
                     com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);

@@ -181,6 +181,96 @@ public class AIPlayer extends Player {
         }
     }
 
+    /**
+     * Bot-friendly death override. The default Player.sendDeath schedules a
+     * DeathEvent controller that drives a respawn-location interface, then
+     * waits for setCloseInterfacesEvent to fire when the player picks a
+     * spawn. Bots have no interface, so the close-event NEVER fires and
+     * the bot stays dead at 0 HP forever (and PK bots vanish from wildy).
+     *
+     * Instead we run a stripped-down respawn:
+     *   - Drop the kill-credit / animation lock the engine already started.
+     *   - Schedule a 4-tick delayed task that resets HP, re-runs the
+     *     archetype loadout (gear + restock) and teleports back to the
+     *     CitizenBrain's homeAnchor (or the bot's last known tile if it
+     *     has no Citizen brain).
+     */
+    @Override
+    public void sendDeath(final com.rs.game.Entity source) {
+        try {
+            stopAll();
+            setNextAnimation(new com.rs.game.Animation(getDeathAnimation()));
+            // Mirror Wilderness drop behaviour: PK bot was hit/killed so
+            // their carried items go to the floor under them, like a
+            // real wildy death. Skip if not in wildy (PvE death keeps gear).
+            try {
+                if (com.rs.game.player.controllers.Wilderness.isAtWild(this)) {
+                    com.rs.game.player.Player killer = (source instanceof com.rs.game.player.Player)
+                        ? (com.rs.game.player.Player) source : null;
+                    sendItemsOnDeath(killer, true);
+                } else {
+                    // PvE death - just clear inventory/equipment so the
+                    // re-loadout below populates a fresh kit.
+                    getInventory().reset();
+                    getEquipment().reset();
+                }
+            } catch (Throwable ignored) {}
+            final com.rs.game.WorldTile respawnTile = pickRespawnTile();
+            // 4-tick delay (~2.4s) so the death animation plays before
+            // the bot pops back at the spawn. Without the delay the bot
+            // teleports mid-animation which looks wrong to nearby players.
+            com.rs.game.tasks.WorldTasksManager.schedule(new com.rs.game.tasks.WorldTask() {
+                @Override public void run() {
+                    try {
+                        setHitpoints(getMaxHitpoints());
+                        getPrayer().reset();
+                        setNextWorldTile(respawnTile);
+                        // Re-run gear loadout for the current archetype.
+                        try {
+                            int cb = getSkills().getCombatLevel();
+                            com.rs.bot.BotEquipment.applyLoadout(AIPlayer.this,
+                                getArchetype(), cb);
+                            getAppearence().generateAppearenceData();
+                        } catch (Throwable t) {
+                            System.err.println("[AIPlayer] respawn loadout failed for "
+                                + getDisplayName() + ": " + t);
+                        }
+                        // Re-establish wildy controller + canPvp if respawning
+                        // inside wildy (otherwise next attack rejects with
+                        // "not in the wilderness").
+                        try {
+                            if (com.rs.game.player.controllers.Wilderness.isAtWild(respawnTile)) {
+                                getControlerManager().startControler("Wilderness");
+                                setCanPvp(true);
+                            }
+                        } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        System.err.println("[AIPlayer] sendDeath respawn task failed for "
+                            + getDisplayName() + ": " + t);
+                    }
+                }
+            }, 4);
+        } catch (Throwable t) {
+            System.err.println("[AIPlayer] sendDeath failed for " + getDisplayName()
+                + " - falling back to default: " + t);
+            super.sendDeath(source);
+        }
+    }
+
+    /** Pick where the bot should appear after dying. CitizenBrain tracks
+     *  a homeAnchor per bot; for non-Citizen brains (Legends) we fall
+     *  back to Edgeville bank. */
+    private com.rs.game.WorldTile pickRespawnTile() {
+        try {
+            if (brain instanceof com.rs.bot.ambient.CitizenBrain) {
+                com.rs.game.WorldTile a =
+                    ((com.rs.bot.ambient.CitizenBrain) brain).getHomeAnchor();
+                if (a != null) return new com.rs.game.WorldTile(a);
+            }
+        } catch (Throwable ignored) {}
+        return new com.rs.game.WorldTile(3094, 3494, 0); // Edge bank fallback
+    }
+
     @Override
     public void finish() {
         // Bot-safe shutdown - skip real-player cleanup that would NPE without a session.
