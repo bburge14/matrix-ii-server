@@ -122,6 +122,16 @@ public class AIPlayer extends Player {
         return true;
     }
 
+    /** Bots are NEVER "beginning accounts" - the wildy drop loop in
+     *  Player.sendItemsOnDeath skips beginning accounts (those with
+     *  total online time < 1hr) so killing a freshly-spawned bot
+     *  produced no ground items. PK loot is the entire point of PK
+     *  bots; force this off. */
+    @Override
+    public boolean isBeginningAccount() {
+        return false;
+    }
+
         @Override
     public void processEntity() {
         // Tick the brain to make decisions, then process the action manager
@@ -257,14 +267,23 @@ public class AIPlayer extends Player {
         }
     }
 
-    /** Pick where the bot should appear after dying. CitizenBrain tracks
-     *  a homeAnchor per bot; for non-Citizen brains (Legends) we fall
-     *  back to Edgeville bank. */
+    /** Pick where the bot should appear after dying.
+     *  PK bots (combatant CitizenBrain) respawn at the Edgeville bank
+     *  so they have to walk back to the wildy - real PK death pacing,
+     *  and prevents pile-spawning where a kill happened. Non-combat
+     *  Citizens respawn at their homeAnchor (skiller bank, GE booth,
+     *  etc). Anything else falls back to Edge bank. */
     private com.rs.game.WorldTile pickRespawnTile() {
         try {
             if (brain instanceof com.rs.bot.ambient.CitizenBrain) {
-                com.rs.game.WorldTile a =
-                    ((com.rs.bot.ambient.CitizenBrain) brain).getHomeAnchor();
+                com.rs.bot.ambient.CitizenBrain cb =
+                    (com.rs.bot.ambient.CitizenBrain) brain;
+                com.rs.bot.ambient.AmbientArchetype arch = cb.getArchetype();
+                if (arch != null && arch.isCombatant()) {
+                    // Combatants -> Edge bank (real PK respawn).
+                    return new com.rs.game.WorldTile(3094, 3494, 0);
+                }
+                com.rs.game.WorldTile a = cb.getHomeAnchor();
                 if (a != null) return new com.rs.game.WorldTile(a);
             }
         } catch (Throwable ignored) {}

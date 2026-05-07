@@ -877,13 +877,11 @@ public class CitizenBrain extends BotBrain {
                 if (other.isDead()) continue;
                 if (other.getPlane() != bot.getPlane()) continue;
                 if (!other.isPkOptIn()) continue;          // respects victim opt-out
-                // CB-diff gate ONLY applies to bot-vs-real-player. Two
-                // AIPlayer PK bots always count as eligible so the
-                // wildy stays active even when level spreads are wide.
-                boolean otherIsBot = other instanceof AIPlayer;
-                if (!otherIsBot
-                        && Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel)
-                    continue;
+                // CB-diff gate skipped entirely for any victim involving
+                // a bot - bot-vs-bot AND bot-vs-real-player. Mirrors the
+                // Wilderness.canAttack relaxation: PK bots exist for
+                // fight testing; cb-gating them just means a maxed
+                // admin can never get attacked by a cb-70 lure.
                 int dx = other.getX() - bot.getX();
                 int dy = other.getY() - bot.getY();
                 int sq = dx * dx + dy * dy;
