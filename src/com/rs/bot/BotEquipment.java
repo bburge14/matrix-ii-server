@@ -871,22 +871,37 @@ public final class BotEquipment {
 
     private static void applyRanger(Player bot, int cb) {
         applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.RANGED, cb);
-        // Stock arrows + bolts so the bow/crossbow that just landed in
-        // the weapon slot has ammo to fire. Was a silent failure before:
-        // ranger bot stood there because the engine refuses to fire a
-        // bow with an empty arrow slot.
+        // Stock arrows + bolts ONLY if a bow/crossbow actually landed
+        // in the weapon slot (i.e. the bot's level was high enough for
+        // the rolled weapon and ItemRequirements.canEquip passed).
+        // Without this gate, a low-level "ranged" PK bot ended up with
+        // 1500 arrows but a melee fallback weapon - user screenshot
+        // showed apron+skirt+dagger+arrows mismatch.
         try {
+            Item weapon = bot.getEquipment().getItem(Equipment.SLOT_WEAPON);
+            if (weapon == null || weapon.getId() <= 0) return;
+            String wname = weapon.getDefinitions().getName();
+            if (wname == null) return;
+            String wn = wname.toLowerCase();
+            boolean isBow = wn.contains("bow");
+            boolean isCrossbow = wn.contains("crossbow") || wn.contains("c'bow");
+            if (!isBow && !isCrossbow) return;
             int rng = bot.getSkills().getLevelForXp(com.rs.game.player.Skills.RANGE);
-            int arrowId, boltId, qty = 1500;
-            if      (rng >= 70) { arrowId = 892; boltId = 9244; }   // rune arrows / dragon bolts(e)
-            else if (rng >= 50) { arrowId = 890; boltId = 9242; }   // adamant arrows / runite bolts
-            else if (rng >= 30) { arrowId = 888; boltId = 9241; }   // mithril arrows / adamant bolts
-            else                 { arrowId = 884; boltId = 9140; }  // iron arrows / iron bolts
-            bot.getInventory().addItem(arrowId, qty);
-            bot.getInventory().addItem(boltId,  qty);
-            // Equip arrows in the ammo slot so a bow autosees them
+            int ammoId, qty = 1500;
+            if (isCrossbow) {
+                if      (rng >= 70) ammoId = 9244; // dragon bolts (e)
+                else if (rng >= 50) ammoId = 9242; // runite bolts
+                else if (rng >= 30) ammoId = 9241; // adamant bolts
+                else                ammoId = 9140; // iron bolts
+            } else {
+                if      (rng >= 70) ammoId = 892;  // rune arrows
+                else if (rng >= 50) ammoId = 890;  // adamant arrows
+                else if (rng >= 30) ammoId = 888;  // mithril arrows
+                else                ammoId = 884;  // iron arrows
+            }
+            bot.getInventory().addItem(ammoId, qty);
             bot.getEquipment().getItems().set(Equipment.SLOT_ARROWS,
-                new Item(arrowId, qty));
+                new Item(ammoId, qty));
         } catch (Throwable ignore) {}
     }
 

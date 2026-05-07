@@ -1476,10 +1476,13 @@ class CitizensFrame(ctk.CTkFrame):
         threading.Thread(target=do, daemon=True).start()
 
     def _combatant_spawn(self, archetype_name):
-        """Quick-spawn N combatant / PK bots. Anchor varies by archetype:
-            COMBATANT_PKER_LURE   - just north of wildy ditch  (3093,3525)
-            COMBATANT_PKER_HUNTER - mid-deep wildy             (3076,3580)
-            other combatants      - Edgeville / wildy edge     (3088,3491)
+        """Quick-spawn N combatant / PK bots. Anchor + scatter varies by
+        archetype - PKers get a wider scatter so a 50-bot click spreads
+        them across the wildy strip instead of stacking on one tile.
+
+            COMBATANT_PKER_LURE   - 3088,3530 ditch strip   scatter 18
+            COMBATANT_PKER_HUNTER - 3076,3640 mid wildy      scatter 35
+            other combatants      - 3088,3491 Edgeville edge scatter 12
         """
         try:
             n = int(self.com_count.get())
@@ -1487,15 +1490,15 @@ class CitizensFrame(ctk.CTkFrame):
             messagebox.showerror("Bad input", "count must be a number")
             return
         if archetype_name == "COMBATANT_PKER_LURE":
-            x, y, p = 3093, 3525, 0
+            x, y, p, scatter = 3088, 3530, 0, 18
         elif archetype_name == "COMBATANT_PKER_HUNTER":
-            x, y, p = 3076, 3580, 0
+            x, y, p, scatter = 3076, 3640, 0, 35
         else:
-            x, y, p = 3088, 3491, 0
+            x, y, p, scatter = 3088, 3491, 0, 12
         def do():
             try:
                 resp = self.api.citizens_spawn(n, category=archetype_name,
-                    x=x, y=y, plane=p, scatter=10)
+                    x=x, y=y, plane=p, scatter=scatter)
                 self.after(0, lambda: messagebox.showinfo("Combatant spawn",
                     f"Spawned {resp.get('spawned',0)} {archetype_name} "
                     f"(live total: {resp.get('total',0)})"))

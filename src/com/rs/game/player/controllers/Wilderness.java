@@ -95,12 +95,16 @@ public class Wilderness extends Controller {
 				player.getPackets().sendGameMessage("That player is not in the wilderness.");
 				return false;
 			}
-			// Bot-vs-bot fights skip the wildy combat-level-diff gate so
-			// PK bots can engage each other regardless of cb spread. Real
-			// players still get the standard wildy lvl rules.
-			boolean botVsBot = player instanceof com.rs.bot.AIPlayer
-					&& p2 instanceof com.rs.bot.AIPlayer;
-			if (!botVsBot && Math.abs(player.getSkills().getCombatLevel() - p2.getSkills().getCombatLevel()) > getWildLevel(player)) {
+			// PK bot testing: skip the wildy combat-level diff gate when
+			// EITHER side is an AIPlayer. PK bots exist primarily so admins
+			// can stress-test fights at any level; gating them by cb-diff
+			// defeats the testing use case (a maxed admin couldn't attack
+			// a cb-70 lure at lvl 3 wildy without going deeper). Real
+			// player vs real player still respects the standard wildy
+			// rule.
+			boolean botVsAny = player instanceof com.rs.bot.AIPlayer
+					|| p2 instanceof com.rs.bot.AIPlayer;
+			if (!botVsAny && Math.abs(player.getSkills().getCombatLevel() - p2.getSkills().getCombatLevel()) > getWildLevel(player)) {
 				player.getPackets().sendGameMessage("The difference between your Combat level and the Combat level of " + p2.getDisplayName() + " is too great.");
 				player.getPackets().sendGameMessage("He needs to move deeper into the Wilderness before you can attack him.");
 				return false;

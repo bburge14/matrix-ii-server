@@ -38,6 +38,15 @@ public final class BotPathing {
      */
     public static boolean walkTo(AIPlayer bot, int targetX, int targetY) {
         if (bot.getX() == targetX && bot.getY() == targetY) return true;
+        // Wildy ditch crossing. The ditch tiles (y 3522-3524 across
+        // x 2940-3395) are clipped barriers - RouteFinder can't path
+        // across them. Real players right-click "Cross" the ditch
+        // object. Bots don't click; emulate the cross by detecting
+        // when source + target are on opposite sides of the ditch
+        // band and teleporting the bot to the corresponding tile on
+        // the other side. Without this PK bots that respawn at Edge
+        // get stuck trying to walk back into wildy.
+        if (tryWildyDitchCross(bot, targetX, targetY)) return true;
         // Force-load the source + destination regions before routing.
         // AIPlayer.loadMapRegions is a no-op so a freshly-teleported bot's
         // destination region has no clipping data, RouteFinder returns 0
@@ -336,6 +345,68 @@ public final class BotPathing {
             int regionId = ((x >> 6) << 8) + (y >> 6);
             com.rs.game.World.getRegion(regionId, true);
         } catch (Throwable ignored) {}
+    }
+
+    // === Wilderness ditch crossing ===
+    // The ditch is a continuous east-west barrier at y 3522-3524 across
+    // most of the wildy entry band (x 2940..3395). Tiles inside the
+    // band are clipped, so RouteFinder can't path across. Real players
+    // right-click "Cross" the ditch object which fires
+    // ObjectHandler.startControler("Wilderness") + setNextWorldTile to
+    // the opposite-side tile. Bots don't click objects; replicate the
+    // cross here by setNextWorldTile to the matching tile on the other
+    // side when the bot's target requires crossing the band.
+    private static final int DITCH_SOUTH_MIN_Y = 3518; // safe Edge tile band
+    private static final int DITCH_SOUTH_MAX_Y = 3521;
+    private static final int DITCH_BAND_MIN_Y  = 3522;
+    private static final int DITCH_BAND_MAX_Y  = 3524;
+    private static final int DITCH_NORTH_MIN_Y = 3525; // wildy lvl 1
+    private static final int DITCH_NORTH_MAX_Y = 3528;
+    private static final int DITCH_X_MIN       = 2940;
+    private static final int DITCH_X_MAX       = 3395;
+
+    /** If the bot needs to cross the wildy ditch to reach (targetX,
+     *  targetY), teleport-step them to a free tile on the opposite
+     *  side and return true. Otherwise false (caller does normal
+     *  walkTo routing). */
+    private static boolean tryWildyDitchCross(AIPlayer bot, int targetX, int targetY) {
+        try {
+            int bx = bot.getX(), by = bot.getY();
+            // Same plane and X is in the ditch's x-range.
+            if (bot.getPlane() != 0) return false;
+            if (bx < DITCH_X_MIN || bx > DITCH_X_MAX) return false;
+            if (targetX < DITCH_X_MIN || targetX > DITCH_X_MAX) return false;
+
+            boolean botSouth = by <= DITCH_SOUTH_MAX_Y;
+            boolean botNorth = by >= DITCH_NORTH_MIN_Y;
+            boolean tgtSouth = targetY <= DITCH_SOUTH_MAX_Y;
+            boolean tgtNorth = targetY >= DITCH_NORTH_MIN_Y;
+
+            // Need to be confidently on one side and target on the
+            // other. If either side's mid-ditch (3522-3524), skip -
+            // the bot is already tangled in the band, RouteFinder
+            // will figure it out.
+            if (!((botSouth && tgtNorth) || (botNorth && tgtSouth))) return false;
+
+            // Pick a tile on the OPPOSITE side at roughly the bot's
+            // x. Going north-bound -> y=3525, south-bound -> y=3520.
+            int destX = bx;
+            int destY = botSouth ? 3525 : 3520;
+            // Try a few x-offsets in case the exact tile is occupied.
+            int[] xOffsets = {0, 1, -1, 2, -2, 3, -3};
+            for (int dx : xOffsets) {
+                int cx = bx + dx;
+                if (cx < DITCH_X_MIN || cx > DITCH_X_MAX) continue;
+                if (com.rs.game.World.isTileFree(0, cx, destY, 1)) {
+                    destX = cx;
+                    bot.setNextWorldTile(new com.rs.game.WorldTile(destX, destY, 0));
+                    return true;
+                }
+            }
+            return false;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static boolean runRoute(AIPlayer bot, com.rs.game.route.RouteStrategy strategy) {

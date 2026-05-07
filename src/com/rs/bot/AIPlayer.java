@@ -122,6 +122,16 @@ public class AIPlayer extends Player {
         return true;
     }
 
+    /** Bots are NEVER "beginning accounts" - the wildy drop loop in
+     *  Player.sendItemsOnDeath skips beginning accounts (those with
+     *  total online time < 1hr) so killing a freshly-spawned bot
+     *  produced no ground items. PK loot is the entire point of PK
+     *  bots; force this off. */
+    @Override
+    public boolean isBeginningAccount() {
+        return false;
+    }
+
         @Override
     public void processEntity() {
         // Tick the brain to make decisions, then process the action manager
@@ -202,18 +212,23 @@ public class AIPlayer extends Player {
             setNextAnimation(getDeathAnimation());
             // Mirror Wilderness drop behaviour: PK bot was hit/killed so
             // their carried items go to the floor under them, like a
-            // real wildy death. Skip if not in wildy (PvE death keeps gear).
+            // real wildy death. We DO NOT call Player.sendItemsOnDeath
+            // because under Settings.HOSTED + admin-killer (rights == 2)
+            // it returns early without dropping anything. Test admins
+            // wanted real PK loot every time, so we drop directly via
+            // World.addGroundItem with the killer as owner so the 60s
+            // private window applies correctly.
             try {
                 if (com.rs.game.player.controllers.Wilderness.isAtWild(this)) {
                     com.rs.game.player.Player killer = (source instanceof com.rs.game.player.Player)
                         ? (com.rs.game.player.Player) source : null;
-                    sendItemsOnDeath(killer, true);
-                } else {
-                    // PvE death - just clear inventory/equipment so the
-                    // re-loadout below populates a fresh kit.
-                    getInventory().reset();
-                    getEquipment().reset();
+                    dropEquipmentAndInventoryToFloor(killer);
                 }
+                // Always clear inv/equip so the respawn loadout starts
+                // from a clean slate and we don't get apron+skirt+dagger
+                // mismatches from leftovers (user screenshot).
+                getInventory().reset();
+                getEquipment().reset();
             } catch (Throwable ignored) {}
             final com.rs.game.WorldTile respawnTile = pickRespawnTile();
             // 4-tick delay (~2.4s) so the death animation plays before
@@ -226,7 +241,19 @@ public class AIPlayer extends Player {
                         getPrayer().reset();
                         setNextWorldTile(respawnTile);
                         // Re-run gear loadout for the current archetype.
+                        // Wipe equip slots first so leftover items can't
+                        // bleed into the new loadout (user screenshot:
+                        // apron + skirt + dagger from a melee bot mixed
+                        // with arrows from the previous ranged style).
                         try {
+                            int eqSize = getEquipment().getItems().getSize();
+                            for (int s = 0; s < eqSize; s++) {
+                                getEquipment().getItems().set(s, null);
+                            }
+                            int invSize = getInventory().getItems().getSize();
+                            for (int s = 0; s < invSize; s++) {
+                                getInventory().getItems().set(s, null);
+                            }
                             int cb = getSkills().getCombatLevel();
                             com.rs.bot.BotEquipment.applyLoadout(AIPlayer.this,
                                 getArchetype(), cb);
@@ -257,14 +284,58 @@ public class AIPlayer extends Player {
         }
     }
 
-    /** Pick where the bot should appear after dying. CitizenBrain tracks
-     *  a homeAnchor per bot; for non-Citizen brains (Legends) we fall
-     *  back to Edgeville bank. */
+    /** Drop everything in the bot's equipment + inventory to the
+     *  floor under the death tile. Replaces Player.sendItemsOnDeath,
+     *  which under Settings.HOSTED returns early when killer rights
+     *  >= 2 (admin) - the test admin's whole reason for spawning PK
+     *  bots is to get loot, so we bypass that gate.
+     *
+     *  Owner = killer (so the 60s private window applies to them);
+     *  if no killer (npc kill / starve / etc) the bot owns its own
+     *  drop and it's public immediately. */
+    private void dropEquipmentAndInventoryToFloor(com.rs.game.player.Player killer) {
+        try {
+            com.rs.game.WorldTile tile = new com.rs.game.WorldTile(this);
+            com.rs.game.player.Player owner = killer == null ? this : killer;
+            // Equipment first (typically the valuable stuff).
+            for (int s = 0; s < getEquipment().getItems().getSize(); s++) {
+                com.rs.game.item.Item it = getEquipment().getItem(s);
+                if (it == null || it.getId() <= 0) continue;
+                com.rs.game.World.addGroundItem(
+                    new com.rs.game.item.Item(it.getId(), it.getAmount()),
+                    tile, owner, true, 60);
+            }
+            // Then inventory (food, runes, restock pots, etc.).
+            for (int s = 0; s < getInventory().getItems().getSize(); s++) {
+                com.rs.game.item.Item it = getInventory().getItems().get(s);
+                if (it == null || it.getId() <= 0) continue;
+                com.rs.game.World.addGroundItem(
+                    new com.rs.game.item.Item(it.getId(), it.getAmount()),
+                    tile, owner, true, 60);
+            }
+        } catch (Throwable t) {
+            System.err.println("[AIPlayer] floor-drop failed for "
+                + getDisplayName() + ": " + t);
+        }
+    }
+
+    /** Pick where the bot should appear after dying.
+     *  PK bots (combatant CitizenBrain) respawn at the Edgeville bank
+     *  so they have to walk back to the wildy - real PK death pacing,
+     *  and prevents pile-spawning where a kill happened. Non-combat
+     *  Citizens respawn at their homeAnchor (skiller bank, GE booth,
+     *  etc). Anything else falls back to Edge bank. */
     private com.rs.game.WorldTile pickRespawnTile() {
         try {
             if (brain instanceof com.rs.bot.ambient.CitizenBrain) {
-                com.rs.game.WorldTile a =
-                    ((com.rs.bot.ambient.CitizenBrain) brain).getHomeAnchor();
+                com.rs.bot.ambient.CitizenBrain cb =
+                    (com.rs.bot.ambient.CitizenBrain) brain;
+                com.rs.bot.ambient.AmbientArchetype arch = cb.getArchetype();
+                if (arch != null && arch.isCombatant()) {
+                    // Combatants -> Edge bank (real PK respawn).
+                    return new com.rs.game.WorldTile(3094, 3494, 0);
+                }
+                com.rs.game.WorldTile a = cb.getHomeAnchor();
                 if (a != null) return new com.rs.game.WorldTile(a);
             }
         } catch (Throwable ignored) {}

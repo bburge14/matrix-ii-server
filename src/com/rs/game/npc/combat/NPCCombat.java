@@ -39,7 +39,32 @@ public final class NPCCombat {
 		if (combatDelay > 0)
 			combatDelay--;
 		if (target != null) {
+			// Diagnostic: if NPC-COMBAT logs were silent earlier the
+			// real question is whether process() runs at all when
+			// target is set. Sampled 1-in-12 (~once per ~7s per ticking
+			// NPC) so we don't flood the log but still catch the case
+			// where combatAttack is being skipped because checkAll fails.
+			try {
+				if (com.rs.utils.Utils.random(12) == 0) {
+					com.rs.bot.BotLog.log("NPC-PROCESS", npc.getId()
+						+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+						+ " combatDelay=" + combatDelay
+						+ " target=" + (target == null ? "null" : target.toString()));
+				}
+			} catch (Throwable ignored) {}
 			if (!checkAll()) {
+				try {
+					if (com.rs.utils.Utils.random(8) == 0) {
+						com.rs.bot.BotLog.log("NPC-CHECKALL-FAIL", npc.getId()
+							+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+							+ " mapArea=" + npc.getMapAreaNameHash()
+							+ " plane=" + npc.getPlane() + "/" + (target != null ? target.getPlane() : -1)
+							+ " npcTile=" + npc.getX() + "," + npc.getY()
+							+ " respawnTile=" + npc.getRespawnTile().getX() + "," + npc.getRespawnTile().getY()
+							+ " bound=" + npc.isBound() + " stunned=" + npc.isStunned()
+							+ " cantInteract=" + npc.isCantInteract());
+					}
+				} catch (Throwable ignored) {}
 				removeTarget();
 				return false;
 			}

@@ -134,6 +134,41 @@ public class CitizenBrain extends BotBrain {
     private int methodStuckTicks = 0;
     private static final int STUCK_TICKS_LIMIT = 40;
 
+    // PK contextual chatter. User: "they should only ask to fight while
+    // NOT in the wildy.. if they are actively fighting they should talk
+    // shit. say things like 'sit noob' when they kill their foes".
+    // CitizenBrain.tickIdle picks the right pool based on the bot's
+    // current state instead of using AmbientArchetype.randomChatter()
+    // for everything.
+    private static final String[] PK_CHATTER_LFG = {  // looking-for-fight, OUTSIDE wildy
+        "come dh me", "1v1 ditch", "low risk fight?", "anyone wanting a fight",
+        "ez ditch flame", "lf 1v1 cw", "any fights ditch", "low cb pk?",
+        "veng dh", "pst for fight", "pking right at ditch"
+    };
+    private static final String[] PK_CHATTER_FIGHTING = {  // mid-combat trash talk
+        "eat ags", "ez", "switch noob", "no def", "you're getting clapped",
+        "this is gonna be a sit", "low hp lol", "spec down", "pid'd",
+        "veng up come", "dropping you", "no honor pk", "rune scim noob"
+    };
+    private static final String[] PK_CHATTER_KILL = {  // post-kill smacktalk
+        "sit noob", "haha rekt", "ez clap", "easy money", "thanks for the loot",
+        "git gud", "ratio'd", "sat", "no skill", "pile dh ez", "owned",
+        "where pid", "my favorite kill"
+    };
+    /** When did our last combat action end with a dead target? Used to
+     *  fire kill-line + prioritize loot pickup. Wall-clock millis. */
+    private long lastKillMs = 0;
+
+    /** PK bots get a deterministic "wildy home" tile assigned at spawn.
+     *  When they're outside wildy (Edge bank after respawn, walking
+     *  back from a restock), tickInteracting walks them DIRECTLY to
+     *  this home before resuming hunt-and-wander. Without it bots
+     *  respawned at Edge bank never made it back to wildy because
+     *  random wander rolled an Edge tile and they sat there fighting.
+     *  Lure homes cluster around the ditch (3088, 3530); hunter homes
+     *  scatter across mid-deep wildy. */
+    private com.rs.game.WorldTile pkWildyHome;
+
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
         this.archetype = archetype;
@@ -156,6 +191,23 @@ public class CitizenBrain extends BotBrain {
                 bot.setPkOptIn(true);
             }
         } catch (Throwable ignored) {}
+
+        // Assign a deterministic wildy home for PK bots so they have a
+        // consistent destination after death-respawn / Edge restock
+        // trip. LURE: tightly clustered north of ditch (lvl 1-3).
+        // HUNTER: scattered across mid-deep wildy (lvl 5-25) so a
+        // batch of hunters spreads naturally instead of stacking.
+        if (archetype != null && archetype.isPker()) {
+            int hx, hy;
+            if (archetype.isPkerLure()) {
+                hx = 3082 + Utils.random(20);   // 3082-3101
+                hy = 3530 + Utils.random(15);   // 3530-3544 (lvl 1-3)
+            } else {
+                hx = 3050 + Utils.random(90);   // wide x spread
+                hy = 3580 + Utils.random(180);  // 3580-3760 (lvl 7-30)
+            }
+            this.pkWildyHome = new WorldTile(hx, hy, 0);
+        }
     }
 
     @Override
@@ -187,6 +239,70 @@ public class CitizenBrain extends BotBrain {
             }
         } catch (Throwable ignored) {}
 
+        // Wilderness controller auto-start. PK bots now spawn at the
+        // Edge side of the ditch (3088,3518) and walk INTO wildy via
+        // wander pattern. Crossing the ditch tile doesn't fire the
+        // ObjectHandler.startControler("Wilderness") path that real
+        // players hit because bots don't click the ditch object.
+        // Detect the wildy crossing and start the controller manually.
+        // Same logic kicks in after a respawn at Edge bank when the
+        // bot walks back to wildy.
+        try {
+            if (archetype != null && archetype.isCombatant()
+                    && com.rs.game.player.controllers.Wilderness.isAtWild(bot)
+                    && !(bot.getControlerManager().getControler()
+                        instanceof com.rs.game.player.controllers.Wilderness)) {
+                bot.getControlerManager().startControler("Wilderness");
+                bot.setCanPvp(true);
+            }
+        } catch (Throwable ignored) {}
+
+        // Pet follow babysitter. Pet.processNPC's follow logic relies on
+        // owner.getPackets() / getInterfaceManager() / getVarsManager()
+        // packet sends that route through MockChannel for AIPlayers - in
+        // theory harmless, in practice user reports "pets are stuck and
+        // not following their owner". Force the pet to track the bot
+        // here every tick:
+        //   - too far (>12 tiles) -> teleport-call to a free tile next
+        //     to the bot
+        //   - in range -> calcFollow + face the bot
+        // This is purely additive - if Pet.processNPC's own follow
+        // works, this is a no-op (calcFollow won't queue duplicate
+        // steps for an already-adjacent pet).
+        try {
+            com.rs.game.npc.others.Pet pet = bot.getPet();
+            if (pet != null && !pet.hasFinished()) {
+                int dx = pet.getX() - bot.getX();
+                int dy = pet.getY() - bot.getY();
+                int sq = dx * dx + dy * dy;
+                if (sq > 144 || pet.getPlane() != bot.getPlane()) {
+                    // Too far OR wrong plane - teleport adjacent.
+                    com.rs.game.WorldTile teleTile = null;
+                    int[] dxs = {0, 1, -1, 0, 0, 1, -1, 1, -1};
+                    int[] dys = {0, 0, 0, 1, -1, 1, 1, -1, -1};
+                    for (int i = 0; i < dxs.length; i++) {
+                        com.rs.game.WorldTile cand = new com.rs.game.WorldTile(
+                            bot.getX() + dxs[i], bot.getY() + dys[i], bot.getPlane());
+                        if (com.rs.game.World.isTileFree(cand.getPlane(),
+                                cand.getX(), cand.getY(), 1)) {
+                            teleTile = cand;
+                            break;
+                        }
+                    }
+                    if (teleTile != null) pet.setNextWorldTile(teleTile);
+                } else if (sq > 4 && !pet.hasWalkSteps()) {
+                    // Not adjacent (>2 tiles diagonal) - tell pet to walk
+                    // toward the bot. calcFollow uses RouteFinder under
+                    // the hood so it handles obstacles.
+                    pet.calcFollow(bot, 2, true, false);
+                }
+                // Always face the bot so the pet looks attached.
+                if (pet.getLastFaceEntity() != bot.getClientIndex()) {
+                    pet.setNextFaceEntity(bot);
+                }
+            }
+        } catch (Throwable ignored) {}
+
         // Mid-combat survival for PKers: if HP drops below 50% while
         // already in a fight (PlayerCombatNew action active), eat a
         // food. Without this, bots only ate at pre-fight and then died
@@ -201,6 +317,32 @@ public class CitizenBrain extends BotBrain {
                 int maxHp = bot.getMaxHitpoints();
                 if (hp > 0 && hp < maxHp / 2) {
                     eatHighestFood(bot, hp, maxHp);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Detect kill: if we just had a PlayerCombatNew action targeting
+        // a victim that's now dead/finished, mark lastKillMs so the next
+        // tick fires kill chatter + prioritizes loot.
+        try {
+            if (archetype != null && archetype.isPker()) {
+                Object lastVictim = bot.getTemporaryAttributtes().get("PkLastVictim");
+                Object curAction = bot.getActionManager().getAction();
+                if (curAction instanceof com.rs.game.player.actions.PlayerCombatNew) {
+                    // Track victim while in combat
+                    bot.getTemporaryAttributtes().put("PkLastVictim",
+                        ((com.rs.game.player.actions.PlayerCombatNew) curAction).getTarget());
+                } else if (lastVictim instanceof com.rs.game.Entity) {
+                    com.rs.game.Entity v = (com.rs.game.Entity) lastVictim;
+                    if (v.isDead() || v.hasFinished()) {
+                        lastKillMs = System.currentTimeMillis();
+                        // Fire kill chatter immediately (skip CHATTER_PROBABILITY).
+                        try {
+                            String line = PK_CHATTER_KILL[Utils.random(PK_CHATTER_KILL.length)];
+                            com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false);
+                        } catch (Throwable ignored) {}
+                    }
+                    bot.getTemporaryAttributtes().remove("PkLastVictim");
                 }
             }
         } catch (Throwable ignored) {}
@@ -339,7 +481,35 @@ public class CitizenBrain extends BotBrain {
         }
 
         if (Math.random() < CHATTER_PROBABILITY) {
-            String line = archetype == null ? null : archetype.randomChatter();
+            // PK contextual chatter overrides the generic archetype pool.
+            // Pool depends on state:
+            //   - Outside wildy   -> looking-for-fight ("come dh me")
+            //   - In combat       -> trash talk ("eat ags", "switch noob")
+            //   - Just-killed     -> handled above (immediate fire)
+            String line = null;
+            if (archetype != null && archetype.isPker()) {
+                boolean inCombat = bot.getActionManager() != null
+                    && bot.getActionManager().getAction()
+                        instanceof com.rs.game.player.actions.PlayerCombatNew;
+                boolean inWildy = false;
+                try {
+                    inWildy = com.rs.game.player.controllers.Wilderness.isAtWild(bot);
+                } catch (Throwable ignored) {}
+                if (inCombat) {
+                    line = PK_CHATTER_FIGHTING[Utils.random(PK_CHATTER_FIGHTING.length)];
+                } else if (!inWildy) {
+                    line = PK_CHATTER_LFG[Utils.random(PK_CHATTER_LFG.length)];
+                } else {
+                    // Idle in wildy with no fight - light banter from
+                    // the kill pool but rare. Most ticks they say
+                    // nothing while waiting / walking.
+                    if (Utils.random(3) == 0) {
+                        line = PK_CHATTER_KILL[Utils.random(PK_CHATTER_KILL.length)];
+                    }
+                }
+            } else {
+                line = archetype == null ? null : archetype.randomChatter();
+            }
             if (line != null) {
                 // sayBoth(plain) = no chat effect for casual chatter.
                 // Effects are reserved for trader/gambler hosts per user spec.
@@ -511,6 +681,28 @@ public class CitizenBrain extends BotBrain {
                 boolean dedicated = archetype.isPker();
                 boolean inWildy = bot.getControlerManager().getControler()
                     instanceof com.rs.game.player.controllers.Wilderness;
+                // Outside wildy? March to assigned home tile FIRST.
+                // No fights, no looting - just go back to where we
+                // belong. User screenshot showed all respawned PK bots
+                // skulled inside Edge bank fighting each other
+                // because findNearbyPkVictim happily returned targets
+                // anywhere. The findNearbyPkVictim hard-gate above
+                // handles the "no victims outside wildy" piece; this
+                // is the "actively walk back" piece.
+                if (dedicated && !inWildy && pkWildyHome != null) {
+                    com.rs.bot.ai.BotPathing.walkTo(bot,
+                        pkWildyHome.getX(), pkWildyHome.getY());
+                    return;
+                }
+                // Loot priority: if we just killed a victim within the
+                // last 10 seconds, PRIORITIZE looting their drop over
+                // engaging the next target. Real PKers walk over the
+                // corpse before re-engaging. Without this, bots clustered
+                // at the ditch immediately re-engaged the next bot and
+                // never picked up their kill's drops.
+                if (dedicated && (System.currentTimeMillis() - lastKillMs) < 10_000) {
+                    if (tryPkerLootPickup(bot, 6)) return;
+                }
                 if (dedicated || inWildy) {
                     // LURE 12 (ditch cluster), HUNTER 25 (spread roamers
                     // need a wider search ring to find each other in
@@ -530,39 +722,69 @@ public class CitizenBrain extends BotBrain {
                     }
                 }
                 if (dedicated) {
-                    // No victim - move so the bot doesn't just stand at
-                    // a single tile. Wander pattern depends on PK type:
-                    //   LURE   - 90% stays in lvl 1-3 wildy north of the
-                    //            ditch, 10% pushes a few tiles deeper.
-                    //            NEVER leaves wildy (Edge bank trip would
-                    //            put them at y<3525 which is OUT of wildy
-                    //            and they'd lose canPvp).
-                    //   HUNTER - 85% roams mid-to-deep wildy, 15% near
-                    //            ditch (so hunters can engage lure cluster).
-                    // Restocking now happens via the death-respawn flow,
-                    // so no need for a periodic Edge bank trip.
+                    // Idle loot scan when nothing's happening - eyeballs
+                    // the ground for piled loot from nearby fights.
+                    // LURE 8 (ditch cluster has lots of drops), HUNTER 3
+                    // (won't camp deep-wildy corpses).
+                    int lootRadius = archetype.isPkerLure() ? 8 : 3;
+                    if (tryPkerLootPickup(bot, lootRadius)) return;
+                }
+                if (dedicated) {
+                    // No victim - wander. Each variant has a wider range
+                    // than before so they don't pile up at the spawn tile.
+                    // Some rolls now intentionally cross the wildy ditch
+                    // (LURE patrols Edge ↔ wildy; HUNTER occasionally
+                    // surfaces back to Edge) so they don't ALL stay in
+                    // wildy 24/7.
+                    //   LURE   - 50% lvl 1-5 wildy, 25% lvl 5-15 deeper,
+                    //            15% Edge bank ↔ ditch patrol (NPC's
+                    //            see them at the ditch posing for fights),
+                    //            10% deeper push (1-3 wildy lvl drift).
+                    //   HUNTER - 60% mid-deep wildy (lvl 5-30), 20%
+                    //            deep wildy (lvl 25-50), 15% cuts back
+                    //            near ditch to engage lures, 5% Edge
+                    //            (resurface for restock).
                     int roll = Utils.random(100);
                     int tx, ty;
                     if (archetype.isPkerLure()) {
-                        if (roll < 90) {
-                            // Wildy lvl 1-3 (y 3525-3540)
-                            tx = 3085 + Utils.random(-5, 10);
-                            ty = 3525 + Utils.random(0, 16);
+                        if (roll < 50) {
+                            // Wildy lvl 1-5 (y 3525-3550)
+                            tx = 3082 + Utils.random(20);
+                            ty = 3525 + Utils.random(0, 30);
+                        } else if (roll < 75) {
+                            // Wildy lvl 5-15 (deeper push, tests their
+                            // new cb-diff exemption against lures of
+                            // different cb in the same zone)
+                            tx = 3070 + Utils.random(40);
+                            ty = 3550 + Utils.random(50);
+                        } else if (roll < 90) {
+                            // Edge ↔ ditch patrol (cross the ditch so
+                            // they aren't 100% stuck in wildy)
+                            tx = 3088 + Utils.random(-5, 10);
+                            ty = 3510 + Utils.random(0, 25); // y 3510-3535
                         } else {
-                            // Wildy lvl 4-8 (push deeper occasionally)
-                            tx = 3080 + Utils.random(20);
-                            ty = 3540 + Utils.random(20);
+                            // Deeper wildy - the bold lure pushes 15-25
+                            tx = 3075 + Utils.random(40);
+                            ty = 3580 + Utils.random(40);
                         }
                     } else {
-                        // HUNTER - active roamer, mid-deep wildy
-                        if (roll < 85) {
-                            // Wildy lvl 5-25 (y 3560-3700)
-                            tx = 3060 + Utils.random(70);
-                            ty = 3560 + Utils.random(140);
+                        // HUNTER - active roamer
+                        if (roll < 60) {
+                            // Wildy lvl 5-30 (y 3560-3760)
+                            tx = 3050 + Utils.random(90);
+                            ty = 3560 + Utils.random(200);
+                        } else if (roll < 80) {
+                            // Deep wildy lvl 25-50 (y 3720-3920)
+                            tx = 3040 + Utils.random(110);
+                            ty = 3720 + Utils.random(200);
+                        } else if (roll < 95) {
+                            // Cut back near ditch to engage lure cluster
+                            tx = 3082 + Utils.random(20);
+                            ty = 3525 + Utils.random(0, 20);
                         } else {
-                            // Cut back near ditch to fight lures
-                            tx = 3085 + Utils.random(-5, 10);
-                            ty = 3525 + Utils.random(0, 12);
+                            // Resurface to Edge bank briefly (restock)
+                            tx = 3094 + Utils.random(-3, 4);
+                            ty = 3494 + Utils.random(-2, 3);
                         }
                     }
                     com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
@@ -720,6 +942,79 @@ public class CitizenBrain extends BotBrain {
         } catch (Throwable ignored) {}
     }
 
+    /** Semi-smart loot pickup. Scans the bot's region for ground items
+     *  within `radius` tiles, picks the most valuable one, walks to it
+     *  and grabs it. Returns true if the bot is now busy with a pickup
+     *  so the caller skips wander. */
+    private boolean tryPkerLootPickup(AIPlayer bot, int radius) {
+        try {
+            // Don't loot if our inventory is basically full - leave a
+            // few slots for food / restock so we don't starve.
+            if (bot.getInventory().getFreeSlots() < 2) return false;
+            com.rs.game.Region region = com.rs.game.World.getRegion(bot.getRegionId());
+            if (region == null) return false;
+            java.util.List<com.rs.game.item.FloorItem> items = region.getGroundItemsSafe();
+            if (items == null || items.isEmpty()) return false;
+            com.rs.game.item.FloorItem best = null;
+            int bestScore = -1;
+            int bestSq = Integer.MAX_VALUE;
+            for (com.rs.game.item.FloorItem fi : items) {
+                if (fi == null) continue;
+                com.rs.game.WorldTile t = fi.getTile();
+                if (t == null) continue;
+                if (t.getPlane() != bot.getPlane()) continue;
+                int dx = t.getX() - bot.getX();
+                int dy = t.getY() - bot.getY();
+                int sq = dx * dx + dy * dy;
+                if (sq > radius * radius) continue;
+                // Skip own-owned floor items that are still in their
+                // private window - other bots / players can't see them
+                // either, and we don't want to skip-trip across our own
+                // dropped placeholders.
+                if (fi.isInvisible() && fi.hasOwner()
+                        && !bot.getUsername().equals(fi.getOwner())) {
+                    continue;
+                }
+                int value = 0;
+                try {
+                    value = fi.getDefinitions() == null ? 0
+                        : fi.getDefinitions().getValue();
+                } catch (Throwable ignored) {}
+                int amount = 1;
+                try { amount = fi.getAmount(); } catch (Throwable ignored) {}
+                int score = value * Math.max(1, amount);
+                // Junk filter: skip score==0 (truly worthless: bones,
+                // ashes, single arrows). Most equipment items have
+                // value > 0 even if low, so this catches bones (val 0)
+                // without filtering out a rune scimitar (val 25k) or
+                // sharks (val 50). Bot-killed-bot drops include real
+                // equipment so any positive-value pile is worth grabbing.
+                if (score <= 0) continue;
+                // Prefer higher score, break ties by closest tile.
+                if (score > bestScore || (score == bestScore && sq < bestSq)) {
+                    best = fi;
+                    bestScore = score;
+                    bestSq = sq;
+                }
+            }
+            if (best == null) return false;
+            com.rs.game.WorldTile bt = best.getTile();
+            // If we're already on the tile, pick it up now.
+            if (bt.getX() == bot.getX() && bt.getY() == bot.getY()) {
+                com.rs.game.World.removeGroundItem(bot, best);
+                debug(bot, "looted " + best.getDefinitions().getName()
+                    + " x" + best.getAmount() + " (val=" + bestScore + ")");
+                return true;
+            }
+            // Otherwise walk toward it - return true so the caller
+            // (tickInteracting) doesn't override the walk with a wander.
+            com.rs.bot.ai.BotPathing.walkTo(bot, bt.getX(), bt.getY());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     /** Pull the best food off the bot's inventory and heal up to maxHp. */
     private void eatHighestFood(AIPlayer bot, int hp, int maxHp) {
         // Highest-heal first so a level-99 mage doesn't waste a shark
@@ -785,9 +1080,19 @@ public class CitizenBrain extends BotBrain {
      *  scrap with each other regardless of cb spread. Without this,
      *  user reported PK bots standing around because their cb 80 lure
      *  couldn't engage the cb 110 hunter that wandered past at lvl 1
-     *  wildy. */
+     *  wildy.
+     *
+     *  HARD GATE: bot must actually be inside the wildy area. User
+     *  reported bots that respawned at Edge bank started fighting
+     *  each other AT the bank instead of going to wildy first.
+     *  PK bots only engage targets while in wildy. */
     private Player findNearbyPkVictim(AIPlayer bot, int radius) {
         try {
+            // PK only inside wildy. Outside, we walk to the bot's
+            // assigned wildy-home tile first.
+            if (!com.rs.game.player.controllers.Wilderness.isAtWild(bot)) {
+                return null;
+            }
             int botCb = bot.getSkills().getCombatLevel();
             int wildLevel = com.rs.game.player.controllers.Wilderness.getWildLevel(bot);
             if (wildLevel < 1) return null;
@@ -798,13 +1103,11 @@ public class CitizenBrain extends BotBrain {
                 if (other.isDead()) continue;
                 if (other.getPlane() != bot.getPlane()) continue;
                 if (!other.isPkOptIn()) continue;          // respects victim opt-out
-                // CB-diff gate ONLY applies to bot-vs-real-player. Two
-                // AIPlayer PK bots always count as eligible so the
-                // wildy stays active even when level spreads are wide.
-                boolean otherIsBot = other instanceof AIPlayer;
-                if (!otherIsBot
-                        && Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel)
-                    continue;
+                // CB-diff gate skipped entirely for any victim involving
+                // a bot - bot-vs-bot AND bot-vs-real-player. Mirrors the
+                // Wilderness.canAttack relaxation: PK bots exist for
+                // fight testing; cb-gating them just means a maxed
+                // admin can never get attacked by a cb-70 lure.
                 int dx = other.getX() - bot.getX();
                 int dy = other.getY() - bot.getY();
                 int sq = dx * dx + dy * dy;
@@ -911,7 +1214,38 @@ public class CitizenBrain extends BotBrain {
             applicable.add(m);
         }
         if (applicable.isEmpty()) return null;
-        return applicable.get(Utils.random(applicable.size()));
+        // Tier + proximity weighted pick. Real RS players don't randomly
+        // choose between chopping normals at Lumby vs magics at Gnome
+        // Stronghold - they pick the highest tier they can use AND
+        // (often) one near where they already are. We bias both:
+        //   tier bonus      = +(minLevel)        -- prefer top tier
+        //   proximity bonus = +Math.max(0, 200 - tile-distance / 5)
+        //                                          -- prefer methods within
+        //                                          ~1000 tiles, scaled so a
+        //                                          method 100 tiles away
+        //                                          gets +180, 1000 away +0.
+        // 8 random rolls then pick highest score - lets the top-2 tier
+        // win usually but with enough variance that bots aren't 100%
+        // identical. User: "do you only have wc bots cutting regular
+        // trees?" - this fixes the bias toward overrepresented low-tier
+        // methods.
+        com.rs.bot.ai.TrainingMethods.Method best = null;
+        int bestScore = Integer.MIN_VALUE;
+        int home_x = (homeAnchor != null) ? homeAnchor.getX() : bot.getX();
+        int home_y = (homeAnchor != null) ? homeAnchor.getY() : bot.getY();
+        for (int trial = 0; trial < 8; trial++) {
+            com.rs.bot.ai.TrainingMethods.Method cand =
+                applicable.get(Utils.random(applicable.size()));
+            int dist = Math.abs(cand.location.getX() - home_x)
+                     + Math.abs(cand.location.getY() - home_y);
+            int proximity = Math.max(0, 200 - dist / 5);
+            int score = cand.minLevel + proximity + Utils.random(20);
+            if (score > bestScore) {
+                bestScore = score;
+                best = cand;
+            }
+        }
+        return best;
     }
 
     /**

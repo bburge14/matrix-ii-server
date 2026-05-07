@@ -387,9 +387,24 @@ public class NPC extends Entity implements Serializable {
 				boolean canInteract = !isCantInteract() && !isForceWalking();
 				boolean hasCombat = combat != null;
 				boolean targetEmpty = hasCombat && combat.getTarget() == null;
+				// Real-player preempt: if a HUMAN player hits an NPC that's
+				// currently targeting an AI bot, hand aggro to the player.
+				// Without this, the user's log showed "Iruloth -> NPC 32
+				// Guard dmg=13" but the Guard's target stayed locked on
+				// [AI]obsEdge - real player got nothing back because a bot
+				// got there first. AI-vs-AI keeps existing target so bot
+				// brawls don't constantly thrash.
+				boolean isRealPlayer = !(source instanceof com.rs.bot.AIPlayer);
+				boolean preemptForPlayer = hasCombat && !targetEmpty
+					&& alive && canInteract
+					&& isRealPlayer
+					&& combat.getTarget() instanceof com.rs.bot.AIPlayer;
 				boolean attempted = false;
 				if (hasCombat && targetEmpty && alive && canInteract
 						&& getDefinitions() != null) {
+					setTarget(source);
+					attempted = true;
+				} else if (preemptForPlayer && getDefinitions() != null) {
 					setTarget(source);
 					attempted = true;
 				}
@@ -398,6 +413,8 @@ public class NPC extends Entity implements Serializable {
 					if (!alive)               state = "DEAD";
 					else if (!canInteract)    state = "CANT_INTERACT(force=" + isForceWalking() + ")";
 					else if (!hasCombat)      state = "NO_COMBAT";
+					else if (preemptForPlayer && attempted)
+						state = "PREEMPT_FROM_BOT -> " + (combat.getTarget() == null ? "REJECTED" : "OK");
 					else if (!targetEmpty)    state = "TARGET_ALREADY=" + combat.getTarget();
 					else if (attempted)       state = "SET_TARGET -> " + (combat.getTarget() == null ? "REJECTED" : "OK");
 					else                       state = "UNKNOWN";
