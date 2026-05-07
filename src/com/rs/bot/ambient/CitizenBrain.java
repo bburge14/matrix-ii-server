@@ -448,7 +448,11 @@ public class CitizenBrain extends BotBrain {
                 boolean inWildy = bot.getControlerManager().getControler()
                     instanceof com.rs.game.player.controllers.Wilderness;
                 if (dedicated || inWildy) {
-                    int radius = dedicated ? 12 : 8;
+                    // LURE 12 (ditch cluster), HUNTER 25 (spread roamers
+                    // need a wider search ring to find each other in
+                    // deep wildy), other combatants 8 (NPC-train fallback).
+                    int radius = archetype.isPkerHunter() ? 25
+                                : dedicated ? 12 : 8;
                     Player victim = findNearbyPkVictim(bot, radius);
                     if (victim != null) {
                         // Dedicated PKers eat + pot before engaging.
@@ -616,7 +620,14 @@ public class CitizenBrain extends BotBrain {
     /** Find a pk-opted-in Player within `radius` tiles that this bot
      *  can attack (combat-level eligible, not the bot itself, not dead).
      *  Used by combatant citizens in the wildy to pick a PK target
-     *  before falling back to NPC combat. */
+     *  before falling back to NPC combat.
+     *
+     *  Bot-vs-bot is intentional: when both attacker and target are
+     *  AIPlayers we DROP the wildy combat-level diff check so PK bots
+     *  scrap with each other regardless of cb spread. Without this,
+     *  user reported PK bots standing around because their cb 80 lure
+     *  couldn't engage the cb 110 hunter that wandered past at lvl 1
+     *  wildy. */
     private Player findNearbyPkVictim(AIPlayer bot, int radius) {
         try {
             int botCb = bot.getSkills().getCombatLevel();
@@ -629,7 +640,13 @@ public class CitizenBrain extends BotBrain {
                 if (other.isDead()) continue;
                 if (other.getPlane() != bot.getPlane()) continue;
                 if (!other.isPkOptIn()) continue;          // respects victim opt-out
-                if (Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel) continue;
+                // CB-diff gate ONLY applies to bot-vs-real-player. Two
+                // AIPlayer PK bots always count as eligible so the
+                // wildy stays active even when level spreads are wide.
+                boolean otherIsBot = other instanceof AIPlayer;
+                if (!otherIsBot
+                        && Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel)
+                    continue;
                 int dx = other.getX() - bot.getX();
                 int dy = other.getY() - bot.getY();
                 int sq = dx * dx + dy * dy;
