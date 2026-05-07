@@ -143,15 +143,17 @@ public final class CitizenSpawner {
         if (arch != null && arch.isSocialite()) {
             scatter = Math.max(scatter, 12);
         }
-        // PK bots ALWAYS spawn just south of the wildy ditch (3088,3518)
-        // and walk in. User report: spawning them deep meant they
-        // skipped the controller hookup + couldn't return after death.
-        // The Edge-side ditch tile lets them appear naturally and run
-        // into wildy under their own brain. Their homeAnchor (used
-        // for wander targeting + respawn) stays at the original deep
-        // tile so they navigate to that area on their own.
+        // PK bots spawn JUST INSIDE wildy on the north side of the ditch
+        // (3088,3525). Earlier attempt to spawn at the Edge side
+        // (3088,3518) failed because the ditch tiles (y 3522-3524) are
+        // clipped barriers - RouteFinder can't path across, so bots
+        // sat on the Edge side trying to fight victims they could see
+        // but never reach. CitizenBrain has a tickTraversing ditch-cross
+        // helper that teleports bots across the ditch when their target
+        // crosses it (Edge -> wildy or wildy -> Edge restock), so they
+        // can still patrol both sides.
         if (arch != null && arch.isPker()) {
-            anchor = new com.rs.game.WorldTile(3088, 3518, 0);
+            anchor = new com.rs.game.WorldTile(3088, 3525, 0);
             scatter = Math.max(scatter, 4);
         }
         scatter = Math.max(2, scatter);
