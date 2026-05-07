@@ -151,6 +151,24 @@ public final class BotEquipment {
             int foodQty = combatLevel >= 70 ? 50 + Utils.random(150) : 10 + Utils.random(50);
             bot.getBank().addItem(foodId, foodQty, true);
 
+            // Combat inventory stack: every cb-30+ bot carries a few
+            // sharks/monkfish + a couple super combat pots + a couple
+            // prayer pots in INVENTORY (not bank) so PK / NPC fights
+            // have something to eat/heal with mid-combat. Without this
+            // bots only had food in the bank, which is useless once
+            // they're already in the wildy.
+            if (combatLevel >= 30) {
+                int combatFood = combatLevel >= 70 ? 385 : 379; // shark or lobster
+                int combatFoodQty = combatLevel >= 90 ? 12 : combatLevel >= 70 ? 8 : 5;
+                bot.getInventory().addItem(combatFood, combatFoodQty);
+                if (combatLevel >= 50) {
+                    bot.getInventory().addItem(12695, 2); // super combat pot (4)
+                }
+                if (combatLevel >= 50) {
+                    bot.getInventory().addItem(2434, 2);  // prayer pot (4)
+                }
+            }
+
             // Random raw stash (logs/fish/ore/hide) - looks like past skilling
             if (Utils.random(100) < 40) {
                 int[] rawIds = {1511, 1521, 1519, 1517, 1515, 1513, 6332, 317, 327, 321, 331, 359, 377, 436, 438, 440, 442, 444, 447, 449, 451, 1739, 1745, 2505};
@@ -853,6 +871,23 @@ public final class BotEquipment {
 
     private static void applyRanger(Player bot, int cb) {
         applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.RANGED, cb);
+        // Stock arrows + bolts so the bow/crossbow that just landed in
+        // the weapon slot has ammo to fire. Was a silent failure before:
+        // ranger bot stood there because the engine refuses to fire a
+        // bow with an empty arrow slot.
+        try {
+            int rng = bot.getSkills().getLevelForXp(com.rs.game.player.Skills.RANGE);
+            int arrowId, boltId, qty = 1500;
+            if      (rng >= 70) { arrowId = 892; boltId = 9244; }   // rune arrows / dragon bolts(e)
+            else if (rng >= 50) { arrowId = 890; boltId = 9242; }   // adamant arrows / runite bolts
+            else if (rng >= 30) { arrowId = 888; boltId = 9241; }   // mithril arrows / adamant bolts
+            else                 { arrowId = 884; boltId = 9140; }  // iron arrows / iron bolts
+            bot.getInventory().addItem(arrowId, qty);
+            bot.getInventory().addItem(boltId,  qty);
+            // Equip arrows in the ammo slot so a bow autosees them
+            bot.getEquipment().getItems().set(Equipment.SLOT_ARROWS,
+                new Item(arrowId, qty));
+        } catch (Throwable ignore) {}
     }
 
     private static void applyRangerLegacy(Player bot, int cb) {
@@ -894,6 +929,33 @@ public final class BotEquipment {
 
     private static void applyMage(Player bot, int cb) {
         applyTieredSet(bot, com.rs.bot.TieredOutfitPool.Style.MAGIC, cb);
+        // Stock spellcasting runes + set the bot's autocast so when the
+        // brain calls setAction(new PlayerCombatNew(...)) the engine's
+        // tick actually fires a magic attack instead of standing there
+        // because no spell is selected. Without this, mage PKers spawn
+        // in tectonic but never throw a spell. Auto-cast tier scales
+        // with the bot's magic level so a level-50 mage doesn't try
+        // (and fail) to autocast Air Surge.
+        try {
+            bot.getInventory().addItem(556, 5000); // air
+            bot.getInventory().addItem(555, 5000); // water
+            bot.getInventory().addItem(557, 5000); // earth
+            bot.getInventory().addItem(554, 5000); // fire
+            bot.getInventory().addItem(558, 5000); // mind
+            bot.getInventory().addItem(562, 5000); // chaos
+            bot.getInventory().addItem(560, 2000); // death
+            bot.getInventory().addItem(565, 1000); // blood
+        } catch (Throwable ignore) {}
+        try {
+            int mag = bot.getSkills().getLevelForXp(com.rs.game.player.Skills.MAGIC);
+            int spell;
+            if      (mag >= 95) spell = 61;  // Air surge
+            else if (mag >= 75) spell = 48;  // Air wave
+            else if (mag >= 55) spell = 42;  // Air blast
+            else if (mag >= 35) spell = 32;  // Air bolt
+            else                spell = 25;  // Air strike
+            bot.getCombatDefinitions().setAutoCastSpell(spell);
+        } catch (Throwable ignore) {}
     }
 
     private static void applyMageLegacy(Player bot, int cb) {

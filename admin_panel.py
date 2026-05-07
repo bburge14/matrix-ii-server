@@ -1750,8 +1750,50 @@ class SlotEditor(ctk.CTkToplevel):
         ctk.CTkOptionMenu(row_preset, values=_preset_label_list(),
                           variable=self.preset_var, width=300,
                           command=self._apply_preset).pack(side="left", padx=4)
-        # Window grew slightly to fit the new row.
-        self.geometry("440x380")
+
+        # Extra anchors - optional list of additional spawn tiles. Each
+        # spawn picks one at random from {primary} U extras. Lets one
+        # slot scatter bots across multiple skill spots / GE corners /
+        # wildy zones without duplicating the row.
+        ctk.CTkLabel(self, text="Extra anchors (optional):",
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(
+                         anchor="w", padx=20, pady=(8, 2))
+        # Initial population from the slot's existing extra_anchors list
+        existing_extras = slot.get("extra_anchors") or []
+        self.extras = list(existing_extras)  # list of [x,y,plane]
+
+        extras_frame = ctk.CTkFrame(self)
+        extras_frame.pack(fill="x", padx=20, pady=2)
+        self.extras_listbox = tk.Listbox(extras_frame, height=4,
+                                          bg="#2b2b2b", fg="white",
+                                          selectbackground="#1f6aa5",
+                                          font=("Helvetica", 10),
+                                          borderwidth=0, highlightthickness=0)
+        self.extras_listbox.pack(side="left", fill="x", expand=True, padx=4, pady=4)
+        for a in self.extras:
+            self.extras_listbox.insert(tk.END, f"{a[0]}, {a[1]}, p{a[2]}")
+
+        # Add-extra row: preset OR x/y/plane entry + Add button
+        add_row = ctk.CTkFrame(self, fg_color="transparent")
+        add_row.pack(fill="x", padx=20, pady=2)
+        self.add_preset_var = tk.StringVar(value="— Custom —")
+        ctk.CTkOptionMenu(add_row, values=_preset_label_list(),
+                          variable=self.add_preset_var, width=200,
+                          command=self._extras_preset_picked).pack(side="left", padx=2)
+        self.add_x = tk.StringVar(); self.add_y = tk.StringVar(); self.add_p = tk.StringVar(value="0")
+        ctk.CTkEntry(add_row, textvariable=self.add_x, width=55,
+                     placeholder_text="X").pack(side="left", padx=2)
+        ctk.CTkEntry(add_row, textvariable=self.add_y, width=55,
+                     placeholder_text="Y").pack(side="left", padx=2)
+        ctk.CTkEntry(add_row, textvariable=self.add_p, width=30,
+                     placeholder_text="P").pack(side="left", padx=2)
+        ctk.CTkButton(add_row, text="+", width=28, fg_color="#1b6e3a",
+                      command=self._add_extra).pack(side="left", padx=2)
+        ctk.CTkButton(add_row, text="− Remove", width=80, fg_color="#aa3030",
+                      command=self._remove_extra).pack(side="left", padx=2)
+
+        # Bigger window to fit the extras section.
+        self.geometry("520x520")
 
         # autospawn
         self.autospawn_var = tk.BooleanVar(value=bool(slot.get("autospawn", False)))
@@ -1783,6 +1825,41 @@ class SlotEditor(ctk.CTkToplevel):
         self.y_var.set(str(y))
         self.plane_var.set(str(p))
 
+    def _extras_preset_picked(self, label):
+        """Filling the X/Y/P entries when a preset is picked from the
+        extras row's preset dropdown. Doesn't auto-add - user clicks
+        + to commit, so they can tweak coords first."""
+        coords = SPAWN_PRESETS.get(label)
+        if not coords:
+            return
+        x, y, p = coords
+        self.add_x.set(str(x))
+        self.add_y.set(str(y))
+        self.add_p.set(str(p))
+
+    def _add_extra(self):
+        try:
+            x = int(self.add_x.get())
+            y = int(self.add_y.get())
+            p = int(self.add_p.get() or 0)
+        except ValueError:
+            messagebox.showwarning("Add anchor", "X/Y must be numeric.")
+            return
+        self.extras.append([x, y, p])
+        self.extras_listbox.insert(tk.END, f"{x}, {y}, p{p}")
+        # Clear entries so the next add doesn't re-commit the same tile.
+        self.add_x.set(""); self.add_y.set(""); self.add_p.set("0")
+        self.add_preset_var.set("— Custom —")
+
+    def _remove_extra(self):
+        sel = self.extras_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if 0 <= idx < len(self.extras):
+            del self.extras[idx]
+            self.extras_listbox.delete(idx)
+
     def _save(self):
         try:
             updated = {
@@ -1793,6 +1870,7 @@ class SlotEditor(ctk.CTkToplevel):
                 "plane":   int(self.plane_var.get()),
                 "scatter": int(self.scatter_var.get()),
                 "autospawn": bool(self.autospawn_var.get()),
+                "extra_anchors": list(self.extras),
             }
         except ValueError as e:
             messagebox.showerror("Invalid", f"Numeric field error: {e}")

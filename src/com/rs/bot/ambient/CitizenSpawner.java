@@ -297,6 +297,20 @@ public final class CitizenSpawner {
                 if (!sheathed) bot.getCombatDefinitions().switchSheathe();
             } catch (Throwable ignored) {}
 
+            // Combatants get REVOLUTION combat mode by default - the
+            // engine fires basic abilities automatically when the bot
+            // enters combat. Without this PKers just stood there
+            // tapping at half-speed while real abilities sat on
+            // cooldown unused.
+            try {
+                if (arch.isCombatant()) {
+                    bot.setBotCombatMode(
+                        com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
+                    bot.getCombatDefinitions().setCombatMode(
+                        com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
+                }
+            } catch (Throwable ignored) {}
+
             // PK bots opt in to wildy PvP automatically. The pkOptIn flag
             // gates the symmetric Wilderness.canAttack check - bots only
             // attack other opted-in players, and they're only attackable
