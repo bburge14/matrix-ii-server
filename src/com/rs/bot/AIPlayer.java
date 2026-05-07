@@ -258,6 +258,17 @@ public class AIPlayer extends Player {
                             com.rs.bot.BotEquipment.applyLoadout(AIPlayer.this,
                                 getArchetype(), cb);
                             getAppearence().generateAppearenceData();
+                            // Refresh action bar to match whatever weapon
+                            // style the new loadout rolled (a melee bot
+                            // that respawned as ranged needs range
+                            // abilities, not the old melee bar).
+                            try { getActionbar().setupBar(); }
+                            catch (Throwable ignored) {}
+                            // Top off prayer too.
+                            try {
+                                getPrayer().setPrayerpoints(
+                                    getPrayer().getMaxPrayerpoints());
+                            } catch (Throwable ignored) {}
                         } catch (Throwable t) {
                             System.err.println("[AIPlayer] respawn loadout failed for "
                                 + getDisplayName() + ": " + t);

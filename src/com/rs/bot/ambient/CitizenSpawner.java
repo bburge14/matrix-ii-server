@@ -341,6 +341,34 @@ public final class CitizenSpawner {
                         com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
                     bot.getCombatDefinitions().setCombatMode(
                         com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
+                    // Action bar setup matching the equipped weapon's
+                    // combat style. ActionBar.setupBar reads the weapon
+                    // slot, looks up every ability the bot's stats
+                    // qualify for in that style, and fills slots 0-11
+                    // with primary-style abilities + slots 12/13 with
+                    // defence abilities. With REVOLUTION mode + a
+                    // populated bar the engine auto-fires abilities
+                    // when the bot enters combat.
+                    //
+                    // Effective revo bars per style (filtered by stat
+                    // requirements - low-cb bots get the basics, maxed
+                    // get full top-tier):
+                    //   MELEE  : Slice / Backhand / Sever / Smash /
+                    //            Cleave / Kick / Punish / Dismember /
+                    //            Decimate / Assault + Anticipation /
+                    //            Freedom (defence)
+                    //   RANGE  : Piercing Shot / Snipe / Snap Shot /
+                    //            Bombardment / Fragmentation / Tight
+                    //            Bindings / Escape (similar pattern)
+                    //   MAGIC  : Wrack / Dragon Breath / Sonic Wave /
+                    //            Combust / Asphyxiate / Concentrated
+                    //            Blast / Wild Magic / Surge
+                    // Order is determined by ClientScriptMap so the
+                    // ability list mirrors what real RS3 revolution
+                    // bars in 2014 used (the engine's CS_DATA_ID
+                    // entries are the canonical 2014-era ordering).
+                    try { bot.getActionbar().setupBar(); }
+                    catch (Throwable ignored) {}
                 }
             } catch (Throwable ignored) {}
 
