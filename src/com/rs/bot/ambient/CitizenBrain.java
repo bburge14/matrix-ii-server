@@ -911,7 +911,38 @@ public class CitizenBrain extends BotBrain {
             applicable.add(m);
         }
         if (applicable.isEmpty()) return null;
-        return applicable.get(Utils.random(applicable.size()));
+        // Tier + proximity weighted pick. Real RS players don't randomly
+        // choose between chopping normals at Lumby vs magics at Gnome
+        // Stronghold - they pick the highest tier they can use AND
+        // (often) one near where they already are. We bias both:
+        //   tier bonus      = +(minLevel)        -- prefer top tier
+        //   proximity bonus = +Math.max(0, 200 - tile-distance / 5)
+        //                                          -- prefer methods within
+        //                                          ~1000 tiles, scaled so a
+        //                                          method 100 tiles away
+        //                                          gets +180, 1000 away +0.
+        // 8 random rolls then pick highest score - lets the top-2 tier
+        // win usually but with enough variance that bots aren't 100%
+        // identical. User: "do you only have wc bots cutting regular
+        // trees?" - this fixes the bias toward overrepresented low-tier
+        // methods.
+        com.rs.bot.ai.TrainingMethods.Method best = null;
+        int bestScore = Integer.MIN_VALUE;
+        int home_x = (homeAnchor != null) ? homeAnchor.getX() : bot.getX();
+        int home_y = (homeAnchor != null) ? homeAnchor.getY() : bot.getY();
+        for (int trial = 0; trial < 8; trial++) {
+            com.rs.bot.ai.TrainingMethods.Method cand =
+                applicable.get(Utils.random(applicable.size()));
+            int dist = Math.abs(cand.location.getX() - home_x)
+                     + Math.abs(cand.location.getY() - home_y);
+            int proximity = Math.max(0, 200 - dist / 5);
+            int score = cand.minLevel + proximity + Utils.random(20);
+            if (score > bestScore) {
+                bestScore = score;
+                best = cand;
+            }
+        }
+        return best;
     }
 
     /**

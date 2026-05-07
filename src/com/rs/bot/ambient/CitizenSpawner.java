@@ -465,6 +465,14 @@ public final class CitizenSpawner {
                 case COMBATANT_PURE:   return 40 + Utils.random(60);  // 40-99
                 case COMBATANT_TANK:   return 60 + Utils.random(50);  // 60-109
                 case COMBATANT_HYBRID: return 70 + Utils.random(50);  // 70-119
+                case COMBATANT_PKER_LURE:
+                    // Lures span the full PK band - low-cb pures camping
+                    // at the ditch through maxed mains. Distribution
+                    // weights mid-tier so most lures are cb 80-110, with
+                    // ~15% maxed (cb 120-138) for fight testing.
+                    return rollPkerCb();
+                case COMBATANT_PKER_HUNTER:
+                    return rollPkerCb();
                 default: return 50 + Utils.random(60);
             }
         }
@@ -517,5 +525,20 @@ public final class CitizenSpawner {
         if (r < 50) return "melee";
         if (r < 80) return "ranged";
         return "magic";
+    }
+
+    /** PK bot cb roll. Distribution:
+     *    25% low-mid (60-90)   - rune pures, low-tier ditch fighters
+     *    40% mid (90-110)      - bandos / barrows / chaotic players
+     *    20% high (110-120)    - near-BIS torva / sirenic / tectonic
+     *    15% maxed (120-138)   - testing band - end-game fight tests
+     *  Without the maxed slice, no PK bot got close to player-tier cb
+     *  and you couldn't realistically test high-end PK against them. */
+    private static int rollPkerCb() {
+        int r = Utils.random(100);
+        if (r < 25) return 60  + Utils.random(31);   // 60-90
+        if (r < 65) return 90  + Utils.random(21);   // 90-110
+        if (r < 85) return 110 + Utils.random(11);   // 110-120
+        return 120 + Utils.random(19);               // 120-138 (maxed)
     }
 }
