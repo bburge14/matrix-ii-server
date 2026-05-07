@@ -57,14 +57,25 @@ public enum AmbientArchetype {
         new String[] {"hybrid clan", "looking for a tribrid team",
                       "switching styles", "ranger here", "mage build"}),
 
-    // Dedicated PK archetype - distinct from the other combatants.
-    // Spawns at wildy edge, always opted in to pvp, hunts opted-in
-    // players exclusively. Doesn't fall back to NPC training.
-    COMBATANT_PKER("pker",
+    // Dedicated PK archetypes - distinct from the other combatants.
+    // Always opted in to pvp, hunt opted-in players exclusively, no
+    // NPC fallback. Two flavours:
+    //   LURE   - lingers just north of the wildy ditch in Edgeville,
+    //            picks fights when victims wander by (low-level wildy).
+    //   HUNTER - actively roams deep wildy looking for action; covers
+    //            mid-to-deep wilderness (cb 5-30 wildy levels).
+    COMBATANT_PKER_LURE("pk lure",
+        new int[] {},
+        new String[] {"come dh me", "1v1 ditch", "low risk fight?",
+                      "bring food we go", "anyone wanting a fight",
+                      "ez ditch flame", "pking right at ditch"}),
+
+    COMBATANT_PKER_HUNTER("pk hunter",
         new int[] {},
         new String[] {"easy clap", "ez", "pid'd noob", "skull tricked",
                       "no honor", "ags spec", "rune pure rushing",
-                      "hybriding noobs", "wildy is my home"}),
+                      "hybriding noobs", "wildy is my home",
+                      "hunting in deep", "anyone in deep wildy"}),
 
     // === Socialite variants ===
     SOCIALITE_GAMBLER("gambler",
@@ -173,13 +184,27 @@ public enum AmbientArchetype {
     /** True for any archetype that engages in combat (NPC or PvP). */
     public boolean isCombatant() {
         return this == COMBATANT_PURE || this == COMBATANT_TANK
-            || this == COMBATANT_HYBRID || this == COMBATANT_PKER;
+            || this == COMBATANT_HYBRID
+            || this == COMBATANT_PKER_LURE || this == COMBATANT_PKER_HUNTER;
     }
 
-    /** True only for dedicated PK bots. They skip NPC fallback combat
-     *  and exclusively hunt opted-in players in the wildy. */
+    /** True only for dedicated PK bots (either LURE or HUNTER variant).
+     *  They skip NPC fallback combat and exclusively hunt opted-in
+     *  players in the wildy. */
     public boolean isPker() {
-        return this == COMBATANT_PKER;
+        return this == COMBATANT_PKER_LURE || this == COMBATANT_PKER_HUNTER;
+    }
+
+    /** PK lure - hangs around just north of the wildy ditch in Edgeville,
+     *  picks fights with victims walking by. Stays in low-level wildy. */
+    public boolean isPkerLure() {
+        return this == COMBATANT_PKER_LURE;
+    }
+
+    /** PK hunter - actively roams the wildy looking for opted-in
+     *  players to fight. Covers mid-to-deep wilderness. */
+    public boolean isPkerHunter() {
+        return this == COMBATANT_PKER_HUNTER;
     }
 
     public boolean isSkiller() {
@@ -288,7 +313,11 @@ public enum AmbientArchetype {
         switch (category.toLowerCase()) {
             case "skiller":   return new AmbientArchetype[] {SKILLER_EFFICIENT, SKILLER_CASUAL, SKILLER_NOOB}[Utils.random(3)];
             case "combatant": return new AmbientArchetype[] {COMBATANT_PURE, COMBATANT_TANK, COMBATANT_HYBRID}[Utils.random(3)];
-            case "pker":      return COMBATANT_PKER;
+            // 60/40 LURE vs HUNTER - more lures than hunters since the
+            // ditch is the easier, more visible spawn for new testers.
+            case "pker":        return Utils.random(10) < 6 ? COMBATANT_PKER_LURE : COMBATANT_PKER_HUNTER;
+            case "pker_lure":   return COMBATANT_PKER_LURE;
+            case "pker_hunter": return COMBATANT_PKER_HUNTER;
             // Mixed socialite category: weighted toward bankstanders + tiered
             // traders (the visible "real" GE crowd) over gamblers/legacy.
             case "socialite": return new AmbientArchetype[] {

@@ -53,6 +53,25 @@ public final class ItemRequirements {
         req(33302, Skills.ATTACK, 90, Skills.STRENGTH, 90);   // Shadow nox scythe
         req(18353, Skills.ATTACK, 80);   // Chaotic maul
 
+        // === HATCHETS / PICKAXES (used both as tools and weapons) ===
+        // Gate on ATTACK so a level-3 bot can't end up wielding a dragon
+        // hatchet just because they rolled a high WC level.
+        req(1351, Skills.ATTACK, 1);    // Bronze hatchet
+        req(1349, Skills.ATTACK, 1);    // Iron hatchet
+        req(1353, Skills.ATTACK, 5);    // Steel hatchet
+        req(1361, Skills.ATTACK, 10);   // Black hatchet
+        req(1355, Skills.ATTACK, 20);   // Mithril hatchet
+        req(1357, Skills.ATTACK, 30);   // Adamant hatchet
+        req(1359, Skills.ATTACK, 40);   // Rune hatchet
+        req(6739, Skills.ATTACK, 60);   // Dragon hatchet
+        req(1265, Skills.ATTACK, 1);    // Bronze pickaxe
+        req(1267, Skills.ATTACK, 1);    // Iron pickaxe
+        req(1269, Skills.ATTACK, 5);    // Steel pickaxe
+        req(1273, Skills.ATTACK, 20);   // Mithril pickaxe
+        req(1271, Skills.ATTACK, 30);   // Adamant pickaxe
+        req(1275, Skills.ATTACK, 40);   // Rune pickaxe
+        req(15259, Skills.ATTACK, 60);  // Dragon pickaxe
+
         // === MELEE ARMOR ===
         req(11724, Skills.DEFENCE, 65);  // Bandos chestplate
         req(11726, Skills.DEFENCE, 65);  // Bandos tassets

@@ -2318,6 +2318,31 @@ public class PlayerCombatNew extends Action {
 
     public static void delayHit(final Entity target, int delay, final Hit... hits) {
 	addAttackedByDelay(hits[0].getSource(), target); //called separately since some spells dont do dmg
+	// Upstream retaliation diagnostic. If we never see this in
+	// data/logs/bots.log even though players are visibly attacking
+	// NPCs, the player's swing isn't reaching delayHit at all -
+	// meaning the bug is somewhere earlier in the combat pipeline
+	// (action ticks, attackTarget(), getHit). 1-in-8 sample.
+	try {
+	    if (com.rs.utils.Utils.random(8) == 0
+		    && hits != null && hits.length > 0 && hits[0] != null) {
+		Entity src = hits[0].getSource();
+		String tName = "?";
+		String tType = target == null ? "null" : target.getClass().getSimpleName();
+		if (target instanceof com.rs.game.npc.NPC) {
+		    com.rs.game.npc.NPC n = (com.rs.game.npc.NPC) target;
+		    tName = n.getId() + " " + (n.getDefinitions() != null ? n.getDefinitions().name : "?");
+		} else if (target instanceof Player) {
+		    tName = ((Player) target).getDisplayName();
+		}
+		com.rs.bot.BotLog.log("DELAYHIT",
+			(src instanceof Player ? ((Player) src).getDisplayName() : "?")
+			+ " -> " + tType + " " + tName
+			+ " dmg=" + hits[0].getDamage()
+			+ " look=" + hits[0].getLook()
+			+ " delay=" + delay);
+	    }
+	} catch (Throwable ignored) {}
 	WorldTasksManager.schedule(new WorldTask() {
 
 	    @Override

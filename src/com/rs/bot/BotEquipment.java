@@ -1089,7 +1089,26 @@ public final class BotEquipment {
             }
             // Stat gate: bots can't wear gear above their level.
             if (!EquipmentReqs.canWear(bot, itemId)) return;
-            bot.getEquipment().getItems().set(slot, new Item(itemId, 1));
+            // Per-item table mirrors EquipmentReqs but covers the
+            // tiered-pool (drygore, zaryte, hatchets, etc.) so the
+            // structured loadout path is also gated.
+            if (!ItemRequirements.canEquip(bot, itemId)) return;
+            // 2H / shield mutual exclusion. Without this, bots end up
+            // wielding a godsword while ALSO carrying a kiteshield -
+            // visually broken and impossible in real play.
+            //   - Equipping a 2H weapon: clear the shield slot.
+            //   - Equipping a shield while a 2H weapon is in slot 3:
+            //     refuse the shield (don't strip the weapon - the
+            //     archetype intentionally chose it).
+            Item equipping = new Item(itemId, 1);
+            if (slot == Equipment.SLOT_WEAPON
+                    && Equipment.isTwoHandedWeapon(equipping)) {
+                bot.getEquipment().getItems().set(Equipment.SLOT_SHIELD, null);
+            } else if (slot == Equipment.SLOT_SHIELD) {
+                Item curWeapon = bot.getEquipment().getItem(Equipment.SLOT_WEAPON);
+                if (curWeapon != null && Equipment.isTwoHandedWeapon(curWeapon)) return;
+            }
+            bot.getEquipment().getItems().set(slot, equipping);
         } catch (Throwable t) {
             System.err.println("[BotEquipment] error setting item " + itemId + " slot " + slot + ": " + t);
         }

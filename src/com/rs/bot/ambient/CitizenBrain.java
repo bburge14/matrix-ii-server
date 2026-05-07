@@ -440,27 +440,38 @@ public class CitizenBrain extends BotBrain {
                 }
                 if (dedicated) {
                     // No victim - move so the bot doesn't just stand at
-                    // a single tile. Three flavours weighted by archetype
-                    // and current location:
-                    //   * 60% stay near the wildy ditch / Edgeville crossing
-                    //     (most PK bots gather there in real RS)
-                    //   * 30% drift deeper into wildy to hunt
-                    //   * 10% pop back to Edgeville bank to re-stock /
-                    //     re-equip then come back
+                    // a single tile. Wander pattern depends on PK type:
+                    //   LURE   - 80% stays around ditch (3088,3520 area),
+                    //            10% drifts a few tiles deeper, 10% pops
+                    //            back to Edgeville bank for restock.
+                    //   HUNTER - 75% roams mid-to-deep wildy, 15% near
+                    //            ditch (catches hunters cutting back),
+                    //            10% restocks at the bank.
                     int roll = Utils.random(100);
                     int tx, ty;
-                    if (roll < 60) {
-                        // Wildy ditch / level 1-3 area
-                        tx = 3088 + Utils.random(-6, 7);
-                        ty = 3520 + Utils.random(-3, 12);
-                    } else if (roll < 90) {
-                        // Wildy levels 4-15, occasional drift to 25
-                        tx = 3060 + Utils.random(60);
-                        ty = 3540 + Utils.random(80);
+                    if (archetype.isPkerLure()) {
+                        if (roll < 80) {
+                            tx = 3088 + Utils.random(-6, 7);
+                            ty = 3520 + Utils.random(-3, 8);
+                        } else if (roll < 90) {
+                            tx = 3080 + Utils.random(20);
+                            ty = 3535 + Utils.random(20);
+                        } else {
+                            tx = 3094 + Utils.random(-3, 4);
+                            ty = 3494 + Utils.random(-2, 3);
+                        }
                     } else {
-                        // Edgeville bank for restock
-                        tx = 3094 + Utils.random(-3, 4);
-                        ty = 3494 + Utils.random(-2, 3);
+                        // HUNTER - active roamer
+                        if (roll < 75) {
+                            tx = 3060 + Utils.random(70);
+                            ty = 3540 + Utils.random(90);
+                        } else if (roll < 90) {
+                            tx = 3088 + Utils.random(-6, 7);
+                            ty = 3520 + Utils.random(-3, 8);
+                        } else {
+                            tx = 3094 + Utils.random(-3, 4);
+                            ty = 3494 + Utils.random(-2, 3);
+                        }
                     }
                     com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
                     return;

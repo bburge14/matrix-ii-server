@@ -980,9 +980,11 @@ class CitizensFrame(ctk.CTkFrame):
         for label, arch in [("Pure","COMBATANT_PURE"),
                             ("Tank","COMBATANT_TANK"),
                             ("Hybrid","COMBATANT_HYBRID"),
-                            ("PK Bot","COMBATANT_PKER")]:
-            ctk.CTkButton(com_quick, text=label, width=110,
-                          fg_color="#aa3030" if arch == "COMBATANT_PKER" else "#3a5588",
+                            ("PK Lure","COMBATANT_PKER_LURE"),
+                            ("PK Hunter","COMBATANT_PKER_HUNTER")]:
+            is_pker = arch.startswith("COMBATANT_PKER")
+            ctk.CTkButton(com_quick, text=label, width=100,
+                          fg_color="#aa3030" if is_pker else "#3a5588",
                           command=lambda a=arch: self._combatant_spawn(a)).pack(side="left", padx=2)
 
         style = ttk.Style()
@@ -1278,16 +1280,20 @@ class CitizensFrame(ctk.CTkFrame):
         threading.Thread(target=do, daemon=True).start()
 
     def _combatant_spawn(self, archetype_name):
-        """Quick-spawn N combatant / PK bots. PKers spawn in low wildy
-        (3093, 3525) by default; pure / tank / hybrid spawn at the
-        Edgeville / wildy edge (3088, 3491)."""
+        """Quick-spawn N combatant / PK bots. Anchor varies by archetype:
+            COMBATANT_PKER_LURE   - just north of wildy ditch  (3093,3525)
+            COMBATANT_PKER_HUNTER - mid-deep wildy             (3076,3580)
+            other combatants      - Edgeville / wildy edge     (3088,3491)
+        """
         try:
             n = int(self.com_count.get())
         except ValueError:
             messagebox.showerror("Bad input", "count must be a number")
             return
-        if archetype_name == "COMBATANT_PKER":
+        if archetype_name == "COMBATANT_PKER_LURE":
             x, y, p = 3093, 3525, 0
+        elif archetype_name == "COMBATANT_PKER_HUNTER":
+            x, y, p = 3076, 3580, 0
         else:
             x, y, p = 3088, 3491, 0
         def do():
