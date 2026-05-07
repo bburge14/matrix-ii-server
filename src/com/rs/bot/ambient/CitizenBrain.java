@@ -159,6 +159,16 @@ public class CitizenBrain extends BotBrain {
      *  fire kill-line + prioritize loot pickup. Wall-clock millis. */
     private long lastKillMs = 0;
 
+    /** PK bots get a deterministic "wildy home" tile assigned at spawn.
+     *  When they're outside wildy (Edge bank after respawn, walking
+     *  back from a restock), tickInteracting walks them DIRECTLY to
+     *  this home before resuming hunt-and-wander. Without it bots
+     *  respawned at Edge bank never made it back to wildy because
+     *  random wander rolled an Edge tile and they sat there fighting.
+     *  Lure homes cluster around the ditch (3088, 3530); hunter homes
+     *  scatter across mid-deep wildy. */
+    private com.rs.game.WorldTile pkWildyHome;
+
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
         this.archetype = archetype;
@@ -181,6 +191,23 @@ public class CitizenBrain extends BotBrain {
                 bot.setPkOptIn(true);
             }
         } catch (Throwable ignored) {}
+
+        // Assign a deterministic wildy home for PK bots so they have a
+        // consistent destination after death-respawn / Edge restock
+        // trip. LURE: tightly clustered north of ditch (lvl 1-3).
+        // HUNTER: scattered across mid-deep wildy (lvl 5-25) so a
+        // batch of hunters spreads naturally instead of stacking.
+        if (archetype != null && archetype.isPker()) {
+            int hx, hy;
+            if (archetype.isPkerLure()) {
+                hx = 3082 + Utils.random(20);   // 3082-3101
+                hy = 3530 + Utils.random(15);   // 3530-3544 (lvl 1-3)
+            } else {
+                hx = 3050 + Utils.random(90);   // wide x spread
+                hy = 3580 + Utils.random(180);  // 3580-3760 (lvl 7-30)
+            }
+            this.pkWildyHome = new WorldTile(hx, hy, 0);
+        }
     }
 
     @Override
@@ -654,6 +681,19 @@ public class CitizenBrain extends BotBrain {
                 boolean dedicated = archetype.isPker();
                 boolean inWildy = bot.getControlerManager().getControler()
                     instanceof com.rs.game.player.controllers.Wilderness;
+                // Outside wildy? March to assigned home tile FIRST.
+                // No fights, no looting - just go back to where we
+                // belong. User screenshot showed all respawned PK bots
+                // skulled inside Edge bank fighting each other
+                // because findNearbyPkVictim happily returned targets
+                // anywhere. The findNearbyPkVictim hard-gate above
+                // handles the "no victims outside wildy" piece; this
+                // is the "actively walk back" piece.
+                if (dedicated && !inWildy && pkWildyHome != null) {
+                    com.rs.bot.ai.BotPathing.walkTo(bot,
+                        pkWildyHome.getX(), pkWildyHome.getY());
+                    return;
+                }
                 // Loot priority: if we just killed a victim within the
                 // last 10 seconds, PRIORITIZE looting their drop over
                 // engaging the next target. Real PKers walk over the
@@ -1040,9 +1080,19 @@ public class CitizenBrain extends BotBrain {
      *  scrap with each other regardless of cb spread. Without this,
      *  user reported PK bots standing around because their cb 80 lure
      *  couldn't engage the cb 110 hunter that wandered past at lvl 1
-     *  wildy. */
+     *  wildy.
+     *
+     *  HARD GATE: bot must actually be inside the wildy area. User
+     *  reported bots that respawned at Edge bank started fighting
+     *  each other AT the bank instead of going to wildy first.
+     *  PK bots only engage targets while in wildy. */
     private Player findNearbyPkVictim(AIPlayer bot, int radius) {
         try {
+            // PK only inside wildy. Outside, we walk to the bot's
+            // assigned wildy-home tile first.
+            if (!com.rs.game.player.controllers.Wilderness.isAtWild(bot)) {
+                return null;
+            }
             int botCb = bot.getSkills().getCombatLevel();
             int wildLevel = com.rs.game.player.controllers.Wilderness.getWildLevel(bot);
             if (wildLevel < 1) return null;
