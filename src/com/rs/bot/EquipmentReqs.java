@@ -123,6 +123,26 @@ public final class EquipmentReqs {
             case 26579: case 26587: case 26595:
                 return new int[] { Skills.ATTACK, 90 };
 
+            // ---- HATCHETS / PICKAXES wielded as weapons ----
+            // These are tools but also melee weapons - the wielder needs both
+            // the gathering skill (mining/woodcutting) and the matching attack
+            // level. Gate on attack since EquipmentReqs covers wear-checks.
+            case 1351:                      return new int[] { Skills.ATTACK,  1 }; // Bronze hatchet
+            case 1349:                      return new int[] { Skills.ATTACK,  1 }; // Iron hatchet
+            case 1353:                      return new int[] { Skills.ATTACK,  5 }; // Steel hatchet
+            case 1361:                      return new int[] { Skills.ATTACK, 10 }; // Black hatchet
+            case 1355:                      return new int[] { Skills.ATTACK, 20 }; // Mithril hatchet
+            case 1357:                      return new int[] { Skills.ATTACK, 30 }; // Adamant hatchet
+            case 1359:                      return new int[] { Skills.ATTACK, 40 }; // Rune hatchet
+            case 6739:                      return new int[] { Skills.ATTACK, 60 }; // Dragon hatchet
+            case 1265:                      return new int[] { Skills.ATTACK,  1 }; // Bronze pickaxe
+            case 1267:                      return new int[] { Skills.ATTACK,  1 }; // Iron pickaxe
+            case 1269:                      return new int[] { Skills.ATTACK,  5 }; // Steel pickaxe
+            case 1273:                      return new int[] { Skills.ATTACK, 20 }; // Mithril pickaxe
+            case 1271:                      return new int[] { Skills.ATTACK, 30 }; // Adamant pickaxe
+            case 1275:                      return new int[] { Skills.ATTACK, 40 }; // Rune pickaxe
+            case 15259:                     return new int[] { Skills.ATTACK, 60 }; // Dragon pickaxe
+
             // ---- RANGED ----
             // Magic shortbow - 50 ranged, willow short - 20, etc.
             case 841: case 839:             return new int[] { Skills.RANGE, 1 };  // shortbow / longbow

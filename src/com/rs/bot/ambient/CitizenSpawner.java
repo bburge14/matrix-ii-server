@@ -223,7 +223,24 @@ public final class CitizenSpawner {
             // already correctly gated (no rune armor on a cb-3 bot, no
             // dragon dagger without 60 attack).
             try {
+                // BotFactory.createOffline already ran applyLoadout once with
+                // a guess at the archetype - clear the equipment slots first
+                // so the second pass (with true stats) doesn't leave stale
+                // items the new pool can't replace. Without this you get a
+                // "render shows X, examine shows Y" mismatch the user reported.
+                try {
+                    int size = bot.getEquipment().getItems().getSize();
+                    for (int s = 0; s < size; s++) {
+                        bot.getEquipment().getItems().set(s, null);
+                    }
+                } catch (Throwable ignored) {}
                 com.rs.bot.BotEquipment.applyLoadout(bot, archetypeStr, targetCb);
+                // Recompute appearance bytes so the visible character matches
+                // the equipment slot data. Without this the old appearance
+                // (from BotFactory's first applyLoadout) is what other clients
+                // see, while examine reads the latest equipment.
+                try { bot.getAppearence().generateAppearenceData(); }
+                catch (Throwable ignored) {}
             } catch (Throwable t) {
                 System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
             }
@@ -283,12 +300,26 @@ public final class CitizenSpawner {
             // PK bots opt in to wildy PvP automatically. The pkOptIn flag
             // gates the symmetric Wilderness.canAttack check - bots only
             // attack other opted-in players, and they're only attackable
-            // by opted-in players. Combatant bots also need a fresh
-            // wildy controller to flip canPvp on if they spawn inside
-            // the wildy area.
+            // by opted-in players.
             try {
                 if (arch.isCombatant()) {
                     bot.setPkOptIn(true);
+                }
+            } catch (Throwable ignored) {}
+
+            // If the bot SPAWNED in wildy (PK lure / hunter or anything
+            // else placed inside the area) it never crossed the ditch
+            // object that fires startControler("Wilderness") for real
+            // players. Without that controller, Wilderness.moved()
+            // never runs and canPvp stays false - users tried to
+            // attack PK bots and got "That player is not in the
+            // wilderness" because canPvp was false despite pkOptIn
+            // being true. Start the controller manually here.
+            try {
+                if (arch.isCombatant()
+                        && com.rs.game.player.controllers.Wilderness.isAtWild(spawn)) {
+                    bot.getControlerManager().startControler("Wilderness");
+                    bot.setCanPvp(true);
                 }
             } catch (Throwable ignored) {}
 

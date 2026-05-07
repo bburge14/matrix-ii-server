@@ -138,6 +138,16 @@ public class CitizenBrain extends BotBrain {
         // wandering - looks like a sync'd dance. User: "I AM SEEING GROUPS
         // MOVE IN SYNC".
         stateTicksRemaining += Utils.random(40);
+        // Belt-and-suspenders PK opt-in for combatants. CitizenSpawner
+        // already does this on its happy path, but the user reported
+        // PK bots showing as "not opted into pk" - this catches any
+        // path where a Citizen brain gets attached to a combatant
+        // without the spawner's setPkOptIn call having fired.
+        try {
+            if (archetype != null && archetype.isCombatant()) {
+                bot.setPkOptIn(true);
+            }
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -208,6 +218,13 @@ public class CitizenBrain extends BotBrain {
                     if (r < 98) next = State.IDLE;
                     else if (r < 99) next = State.TRAVERSING;
                     else next = State.INTERACTING;
+                } else if (archetype != null && archetype.isPker()) {
+                    // PKers should never enter TRAVERSING - they have no
+                    // training method to walk to and tickTraversing's
+                    // teleport-first logic was firing them out of the
+                    // wildy. Stay in INTERACTING (which has the wildy
+                    // victim-hunt + drift wander) most of the time.
+                    next = r < 90 ? State.INTERACTING : State.IDLE;
                 } else {
                     // Default: 60 traverse / 30 interact / 10 idle (legacy)
                     if (r < 60) next = State.TRAVERSING;
@@ -293,8 +310,12 @@ public class CitizenBrain extends BotBrain {
                 catch (Throwable ignored) {}
             }
             // Sometimes a chatty bot kicks off a 2-line convo with a
-            // nearby citizen instead of just speaking solo.
-            try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
+            // nearby citizen instead of just speaking solo. PK bots
+            // skip this - the THREADS pool has trader/gambler/skiller
+            // banter that breaks character for a wildy PKer.
+            if (archetype == null || !archetype.isPker()) {
+                try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
+            }
         }
 
         // Idle fidget: 1-tile shuffle in a random direction so an
@@ -427,7 +448,11 @@ public class CitizenBrain extends BotBrain {
                 boolean inWildy = bot.getControlerManager().getControler()
                     instanceof com.rs.game.player.controllers.Wilderness;
                 if (dedicated || inWildy) {
-                    int radius = dedicated ? 12 : 8;
+                    // LURE 12 (ditch cluster), HUNTER 25 (spread roamers
+                    // need a wider search ring to find each other in
+                    // deep wildy), other combatants 8 (NPC-train fallback).
+                    int radius = archetype.isPkerHunter() ? 25
+                                : dedicated ? 12 : 8;
                     Player victim = findNearbyPkVictim(bot, radius);
                     if (victim != null) {
                         // Dedicated PKers eat + pot before engaging.
@@ -439,16 +464,42 @@ public class CitizenBrain extends BotBrain {
                     }
                 }
                 if (dedicated) {
-                    // No victim. Walk into / around wildy looking for one.
-                    if (!inWildy) {
-                        // Walk toward Edgeville wildy ditch.
-                        com.rs.bot.ai.BotPathing.walkTo(bot, 3088, 3520);
+                    // No victim - move so the bot doesn't just stand at
+                    // a single tile. Wander pattern depends on PK type:
+                    //   LURE   - 90% stays in lvl 1-3 wildy north of the
+                    //            ditch, 10% pushes a few tiles deeper.
+                    //            NEVER leaves wildy (Edge bank trip would
+                    //            put them at y<3525 which is OUT of wildy
+                    //            and they'd lose canPvp).
+                    //   HUNTER - 85% roams mid-to-deep wildy, 15% near
+                    //            ditch (so hunters can engage lure cluster).
+                    // Restocking now happens via the death-respawn flow,
+                    // so no need for a periodic Edge bank trip.
+                    int roll = Utils.random(100);
+                    int tx, ty;
+                    if (archetype.isPkerLure()) {
+                        if (roll < 90) {
+                            // Wildy lvl 1-3 (y 3525-3540)
+                            tx = 3085 + Utils.random(-5, 10);
+                            ty = 3525 + Utils.random(0, 16);
+                        } else {
+                            // Wildy lvl 4-8 (push deeper occasionally)
+                            tx = 3080 + Utils.random(20);
+                            ty = 3540 + Utils.random(20);
+                        }
                     } else {
-                        // Already in wildy, drift to a hot zone.
-                        int tx = 3070 + Utils.random(40);
-                        int ty = 3520 + Utils.random(60); // wildy levels 1-15
-                        com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
+                        // HUNTER - active roamer, mid-deep wildy
+                        if (roll < 85) {
+                            // Wildy lvl 5-25 (y 3560-3700)
+                            tx = 3060 + Utils.random(70);
+                            ty = 3560 + Utils.random(140);
+                        } else {
+                            // Cut back near ditch to fight lures
+                            tx = 3085 + Utils.random(-5, 10);
+                            ty = 3525 + Utils.random(0, 12);
+                        }
                     }
+                    com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
                     return;
                 }
             }
@@ -570,7 +621,14 @@ public class CitizenBrain extends BotBrain {
     /** Find a pk-opted-in Player within `radius` tiles that this bot
      *  can attack (combat-level eligible, not the bot itself, not dead).
      *  Used by combatant citizens in the wildy to pick a PK target
-     *  before falling back to NPC combat. */
+     *  before falling back to NPC combat.
+     *
+     *  Bot-vs-bot is intentional: when both attacker and target are
+     *  AIPlayers we DROP the wildy combat-level diff check so PK bots
+     *  scrap with each other regardless of cb spread. Without this,
+     *  user reported PK bots standing around because their cb 80 lure
+     *  couldn't engage the cb 110 hunter that wandered past at lvl 1
+     *  wildy. */
     private Player findNearbyPkVictim(AIPlayer bot, int radius) {
         try {
             int botCb = bot.getSkills().getCombatLevel();
@@ -583,7 +641,13 @@ public class CitizenBrain extends BotBrain {
                 if (other.isDead()) continue;
                 if (other.getPlane() != bot.getPlane()) continue;
                 if (!other.isPkOptIn()) continue;          // respects victim opt-out
-                if (Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel) continue;
+                // CB-diff gate ONLY applies to bot-vs-real-player. Two
+                // AIPlayer PK bots always count as eligible so the
+                // wildy stays active even when level spreads are wide.
+                boolean otherIsBot = other instanceof AIPlayer;
+                if (!otherIsBot
+                        && Math.abs(other.getSkills().getCombatLevel() - botCb) > wildLevel)
+                    continue;
                 int dx = other.getX() - bot.getX();
                 int dy = other.getY() - bot.getY();
                 int sq = dx * dx + dy * dy;
@@ -706,7 +770,13 @@ public class CitizenBrain extends BotBrain {
             set.add(com.rs.bot.ai.TrainingMethods.Kind.SMELTING);
             set.add(com.rs.bot.ai.TrainingMethods.Kind.PRAYER);
         }
-        if (arch.isCombatant()) {
+        // Dedicated PKers do NOT get combat training methods - they
+        // exclusively hunt opted-in players in the wildy. Without this
+        // gate, pickRandomMethodForRole returned a COMBAT method
+        // (rock crabs / sand crabs / etc.) and tickTraversing
+        // teleported the PKer there - users saw "they teleport right
+        // after spawn and don't fight anyone".
+        if (arch.isCombatant() && !arch.isPker()) {
             set.add(com.rs.bot.ai.TrainingMethods.Kind.COMBAT);
         }
         if (arch.isMinigamer()) {

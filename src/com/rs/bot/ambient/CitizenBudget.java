@@ -246,8 +246,15 @@ public final class CitizenBudget {
         slots.add(new Slot("COMBATANT_PURE",        10, 3088, 3491, 0, 8, false));
         slots.add(new Slot("COMBATANT_TANK",        10, 3088, 3491, 0, 8, false));
         slots.add(new Slot("COMBATANT_HYBRID",      8,  3088, 3491, 0, 8, false));
-        // Dedicated PKers spawn deeper in wildy (lvl 5-15) and roam.
-        slots.add(new Slot("COMBATANT_PKER",       12,  3093, 3525, 0, 12, false));
+        // Dedicated PKers - two flavours.
+        //   LURE   anchored just north of the wildy ditch (Edgeville)
+        //          at 3093,3525 - low wildy levels, picks fights with
+        //          opted-in players walking by. 6-tile drift.
+        //   HUNTER anchored deeper at 3076,3580 - active roamer that
+        //          patrols mid-to-deep wilderness for victims. Wider
+        //          drift radius.
+        slots.add(new Slot("COMBATANT_PKER_LURE",   8, 3093, 3525, 0,  6, false));
+        slots.add(new Slot("COMBATANT_PKER_HUNTER", 6, 3076, 3580, 0, 18, false));
         // Per-minigame lobbies. Anchor is the lobby tile - CitizenSpawner
         // pins minigame archetypes to AmbientArchetype.lobbyTile() at spawn
         // time so anchor here is mostly informational.
