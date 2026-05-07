@@ -1401,6 +1401,15 @@ public class BotBrain {
     private long stuckSinceMs = 0;
     /** Plans we already tried and failed for the current goal - rotated through. */
     private final java.util.Set<com.rs.bot.ai.TrainingMethods.Method> goalBlacklist = new java.util.HashSet<>();
+
+    /** Subclass hook (CitizenBrain) to blacklist an unreachable / stuck
+     *  method so the next pickRandomMethodForRole skips over it. */
+    protected void goalBlacklistAdd(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m != null) goalBlacklist.add(m);
+    }
+    protected boolean goalBlacklisted(com.rs.bot.ai.TrainingMethods.Method m) {
+        return m != null && goalBlacklist.contains(m);
+    }
     /** Goal description tied to the current blacklist - reset when goal changes. */
     private String blacklistGoalDesc = null;
     /** Threshold: if no XP gained in this many ms, declare method stuck. */

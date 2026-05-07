@@ -125,6 +125,14 @@ public class CitizenBrain extends BotBrain {
      *  similar pacing to a real player's "okay, let's try a different
      *  spot" decision. */
     private static final int METHOD_REPICK_CYCLES = 10;
+    /** Stuck-detector: tracks the last distance to currentMethod's tile
+     *  and how many ticks the bot has failed to make progress. After
+     *  STUCK_TICKS_LIMIT ticks of no closer movement (e.g. stranded at
+     *  a lodestone with the destination unreachable), the method gets
+     *  blacklisted and pickRandomMethodForRole picks a new one. */
+    private long methodLastDist = -1;
+    private int methodStuckTicks = 0;
+    private static final int STUCK_TICKS_LIMIT = 40;
 
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
@@ -404,6 +412,33 @@ public class CitizenBrain extends BotBrain {
 
     private void tickTraversing(AIPlayer bot) {
         if (bot.hasWalkSteps()) return;
+
+        // Stuck detector: if we've been TRAVERSING and not getting any
+        // closer to the method's tile (e.g. stranded on a Varrock
+        // lodestone trying to reach a rooftop course we can't actually
+        // climb), blacklist the method and clear it so the next
+        // findInteractionDestination picks something walkable.
+        if (currentMethod != null && currentMethod.location != null) {
+            long curDist = (long) Math.hypot(
+                bot.getX() - currentMethod.location.getX(),
+                bot.getY() - currentMethod.location.getY());
+            if (methodLastDist < 0 || curDist < methodLastDist - 2) {
+                methodLastDist = curDist;
+                methodStuckTicks = 0;
+            } else {
+                methodStuckTicks++;
+                if (methodStuckTicks >= STUCK_TICKS_LIMIT) {
+                    debug(bot, "stuck en route to '" + currentMethod.description
+                        + "' (dist=" + curDist + " for " + methodStuckTicks
+                        + " ticks) - blacklisting + repicking");
+                    try { goalBlacklistAdd(currentMethod); } catch (Throwable ignored) {}
+                    currentMethod = null;
+                    methodLastDist = -1;
+                    methodStuckTicks = 0;
+                }
+            }
+        }
+
         // Try to walk toward a real interaction target; fall back to random
         // wander if there's nothing scannable in the home radius.
         WorldTile target = findInteractionDestination(bot);
@@ -798,6 +833,10 @@ public class CitizenBrain extends BotBrain {
             com.rs.bot.ai.TrainingMethods.Method old = currentMethod;
             currentMethod = pickRandomMethodForRole(bot);
             methodCyclesElapsed = 0;
+            // Reset stuck-detector when method changes so the new one
+            // gets a fresh STUCK_TICKS_LIMIT-tick budget to prove it.
+            methodLastDist = -1;
+            methodStuckTicks = 0;
             if (currentMethod != null) {
                 debug(bot, "picked method '" + currentMethod.description + "' @ "
                     + currentMethod.location.getX() + "," + currentMethod.location.getY()
@@ -859,6 +898,9 @@ public class CitizenBrain extends BotBrain {
         for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
             if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
             if (m.location == null) continue;
+            // Skip methods previously blacklisted (e.g. by the
+            // tickTraversing stuck-detector).
+            if (goalBlacklisted(m)) continue;
             if (pinned != null) {
                 // Per-minigame archetype - only accept methods at the pinned lobby
                 if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
