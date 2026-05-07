@@ -227,6 +227,10 @@ public final class CitizenSpawner {
             // Player ctor default (START_PLAYER_HITPOINTS=10) for paths
             // that go through reset(false) somewhere. Belt-and-suspenders.
             try { bot.setHitpoints(bot.getMaxHitpoints()); } catch (Throwable ignored) {}
+            // Same belt-and-suspenders for prayer points.
+            try {
+                bot.getPrayer().setPrayerpoints(bot.getPrayer().getMaxPrayerpoints());
+            } catch (Throwable ignored) {}
             // Bots default to walking. Toggle run on so they actually
             // RUN to far-away training spots / GE / etc instead of
             // shuffling. Player.run() ticks regenerate energy when
@@ -300,6 +304,17 @@ public final class CitizenSpawner {
             // adjacent to the bot. User asked for ALL bots to have a chance.
             try {
                 if (Utils.random(100) < 12) maybeSpawnPet(bot);
+            } catch (Throwable ignored) {}
+
+            // Retro item-look toggle: 50/50 each spawn so the
+            // population looks visually mixed (some bots wearing
+            // current models, some wearing the retro/old-look
+            // counterparts via the existing per-player swap path).
+            try {
+                if (Utils.random(2) == 0) {
+                    bot.switchItemsLook(); // toggles on
+                    bot.getAppearence().generateAppearenceData();
+                }
             } catch (Throwable ignored) {}
 
             // Sheathe roll. CombatDefinitions defaults sheathe=true (weapon

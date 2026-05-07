@@ -169,6 +169,16 @@ public class CitizenBrain extends BotBrain {
      *  scatter across mid-deep wildy. */
     private com.rs.game.WorldTile pkWildyHome;
 
+    /** Persistent wander target for PK bots. Gets re-rolled only when
+     *  (a) we don't have one, (b) we're within 4 tiles of it, or
+     *  (c) the per-bot expiry tick rolled. Without this each tick
+     *  re-rolled a fresh random target which made batches of bots
+     *  appear to walk in synced trains - their per-tick rolls
+     *  happened to land near each other often enough that the user
+     *  noticed "a train of bots all doing the same movements". */
+    private com.rs.game.WorldTile pkWanderTarget;
+    private int pkWanderTtlTicks;
+
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
         this.archetype = archetype;
@@ -327,6 +337,48 @@ public class CitizenBrain extends BotBrain {
                 if (hp > 0 && hp < maxHp / 2) {
                     eatHighestFood(bot, hp, maxHp);
                 }
+                // Prayer pot: drink if prayer < 30% of max so the
+                // protect prayer doesn't drop mid-spec. Picks the
+                // highest-dose pot the bot carries.
+                try {
+                    if (bot.getPrayer() != null
+                            && bot.getPrayer().getPrayerpoints()
+                                < bot.getPrayer().getMaxPrayerpoints() * 30 / 100) {
+                        int[] potDoses = {2434, 2436, 2438, 2440}; // prayer pot 1-4
+                        for (int p : potDoses) {
+                            if (bot.getInventory().containsItem(p, 1)) {
+                                bot.getInventory().deleteItem(p, 1);
+                                int restore = (int)((bot.getSkills().getLevelForXp(
+                                    com.rs.game.player.Skills.PRAYER) * 10) * 0.25 + 7);
+                                bot.getPrayer().restorePrayer(restore);
+                                break;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                // Style switch: if victim HP fell below ~30% and we're
+                // not already in finisher mode, swap the weapon to a
+                // higher-damage / spec finisher in inventory. Cheap
+                // simulation of "PKers switching gear to finish".
+                try {
+                    Object curAction = bot.getActionManager().getAction();
+                    if (curAction instanceof com.rs.game.player.actions.PlayerCombatNew) {
+                        com.rs.game.Entity tgt = ((com.rs.game.player.actions.PlayerCombatNew)
+                            curAction).getTarget();
+                        if (tgt != null && tgt.getMaxHitpoints() > 0) {
+                            int tHp = tgt.getHitpoints();
+                            int tMax = tgt.getMaxHitpoints();
+                            boolean alreadyFinishing = Boolean.TRUE.equals(
+                                bot.getTemporaryAttributtes().get("PkFinisherSwapped"));
+                            if (!alreadyFinishing && tHp > 0 && tHp * 4 < tMax) {
+                                if (trySwapToFinisher(bot)) {
+                                    bot.getTemporaryAttributtes().put(
+                                        "PkFinisherSwapped", Boolean.TRUE);
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
 
@@ -739,64 +791,30 @@ public class CitizenBrain extends BotBrain {
                     if (tryPkerLootPickup(bot, lootRadius)) return;
                 }
                 if (dedicated) {
-                    // No victim - wander. Each variant has a wider range
-                    // than before so they don't pile up at the spawn tile.
-                    // Some rolls now intentionally cross the wildy ditch
-                    // (LURE patrols Edge ↔ wildy; HUNTER occasionally
-                    // surfaces back to Edge) so they don't ALL stay in
-                    // wildy 24/7.
-                    //   LURE   - 50% lvl 1-5 wildy, 25% lvl 5-15 deeper,
-                    //            15% Edge bank ↔ ditch patrol (NPC's
-                    //            see them at the ditch posing for fights),
-                    //            10% deeper push (1-3 wildy lvl drift).
-                    //   HUNTER - 60% mid-deep wildy (lvl 5-30), 20%
-                    //            deep wildy (lvl 25-50), 15% cuts back
-                    //            near ditch to engage lures, 5% Edge
-                    //            (resurface for restock).
-                    int roll = Utils.random(100);
-                    int tx, ty;
-                    if (archetype.isPkerLure()) {
-                        if (roll < 50) {
-                            // Wildy lvl 1-5 (y 3525-3550)
-                            tx = 3082 + Utils.random(20);
-                            ty = 3525 + Utils.random(0, 30);
-                        } else if (roll < 75) {
-                            // Wildy lvl 5-15 (deeper push, tests their
-                            // new cb-diff exemption against lures of
-                            // different cb in the same zone)
-                            tx = 3070 + Utils.random(40);
-                            ty = 3550 + Utils.random(50);
-                        } else if (roll < 90) {
-                            // Edge ↔ ditch patrol (cross the ditch so
-                            // they aren't 100% stuck in wildy)
-                            tx = 3088 + Utils.random(-5, 10);
-                            ty = 3510 + Utils.random(0, 25); // y 3510-3535
-                        } else {
-                            // Deeper wildy - the bold lure pushes 15-25
-                            tx = 3075 + Utils.random(40);
-                            ty = 3580 + Utils.random(40);
-                        }
-                    } else {
-                        // HUNTER - active roamer
-                        if (roll < 60) {
-                            // Wildy lvl 5-30 (y 3560-3760)
-                            tx = 3050 + Utils.random(90);
-                            ty = 3560 + Utils.random(200);
-                        } else if (roll < 80) {
-                            // Deep wildy lvl 25-50 (y 3720-3920)
-                            tx = 3040 + Utils.random(110);
-                            ty = 3720 + Utils.random(200);
-                        } else if (roll < 95) {
-                            // Cut back near ditch to engage lure cluster
-                            tx = 3082 + Utils.random(20);
-                            ty = 3525 + Utils.random(0, 20);
-                        } else {
-                            // Resurface to Edge bank briefly (restock)
-                            tx = 3094 + Utils.random(-3, 4);
-                            ty = 3494 + Utils.random(-2, 3);
-                        }
+                    // Persistent wander target - re-rolled only when
+                    // missing, reached (within 4 tiles), or after a
+                    // per-bot TTL expires. Without this every tick
+                    // picked a fresh random target -> bots near each
+                    // other often rolled similar coords and ended up
+                    // looking like a synced train.
+                    boolean needNew = pkWanderTarget == null;
+                    if (!needNew) {
+                        int dx = pkWanderTarget.getX() - bot.getX();
+                        int dy = pkWanderTarget.getY() - bot.getY();
+                        if (dx*dx + dy*dy <= 16) needNew = true; // within 4
                     }
-                    com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
+                    if (--pkWanderTtlTicks <= 0) needNew = true;
+                    if (needNew) {
+                        pkWanderTarget = pickPkWanderTarget(bot);
+                        // Random TTL 20-60 ticks (~12-36s) so each bot
+                        // re-rolls on a different cadence -> no synced
+                        // batch movement.
+                        pkWanderTtlTicks = 20 + Utils.random(40);
+                    }
+                    if (pkWanderTarget != null) {
+                        com.rs.bot.ai.BotPathing.walkTo(bot,
+                            pkWanderTarget.getX(), pkWanderTarget.getY());
+                    }
                     return;
                 }
             }
@@ -1022,6 +1040,82 @@ public class CitizenBrain extends BotBrain {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    /** Swap the bot's main weapon to a higher-damage finisher pulled
+     *  from inventory. Looks for known spec / finisher items in
+     *  priority order: AGS / dragon claws / DDS for melee, dark bow
+     *  for range, ancient staff for mage. Old weapon goes to
+     *  inventory. Returns true if a swap actually happened. */
+    private boolean trySwapToFinisher(AIPlayer bot) {
+        try {
+            int[] finisherIds = {
+                11696, // armadyl godsword
+                14484, // dragon claws
+                5698,  // dragon dagger (p++)
+                1215,  // dragon dagger
+                21371, // abyssal vine whip
+                4151,  // abyssal whip
+                11235, // dark bow
+                4734,  // karil's crossbow
+                4675,  // ancient staff
+                15486  // staff of light
+            };
+            for (int id : finisherIds) {
+                if (bot.getInventory().containsItem(id, 1)) {
+                    com.rs.game.item.Item current =
+                        bot.getEquipment().getItem(com.rs.game.player.Equipment.SLOT_WEAPON);
+                    bot.getInventory().deleteItem(id, 1);
+                    if (current != null && current.getId() > 0) {
+                        bot.getInventory().addItem(current.getId(), current.getAmount());
+                    }
+                    bot.getEquipment().getItems().set(
+                        com.rs.game.player.Equipment.SLOT_WEAPON,
+                        new com.rs.game.item.Item(id, 1));
+                    bot.getAppearence().generateAppearenceData();
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /** Pick a wander target for a PK bot. Pulled out of tickInteracting
+     *  so it can be called from the persistent-target branch. */
+    private com.rs.game.WorldTile pickPkWanderTarget(AIPlayer bot) {
+        if (archetype == null) return null;
+        int roll = Utils.random(100);
+        int tx, ty;
+        if (archetype.isPkerLure()) {
+            if (roll < 50) {
+                tx = 3082 + Utils.random(20);
+                ty = 3525 + Utils.random(0, 30);
+            } else if (roll < 75) {
+                tx = 3070 + Utils.random(40);
+                ty = 3550 + Utils.random(50);
+            } else if (roll < 90) {
+                tx = 3088 + Utils.random(-5, 10);
+                ty = 3510 + Utils.random(0, 25);
+            } else {
+                tx = 3075 + Utils.random(40);
+                ty = 3580 + Utils.random(40);
+            }
+        } else {
+            if (roll < 60) {
+                tx = 3050 + Utils.random(90);
+                ty = 3560 + Utils.random(200);
+            } else if (roll < 80) {
+                tx = 3040 + Utils.random(110);
+                ty = 3720 + Utils.random(200);
+            } else if (roll < 95) {
+                tx = 3082 + Utils.random(20);
+                ty = 3525 + Utils.random(0, 20);
+            } else {
+                tx = 3094 + Utils.random(-3, 4);
+                ty = 3494 + Utils.random(-2, 3);
+            }
+        }
+        return new com.rs.game.WorldTile(tx, ty, 0);
     }
 
     /** Pull the best food off the bot's inventory and heal up to maxHp. */

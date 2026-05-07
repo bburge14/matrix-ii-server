@@ -677,6 +677,61 @@ public final class BotEquipment {
         equipFromTierStack(bot, Equipment.SLOT_CAPE,   style, tier, SlotKind.CAPE);
         equipFromTierStack(bot, Equipment.SLOT_HANDS,  style, tier, SlotKind.GLOVES);
         equipFromTierStack(bot, Equipment.SLOT_FEET,   style, tier, SlotKind.FEET);
+        // Fallback: any slot still empty after the tier walk (no
+        // qualifying item even at POOR) gets a no-requirements
+        // bronze/leather/staff piece. User: "why do I see combatants
+        // or pkers spawning with out weapons or armour pieces?? they
+        // HAVE to have everything". Combat-style bots can't function
+        // without at least bronze + a weapon.
+        ensureCombatFallbacks(bot, style);
+    }
+
+    /** Backstop: if the tier walk left any combat-relevant slot empty,
+     *  drop in a bronze / leather / staff piece (zero level reqs) so
+     *  every combatant spawns visibly geared. Skips rings / amulets /
+     *  pocket - those are handled by applyAccessories. */
+    private static void ensureCombatFallbacks(Player bot,
+            com.rs.bot.TieredOutfitPool.Style style) {
+        try {
+            // Helm
+            if (bot.getEquipment().getItem(Equipment.SLOT_HAT) == null) {
+                equip(bot, Equipment.SLOT_HAT, 1155);  // bronze full helm
+            }
+            // Body
+            if (bot.getEquipment().getItem(Equipment.SLOT_CHEST) == null) {
+                equip(bot, Equipment.SLOT_CHEST, 1117); // bronze chainbody
+            }
+            // Legs
+            if (bot.getEquipment().getItem(Equipment.SLOT_LEGS) == null) {
+                equip(bot, Equipment.SLOT_LEGS, 1075);  // bronze platelegs
+            }
+            // Shield (only if weapon slot ends up with a one-handed
+            // weapon - 2H detection happens in equip()).
+            if (bot.getEquipment().getItem(Equipment.SLOT_SHIELD) == null
+                    && bot.getEquipment().getItem(Equipment.SLOT_WEAPON) == null) {
+                equip(bot, Equipment.SLOT_SHIELD, 1189); // bronze kite
+            }
+            // Weapon - style-aware fallback so a magic bot doesn't
+            // get a scim and a ranger doesn't get a wand.
+            if (bot.getEquipment().getItem(Equipment.SLOT_WEAPON) == null) {
+                int weaponId;
+                if (style == com.rs.bot.TieredOutfitPool.Style.RANGED) {
+                    weaponId = 841;  // shortbow
+                } else if (style == com.rs.bot.TieredOutfitPool.Style.MAGIC) {
+                    weaponId = 1381; // staff of air
+                } else {
+                    weaponId = 1321; // bronze scimitar
+                }
+                equip(bot, Equipment.SLOT_WEAPON, weaponId);
+            }
+            // Boots / gloves - any combatant should have at least these.
+            if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null) {
+                equip(bot, Equipment.SLOT_FEET, 1837);  // leather boots
+            }
+            if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null) {
+                equip(bot, Equipment.SLOT_HANDS, 1059); // leather gloves
+            }
+        } catch (Throwable ignored) {}
     }
 
     private enum SlotKind { HAT, BODY, LEGS, WEAPON, SHIELD, CAPE, GLOVES, FEET }

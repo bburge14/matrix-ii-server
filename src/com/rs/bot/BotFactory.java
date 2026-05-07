@@ -123,6 +123,13 @@ public final class BotFactory {
             try {
                 bot.setHitpoints(bot.getMaxHitpoints());
             } catch (Throwable ignored) {}
+            // Same fix for prayer points - Prayer ctor initialises to 10
+            // (1 prayer point) regardless of prayer level. Without this
+            // a level-80-prayer PK bot can flick a protect prayer for
+            // ~1 second before running dry. Top them off to max.
+            try {
+                bot.getPrayer().setPrayerpoints(bot.getPrayer().getMaxPrayerpoints());
+            } catch (Throwable ignored) {}
 
             // Stamp archetype on the bot (persistent identity for AI behavior + equipment)
             // Resolve "random" archetype before setting it on the bot
