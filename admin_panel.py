@@ -1315,9 +1315,9 @@ class CitizensFrame(ctk.CTkFrame):
         ctk.CTkLabel(self, text="Budget slots", font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=20, pady=(10,2))
         tree_frame = ctk.CTkFrame(self)
         tree_frame.pack(fill="both", expand=True, padx=20, pady=(0,5))
-        cols = ("archetype", "count", "x", "y", "plane", "scatter", "autospawn", "live")
+        cols = ("archetype", "count", "anchors", "scatter", "autospawn", "live")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse", height=8)
-        widths = {"archetype":210, "count":60, "x":80, "y":80, "plane":50,
+        widths = {"archetype":210, "count":60, "anchors":260,
                   "scatter":70, "autospawn":80, "live":60}
         for c in cols:
             self.tree.heading(c, text=c)
@@ -1426,12 +1426,18 @@ class CitizensFrame(ctk.CTkFrame):
             self.tree.delete(iid)
         for i, s in enumerate(self.slots):
             name = s.get("archetype", "?")
+            # Anchors column shows total count + brief preview so admins
+            # see at a glance how many spawn locations a slot uses.
+            primary = (s.get("x", 0), s.get("y", 0), s.get("plane", 0))
+            extras = s.get("extra_anchors") or []
+            total = 1 + len(extras)
+            anchors_str = f"{total} anchor{'s' if total != 1 else ''}: {primary[0]},{primary[1]}"
+            if extras:
+                anchors_str += f" + {len(extras)} more"
             self.tree.insert("", "end", iid=str(i), values=(
                 name,
                 s.get("count", 0),
-                s.get("x", 0),
-                s.get("y", 0),
-                s.get("plane", 0),
+                anchors_str,
                 s.get("scatter", 8),
                 "yes" if s.get("autospawn", False) else "no",
                 live_by_arch.get(name, 0)
