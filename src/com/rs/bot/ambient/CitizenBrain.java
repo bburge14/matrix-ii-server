@@ -530,6 +530,16 @@ public class CitizenBrain extends BotBrain {
                     }
                 }
                 if (dedicated) {
+                    // Semi-smart loot scan: before wandering, see if there's
+                    // a valuable ground item within ~8 tiles (could be from
+                    // the bot's last kill or a piled loot pool from nearby
+                    // fights). Skip in deep wildy where camping a corpse is
+                    // dangerous - LURE bots near the ditch loot eagerly,
+                    // HUNTERs only loot if a kill is REALLY close (3 tiles).
+                    int lootRadius = archetype.isPkerLure() ? 8 : 3;
+                    if (tryPkerLootPickup(bot, lootRadius)) return;
+                }
+                if (dedicated) {
                     // No victim - move so the bot doesn't just stand at
                     // a single tile. Wander pattern depends on PK type:
                     //   LURE   - 90% stays in lvl 1-3 wildy north of the
@@ -718,6 +728,75 @@ public class CitizenBrain extends BotBrain {
             // attack style. We infer style from their weapon slot.
             activateProtectPrayer(bot, victim);
         } catch (Throwable ignored) {}
+    }
+
+    /** Semi-smart loot pickup. Scans the bot's region for ground items
+     *  within `radius` tiles, picks the most valuable one, walks to it
+     *  and grabs it. Returns true if the bot is now busy with a pickup
+     *  so the caller skips wander. */
+    private boolean tryPkerLootPickup(AIPlayer bot, int radius) {
+        try {
+            // Don't loot if our inventory is basically full - leave a
+            // few slots for food / restock so we don't starve.
+            if (bot.getInventory().getFreeSlots() < 2) return false;
+            com.rs.game.Region region = com.rs.game.World.getRegion(bot.getRegionId());
+            if (region == null) return false;
+            java.util.List<com.rs.game.item.FloorItem> items = region.getGroundItemsSafe();
+            if (items == null || items.isEmpty()) return false;
+            com.rs.game.item.FloorItem best = null;
+            int bestScore = -1;
+            int bestSq = Integer.MAX_VALUE;
+            for (com.rs.game.item.FloorItem fi : items) {
+                if (fi == null) continue;
+                com.rs.game.WorldTile t = fi.getTile();
+                if (t == null) continue;
+                if (t.getPlane() != bot.getPlane()) continue;
+                int dx = t.getX() - bot.getX();
+                int dy = t.getY() - bot.getY();
+                int sq = dx * dx + dy * dy;
+                if (sq > radius * radius) continue;
+                // Skip own-owned floor items that are still in their
+                // private window - other bots / players can't see them
+                // either, and we don't want to skip-trip across our own
+                // dropped placeholders.
+                if (fi.isInvisible() && fi.hasOwner()
+                        && !bot.getUsername().equals(fi.getOwner())) {
+                    continue;
+                }
+                int value = 0;
+                try {
+                    value = fi.getDefinitions() == null ? 0
+                        : fi.getDefinitions().getValue();
+                } catch (Throwable ignored) {}
+                int amount = 1;
+                try { amount = fi.getAmount(); } catch (Throwable ignored) {}
+                int score = value * Math.max(1, amount);
+                // Junk filter: ignore bones / ashes / burnt / arrows-1
+                // unless the score's still > 200 from quantity.
+                if (score < 200) continue;
+                // Prefer higher score, break ties by closest tile.
+                if (score > bestScore || (score == bestScore && sq < bestSq)) {
+                    best = fi;
+                    bestScore = score;
+                    bestSq = sq;
+                }
+            }
+            if (best == null) return false;
+            com.rs.game.WorldTile bt = best.getTile();
+            // If we're already on the tile, pick it up now.
+            if (bt.getX() == bot.getX() && bt.getY() == bot.getY()) {
+                com.rs.game.World.removeGroundItem(bot, best);
+                debug(bot, "looted " + best.getDefinitions().getName()
+                    + " x" + best.getAmount() + " (val=" + bestScore + ")");
+                return true;
+            }
+            // Otherwise walk toward it - return true so the caller
+            // (tickInteracting) doesn't override the walk with a wander.
+            com.rs.bot.ai.BotPathing.walkTo(bot, bt.getX(), bt.getY());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     /** Pull the best food off the bot's inventory and heal up to maxHp. */
