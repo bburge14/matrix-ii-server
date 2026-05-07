@@ -25,11 +25,11 @@ SPAWN_PRESETS = {
 
     # === Grand Exchange ===
     "GE — Centre":                  (3164, 3486, 0),
-    "GE — North bank counter":      (3165, 3490, 0),
-    "GE — East bank counter":       (3168, 3486, 0),
-    "GE — South bank counter":      (3164, 3482, 0),
-    "GE — West bank counter":       (3160, 3486, 0),
-    "GE — NW (rare trader corner)": (3147, 3472, 0),
+    "GE — NW bank counter":         (3160, 3489, 0),
+    "GE — NE bank counter":         (3168, 3489, 0),
+    "GE — SW bank counter":         (3160, 3483, 0),
+    "GE — SE bank counter":         (3168, 3483, 0),
+    "GE — Rare trader corner (NW)": (3147, 3472, 0),
     "GE — Gambler fountain":        (3163, 3489, 0),
 
     # === Cities & towns ===
@@ -109,6 +109,53 @@ def _preset_label_list():
     """Categorised label list for the preset OptionMenu (preserves
     insertion order from SPAWN_PRESETS)."""
     return list(SPAWN_PRESETS.keys())
+
+
+# Recommended category per preset. When the user picks a preset that has
+# a hint, the Quick Spawn dropdown auto-flips to the matching category
+# so traders don't accidentally spawn at the wildy ditch (user report).
+# Presets without a hint leave the category alone.
+PRESET_CATEGORY_HINTS = {
+    # Wildy = PKers only
+    "Wildy — Ditch (Edge crossing)":  "pker_lure",
+    "Wildy — Lvl 1-3 (just north)":   "pker_lure",
+    "Wildy — Lvl 5-10 (Bandit camp)": "pker_hunter",
+    "Wildy — Lvl 13 (Lava maze)":     "pker_hunter",
+    "Wildy — Lvl 18 (Mage arena)":    "pker_hunter",
+    "Wildy — Lvl 25 (Demonic ruins)": "pker_hunter",
+    "Wildy — Lvl 35 (Lava maze N)":   "pker_hunter",
+    "Wildy — Lvl 44 (Resource area)": "pker_hunter",
+    "Wildy — Lvl 50 (Wildy bandits)": "pker_hunter",
+    # GE = socialites only (traders / gamblers / bankstanders)
+    "GE — Centre":                   "socialite",
+    "GE — NW bank counter":          "bankstand",
+    "GE — NE bank counter":          "bankstand",
+    "GE — SW bank counter":          "bankstand",
+    "GE — SE bank counter":          "bankstand",
+    "GE — Rare trader corner (NW)":  "trader_rare",
+    "GE — Gambler fountain":         "gambler",
+    # Skilling guilds + spots
+    "Mining guild — Falador":        "skiller",
+    "Mining guild — Living rock":    "skiller",
+    "Fishing guild":                 "skiller",
+    "Cooks' guild":                  "skiller",
+    "Crafting guild":                "skiller",
+    "Woodcutting — Draynor willows": "skiller",
+    "Woodcutting — Seers yews":      "skiller",
+    "Runecrafting — Air altar":      "skiller",
+    "Runecrafting — Astral altar":   "skiller",
+    # Minigame lobbies
+    "Castle Wars — Lobby":           "castlewars",
+    "Soul Wars — Lobby":             "soulwars",
+    "Stealing Creation — Lobby":     "stealingcreation",
+    # Combat training spots = combatant (NPC training, not PvP)
+    "Rock crabs — Relleka":          "combatant",
+    "Sand crabs — Hosidius":         "combatant",
+    "Slayer tower — Ground":         "combatant",
+    "Stronghold of security 1F":     "combatant",
+    "Bandits camp (Kharid desert)":  "combatant",
+    "Frost dragons (Asgarnia ice)":  "combatant",
+}
 
 def config_path():
     base = os.environ.get("APPDATA") or str(Path.home())
@@ -236,6 +283,14 @@ class MatrixAPI:
                           {"includeManual": "true" if include_manual else "false"})
     def citizens_budget_reseed(self):
         return self._post("/admin/citizens/budget/reseed")
+    def citizens_budget_profiles(self):
+        return self._get("/admin/citizens/budget/profiles")
+    def citizens_budget_profile_save(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "save"})
+    def citizens_budget_profile_load(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "load"})
+    def citizens_budget_profile_delete(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "delete"})
 
     # Phantom GE
     def phantom_ge_get(self):    return self._get("/admin/phantom-ge")
@@ -998,6 +1053,8 @@ class CitizensFrame(ctk.CTkFrame):
                       command=self._clear_all).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Reseed Defaults", width=130, fg_color="#a05522",
                       command=self._reseed_defaults).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Profiles…", width=90, fg_color="#3a5588",
+                      command=self._open_profiles_dialog).pack(side="left", padx=4)
         ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
         ctk.CTkButton(actions, text="+ Add Row", width=90,
                       command=self._add_slot).pack(side="left", padx=4)
@@ -1016,12 +1073,14 @@ class CitizensFrame(ctk.CTkFrame):
         # spawn each citizen subtype + sub cat separately.
         category_choices = [
             "mixed", "skiller", "combatant", "socialite", "minigamer",
+            "pker", "pker_lure", "pker_hunter",
             "castlewars", "soulwars", "stealingcreation",
             "trader_skill", "trader_combat", "trader_rare",
             "gambler", "bankstand",
             # exact archetype names
             "SKILLER_EFFICIENT", "SKILLER_CASUAL", "SKILLER_NOOB",
             "COMBATANT_PURE", "COMBATANT_TANK", "COMBATANT_HYBRID",
+            "COMBATANT_PKER_LURE", "COMBATANT_PKER_HUNTER",
             "SOCIALITE_GAMBLER", "SOCIALITE_GE_TRADER",
             "SOCIALITE_GE_TRADER_SKILL", "SOCIALITE_GE_TRADER_COMBAT",
             "SOCIALITE_GE_TRADER_RARE", "SOCIALITE_BANKSTAND",
@@ -1250,6 +1309,16 @@ class CitizensFrame(ctk.CTkFrame):
         self.tree.selection_set(str(idx))
         SlotEditor(self, self.slots[idx], self.archetypes, self._on_slot_edited).load(idx)
 
+    def _open_profiles_dialog(self):
+        """Open the named-budget-profile manager. Lets the admin save
+        the current budget under a name, load a saved one (replaces
+        active budget), or delete a stale one. Profiles live under
+        data/citizens/budgets/<name>.json on the server."""
+        try:
+            BudgetProfilesDialog(self, self.api, on_change=self.refresh)
+        except Exception as e:
+            messagebox.showerror("Profiles dialog", str(e))
+
     def _reseed_defaults(self):
         if not messagebox.askyesno("Reseed defaults",
                 "Wipe the current budget and restore server defaults? "
@@ -1370,7 +1439,9 @@ class CitizensFrame(ctk.CTkFrame):
     def _apply_quick_preset(self, label):
         """Preset OptionMenu callback. If the picked label maps to a
         coord tuple, fill X/Y/Plane. "Custom" is a no-op (user keeps
-        whatever they typed)."""
+        whatever they typed). Also auto-flips the category dropdown to
+        the recommended archetype if the preset has a hint - prevents
+        traders spawning at wildy ditch and similar leaks."""
         coords = SPAWN_PRESETS.get(label)
         if not coords:
             return
@@ -1378,6 +1449,12 @@ class CitizensFrame(ctk.CTkFrame):
         self.q_x.set(str(x))
         self.q_y.set(str(y))
         self.q_plane.set(str(p))
+        hint = PRESET_CATEGORY_HINTS.get(label)
+        if hint:
+            try:
+                self.q_category.set(hint)
+            except Exception:
+                pass
 
     def _quick_spawn(self):
         try:
@@ -1481,6 +1558,150 @@ class CitizensFrame(ctk.CTkFrame):
         threading.Thread(target=do, daemon=True).start()
 
 
+class BudgetProfilesDialog(ctk.CTkToplevel):
+    """Manage named budget profiles (save / load / delete).
+
+    Server stores profiles under data/citizens/budgets/<name>.json.
+    Loading a profile REPLACES the active budget (data/citizen_budget.json),
+    so the workflow is:
+        1. Tweak the budget in the table the way you want.
+        2. Save it as a named profile.
+        3. Tweak again for a different scenario, save under another name.
+        4. Load whichever profile you want active before clicking
+           "Apply Budget" / "Save Budget" in the main view.
+    """
+    def __init__(self, parent, api, on_change=None):
+        super().__init__(parent)
+        self.title("Budget Profiles")
+        self.geometry("420x360")
+        self.api = api
+        self.on_change = on_change
+        # Strong ref so customtkinter doesn't GC us mid-show.
+        try: parent._open_popups = getattr(parent, "_open_popups", []) + [self]
+        except Exception: pass
+
+        ctk.CTkLabel(self, text="Saved profiles",
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(
+                         anchor="w", padx=14, pady=(14, 4))
+
+        list_frame = ctk.CTkFrame(self)
+        list_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        self.listbox = tk.Listbox(list_frame, bg="#2b2b2b", fg="white",
+                                  selectbackground="#1f6aa5",
+                                  font=("Helvetica", 11), borderwidth=0,
+                                  highlightthickness=0)
+        self.listbox.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Save row
+        save_row = ctk.CTkFrame(self, fg_color="transparent")
+        save_row.pack(fill="x", padx=14, pady=(2, 6))
+        ctk.CTkLabel(save_row, text="Name:").pack(side="left")
+        self.name_var = tk.StringVar()
+        ctk.CTkEntry(save_row, textvariable=self.name_var,
+                     placeholder_text="profile-name (a-z 0-9 _ -)",
+                     width=200).pack(side="left", padx=6)
+        ctk.CTkButton(save_row, text="Save current", width=110,
+                      fg_color="#1b6e3a",
+                      command=self._save).pack(side="left", padx=4)
+
+        # Action row (load / delete on selected entry)
+        act_row = ctk.CTkFrame(self, fg_color="transparent")
+        act_row.pack(fill="x", padx=14, pady=(0, 12))
+        ctk.CTkButton(act_row, text="Load selected", width=130,
+                      fg_color="#3a5588",
+                      command=self._load).pack(side="left", padx=4)
+        ctk.CTkButton(act_row, text="Delete selected", width=130,
+                      fg_color="#aa3030",
+                      command=self._delete).pack(side="left", padx=4)
+        ctk.CTkButton(act_row, text="Refresh", width=80,
+                      command=self._refresh).pack(side="left", padx=4)
+
+        self._refresh()
+
+    def _refresh(self):
+        def do():
+            try:
+                resp = self.api.citizens_budget_profiles()
+                names = resp.get("profiles", []) if isinstance(resp, dict) else []
+                self.after(0, lambda: self._fill(names))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Profiles", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _fill(self, names):
+        self.listbox.delete(0, tk.END)
+        for n in names:
+            self.listbox.insert(tk.END, n)
+
+    def _selected(self):
+        sel = self.listbox.curselection()
+        if not sel: return None
+        return self.listbox.get(sel[0])
+
+    def _save(self):
+        name = (self.name_var.get() or "").strip()
+        if not name:
+            messagebox.showwarning("Save profile", "Enter a name first.")
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_save(name)
+                if resp.get("ok"):
+                    self.after(0, lambda: messagebox.showinfo("Saved",
+                        f"Profile '{name}' saved."))
+                    self.after(0, self._refresh)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Save profile",
+                        "Server rejected save (invalid name?)"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Save profile", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _load(self):
+        name = self._selected()
+        if not name:
+            messagebox.showwarning("Load profile", "Pick a profile first.")
+            return
+        if not messagebox.askyesno("Load profile",
+            f"Load '{name}'?\nThis REPLACES the active budget."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_load(name)
+                if resp.get("ok"):
+                    n = resp.get("slots", "?")
+                    self.after(0, lambda: messagebox.showinfo("Loaded",
+                        f"Profile '{name}' loaded ({n} slots active)"))
+                    if self.on_change:
+                        self.after(0, self.on_change)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Load profile",
+                        "Server returned ok=false"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Load profile", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _delete(self):
+        name = self._selected()
+        if not name:
+            messagebox.showwarning("Delete profile", "Pick a profile first.")
+            return
+        if not messagebox.askyesno("Delete profile",
+            f"Delete '{name}'? This cannot be undone."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_delete(name)
+                if resp.get("ok"):
+                    self.after(0, self._refresh)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Delete profile",
+                        "Server returned ok=false"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Delete profile", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
 class SlotEditor(ctk.CTkToplevel):
     """Edit a single budget slot's fields."""
     def __init__(self, parent, slot, archetypes, on_save):
@@ -1529,8 +1750,50 @@ class SlotEditor(ctk.CTkToplevel):
         ctk.CTkOptionMenu(row_preset, values=_preset_label_list(),
                           variable=self.preset_var, width=300,
                           command=self._apply_preset).pack(side="left", padx=4)
-        # Window grew slightly to fit the new row.
-        self.geometry("440x380")
+
+        # Extra anchors - optional list of additional spawn tiles. Each
+        # spawn picks one at random from {primary} U extras. Lets one
+        # slot scatter bots across multiple skill spots / GE corners /
+        # wildy zones without duplicating the row.
+        ctk.CTkLabel(self, text="Extra anchors (optional):",
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(
+                         anchor="w", padx=20, pady=(8, 2))
+        # Initial population from the slot's existing extra_anchors list
+        existing_extras = slot.get("extra_anchors") or []
+        self.extras = list(existing_extras)  # list of [x,y,plane]
+
+        extras_frame = ctk.CTkFrame(self)
+        extras_frame.pack(fill="x", padx=20, pady=2)
+        self.extras_listbox = tk.Listbox(extras_frame, height=4,
+                                          bg="#2b2b2b", fg="white",
+                                          selectbackground="#1f6aa5",
+                                          font=("Helvetica", 10),
+                                          borderwidth=0, highlightthickness=0)
+        self.extras_listbox.pack(side="left", fill="x", expand=True, padx=4, pady=4)
+        for a in self.extras:
+            self.extras_listbox.insert(tk.END, f"{a[0]}, {a[1]}, p{a[2]}")
+
+        # Add-extra row: preset OR x/y/plane entry + Add button
+        add_row = ctk.CTkFrame(self, fg_color="transparent")
+        add_row.pack(fill="x", padx=20, pady=2)
+        self.add_preset_var = tk.StringVar(value="— Custom —")
+        ctk.CTkOptionMenu(add_row, values=_preset_label_list(),
+                          variable=self.add_preset_var, width=200,
+                          command=self._extras_preset_picked).pack(side="left", padx=2)
+        self.add_x = tk.StringVar(); self.add_y = tk.StringVar(); self.add_p = tk.StringVar(value="0")
+        ctk.CTkEntry(add_row, textvariable=self.add_x, width=55,
+                     placeholder_text="X").pack(side="left", padx=2)
+        ctk.CTkEntry(add_row, textvariable=self.add_y, width=55,
+                     placeholder_text="Y").pack(side="left", padx=2)
+        ctk.CTkEntry(add_row, textvariable=self.add_p, width=30,
+                     placeholder_text="P").pack(side="left", padx=2)
+        ctk.CTkButton(add_row, text="+", width=28, fg_color="#1b6e3a",
+                      command=self._add_extra).pack(side="left", padx=2)
+        ctk.CTkButton(add_row, text="− Remove", width=80, fg_color="#aa3030",
+                      command=self._remove_extra).pack(side="left", padx=2)
+
+        # Bigger window to fit the extras section.
+        self.geometry("520x520")
 
         # autospawn
         self.autospawn_var = tk.BooleanVar(value=bool(slot.get("autospawn", False)))
@@ -1562,6 +1825,41 @@ class SlotEditor(ctk.CTkToplevel):
         self.y_var.set(str(y))
         self.plane_var.set(str(p))
 
+    def _extras_preset_picked(self, label):
+        """Filling the X/Y/P entries when a preset is picked from the
+        extras row's preset dropdown. Doesn't auto-add - user clicks
+        + to commit, so they can tweak coords first."""
+        coords = SPAWN_PRESETS.get(label)
+        if not coords:
+            return
+        x, y, p = coords
+        self.add_x.set(str(x))
+        self.add_y.set(str(y))
+        self.add_p.set(str(p))
+
+    def _add_extra(self):
+        try:
+            x = int(self.add_x.get())
+            y = int(self.add_y.get())
+            p = int(self.add_p.get() or 0)
+        except ValueError:
+            messagebox.showwarning("Add anchor", "X/Y must be numeric.")
+            return
+        self.extras.append([x, y, p])
+        self.extras_listbox.insert(tk.END, f"{x}, {y}, p{p}")
+        # Clear entries so the next add doesn't re-commit the same tile.
+        self.add_x.set(""); self.add_y.set(""); self.add_p.set("0")
+        self.add_preset_var.set("— Custom —")
+
+    def _remove_extra(self):
+        sel = self.extras_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if 0 <= idx < len(self.extras):
+            del self.extras[idx]
+            self.extras_listbox.delete(idx)
+
     def _save(self):
         try:
             updated = {
@@ -1572,6 +1870,7 @@ class SlotEditor(ctk.CTkToplevel):
                 "plane":   int(self.plane_var.get()),
                 "scatter": int(self.scatter_var.get()),
                 "autospawn": bool(self.autospawn_var.get()),
+                "extra_anchors": list(self.extras),
             }
         except ValueError as e:
             messagebox.showerror("Invalid", f"Numeric field error: {e}")

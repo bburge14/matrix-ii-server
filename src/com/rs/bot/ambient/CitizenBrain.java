@@ -125,6 +125,14 @@ public class CitizenBrain extends BotBrain {
      *  similar pacing to a real player's "okay, let's try a different
      *  spot" decision. */
     private static final int METHOD_REPICK_CYCLES = 10;
+    /** Stuck-detector: tracks the last distance to currentMethod's tile
+     *  and how many ticks the bot has failed to make progress. After
+     *  STUCK_TICKS_LIMIT ticks of no closer movement (e.g. stranded at
+     *  a lodestone with the destination unreachable), the method gets
+     *  blacklisted and pickRandomMethodForRole picks a new one. */
+    private long methodLastDist = -1;
+    private int methodStuckTicks = 0;
+    private static final int STUCK_TICKS_LIMIT = 40;
 
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
@@ -166,6 +174,35 @@ public class CitizenBrain extends BotBrain {
         try {
             if (!bot.getRun()) bot.setRun(true);
             if (bot.getRunEnergy() < 30) bot.setRunEnergy(100);
+        } catch (Throwable ignored) {}
+
+        // PK opt-in is supposed to be ON forever for combatants. Re-assert
+        // every tick - belt-and-suspenders. User reported PK bots showing
+        // as not opted in even after spawn, and spawn-time setPkOptIn calls
+        // could miss if a bot got rehydrated from disk or had its
+        // controller swapped. This is the cheapest fix.
+        try {
+            if (archetype != null && archetype.isCombatant() && !bot.isPkOptIn()) {
+                bot.setPkOptIn(true);
+            }
+        } catch (Throwable ignored) {}
+
+        // Mid-combat survival for PKers: if HP drops below 50% while
+        // already in a fight (PlayerCombatNew action active), eat a
+        // food. Without this, bots only ate at pre-fight and then died
+        // mid-scrap. Sampled-throttled so a single tick doesn't burn
+        // multiple foods on a partial hp drop.
+        try {
+            if (archetype != null && archetype.isPker()
+                    && bot.getActionManager() != null
+                    && bot.getActionManager().getAction()
+                        instanceof com.rs.game.player.actions.PlayerCombatNew) {
+                int hp = bot.getHitpoints();
+                int maxHp = bot.getMaxHitpoints();
+                if (hp > 0 && hp < maxHp / 2) {
+                    eatHighestFood(bot, hp, maxHp);
+                }
+            }
         } catch (Throwable ignored) {}
 
         // Trade lifecycle for socialite gambler/trader bots. Runs first so
@@ -375,6 +412,33 @@ public class CitizenBrain extends BotBrain {
 
     private void tickTraversing(AIPlayer bot) {
         if (bot.hasWalkSteps()) return;
+
+        // Stuck detector: if we've been TRAVERSING and not getting any
+        // closer to the method's tile (e.g. stranded on a Varrock
+        // lodestone trying to reach a rooftop course we can't actually
+        // climb), blacklist the method and clear it so the next
+        // findInteractionDestination picks something walkable.
+        if (currentMethod != null && currentMethod.location != null) {
+            long curDist = (long) Math.hypot(
+                bot.getX() - currentMethod.location.getX(),
+                bot.getY() - currentMethod.location.getY());
+            if (methodLastDist < 0 || curDist < methodLastDist - 2) {
+                methodLastDist = curDist;
+                methodStuckTicks = 0;
+            } else {
+                methodStuckTicks++;
+                if (methodStuckTicks >= STUCK_TICKS_LIMIT) {
+                    debug(bot, "stuck en route to '" + currentMethod.description
+                        + "' (dist=" + curDist + " for " + methodStuckTicks
+                        + " ticks) - blacklisting + repicking");
+                    try { goalBlacklistAdd(currentMethod); } catch (Throwable ignored) {}
+                    currentMethod = null;
+                    methodLastDist = -1;
+                    methodStuckTicks = 0;
+                }
+            }
+        }
+
         // Try to walk toward a real interaction target; fall back to random
         // wander if there's nothing scannable in the home radius.
         WorldTile target = findInteractionDestination(bot);
@@ -455,8 +519,10 @@ public class CitizenBrain extends BotBrain {
                                 : dedicated ? 12 : 8;
                     Player victim = findNearbyPkVictim(bot, radius);
                     if (victim != null) {
-                        // Dedicated PKers eat + pot before engaging.
-                        if (dedicated) tryPkerPreFight(bot);
+                        // Dedicated PKers eat + pot + flick prayer +
+                        // switch to revolution before engaging so the
+                        // first swing lands buffed.
+                        if (dedicated) tryPkerPreFight(bot, victim);
                         bot.setNextFaceEntity(victim);
                         bot.getActionManager().setAction(
                             new com.rs.game.player.actions.PlayerCombatNew(victim));
@@ -601,20 +667,111 @@ public class CitizenBrain extends BotBrain {
     /** Pre-fight buff for dedicated PKers: drink any combat / restore
      *  pot we own + eat one bite if HP is below half. Lightweight - no
      *  point pre-buffing if we've got nothing in the inventory. */
-    private void tryPkerPreFight(AIPlayer bot) {
+    /** Pre-engage prep: top up HP, drink combat pot if one is in inv,
+     *  switch to revolution combat mode, flick the protection prayer
+     *  matching the most likely incoming style. Called right before
+     *  setAction(PlayerCombatNew(victim)) so the bot enters the fight
+     *  with buffs up. */
+    private void tryPkerPreFight(AIPlayer bot, Player victim) {
         try {
             int hp = bot.getHitpoints();
             int maxHp = bot.getMaxHitpoints();
-            if (hp < maxHp / 2) {
-                int[] foods = { 385, 391, 379, 7946, 15272 }; // shark, manta, lobster, monkfish, rocktail
-                for (int id : foods) {
-                    if (bot.getInventory().containsItem(id, 1)) {
-                        bot.getInventory().deleteItem(id, 1);
-                        bot.heal(Math.min(maxHp - hp, 200));
-                        break;
-                    }
+            // Eat below 60% (was 50%) - real PKers eat earlier to avoid
+            // dying to a spec stack.
+            if (hp < (maxHp * 6) / 10) {
+                eatHighestFood(bot, hp, maxHp);
+            }
+            // Drink a combat / overload potion if available. Picks the
+            // first matching id - most bots only carry one type.
+            int[] pots = {
+                12695, 12697, 12699, 12701,  // super combat pot doses
+                15332, 15333, 15334, 15335,  // overload pot doses
+                2440, 2438,                   // super str pot doses
+                2436, 2434                    // strength pot
+            };
+            for (int p : pots) {
+                if (bot.getInventory().containsItem(p, 1)) {
+                    bot.getInventory().deleteItem(p, 1);
+                    // Apply a generic boost - we don't know the exact
+                    // boost recipe per item, but the engine's stat boost
+                    // helpers are fragmented so just inject a flat +15%
+                    // attack/strength as a bot-only proxy. Real RS
+                    // mechanics would call Potions.drink(...) but that
+                    // requires a Potion subclass per id which is more
+                    // surgery than this band-aid is worth.
+                    try {
+                        bot.getSkills().set(com.rs.game.player.Skills.ATTACK,
+                            Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.ATTACK) + 15));
+                        bot.getSkills().set(com.rs.game.player.Skills.STRENGTH,
+                            Math.min(120, bot.getSkills().getLevel(com.rs.game.player.Skills.STRENGTH) + 15));
+                    } catch (Throwable ignored) {}
+                    break;
                 }
             }
+            // Switch to REVOLUTION so the engine fires basic abilities
+            // automatically - PKer bots don't manually click bash/snipe.
+            try {
+                bot.getCombatDefinitions().setCombatMode(
+                    com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
+            } catch (Throwable ignored) {}
+            // Flick the protection prayer matching the victim's likely
+            // attack style. We infer style from their weapon slot.
+            activateProtectPrayer(bot, victim);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Pull the best food off the bot's inventory and heal up to maxHp. */
+    private void eatHighestFood(AIPlayer bot, int hp, int maxHp) {
+        // Highest-heal first so a level-99 mage doesn't waste a shark
+        // for a 5-hp recovery. heal(amount) caps at maxHp internally.
+        int[] foods = {
+            15272, /*rocktail*/  391, /*manta*/  385, /*shark*/
+            7946, /*monkfish*/    379, /*lobster*/ 373, /*swordfish*/
+            361, /*tuna*/         355, /*sardine*/ 333, /*trout*/
+            315 /*shrimp*/
+        };
+        int[] heals = { 230, 220, 200, 180, 120, 100, 80, 60, 70, 30 };
+        for (int i = 0; i < foods.length; i++) {
+            if (bot.getInventory().containsItem(foods[i], 1)) {
+                bot.getInventory().deleteItem(foods[i], 1);
+                bot.heal(heals[Math.min(i, heals.length - 1)]);
+                return;
+            }
+        }
+    }
+
+    /** Best-effort protection prayer flick. Looks at the victim's
+     *  weapon slot to infer style:
+     *    - bow/crossbow/throwing -> Protect from Missiles
+     *    - staff/wand           -> Protect from Magic
+     *    - everything else      -> Protect from Melee (default for PKers
+     *      since most bots are melee). */
+    private void activateProtectPrayer(AIPlayer bot, Player victim) {
+        try {
+            if (bot.getPrayer() == null) return;
+            int prayerId = 19; // Protect from Melee
+            try {
+                com.rs.game.item.Item w = victim.getEquipment().getItem(
+                    com.rs.game.player.Equipment.SLOT_WEAPON);
+                if (w != null) {
+                    String name = w.getDefinitions().getName();
+                    if (name != null) {
+                        String n = name.toLowerCase();
+                        if (n.contains("bow") || n.contains("crossbow")
+                                || n.contains("dart") || n.contains("knife")
+                                || n.contains("throwing") || n.contains("javelin")) {
+                            prayerId = 18; // Protect from Missiles
+                        } else if (n.contains("staff") || n.contains("wand")
+                                || n.contains("tectonic") || n.contains("seismic")) {
+                            prayerId = 17; // Protect from Magic
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+            // Only enable if we have prayer points to actually use it.
+            if (bot.getPrayer().getPrayerpoints() <= 0) return;
+            // switchPrayer toggles - call once to enable.
+            bot.getPrayer().switchPrayer(prayerId, false);
         } catch (Throwable ignored) {}
     }
 
@@ -676,6 +833,10 @@ public class CitizenBrain extends BotBrain {
             com.rs.bot.ai.TrainingMethods.Method old = currentMethod;
             currentMethod = pickRandomMethodForRole(bot);
             methodCyclesElapsed = 0;
+            // Reset stuck-detector when method changes so the new one
+            // gets a fresh STUCK_TICKS_LIMIT-tick budget to prove it.
+            methodLastDist = -1;
+            methodStuckTicks = 0;
             if (currentMethod != null) {
                 debug(bot, "picked method '" + currentMethod.description + "' @ "
                     + currentMethod.location.getX() + "," + currentMethod.location.getY()
@@ -737,6 +898,9 @@ public class CitizenBrain extends BotBrain {
         for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
             if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
             if (m.location == null) continue;
+            // Skip methods previously blacklisted (e.g. by the
+            // tickTraversing stuck-detector).
+            if (goalBlacklisted(m)) continue;
             if (pinned != null) {
                 // Per-minigame archetype - only accept methods at the pinned lobby
                 if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;

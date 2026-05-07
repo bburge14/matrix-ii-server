@@ -39,9 +39,14 @@ public final class CitizenBudget {
     public static final class Slot {
         public String archetype;     // AmbientArchetype enum name
         public int count;            // target alive count
-        public int x, y, plane;      // anchor world tile
+        public int x, y, plane;      // primary anchor world tile
         public int scatter;          // radius around anchor
         public boolean autospawn;    // spawn on server start
+        /** Optional additional anchors. Each spawn picks one of (primary)
+         *  + extraAnchors at random, so a single slot can scatter bots
+         *  across multiple skill spots / GE corners / wildy zones. Each
+         *  entry is [x, y, plane]. Empty list = single-anchor behaviour. */
+        public java.util.List<int[]> extraAnchors = new java.util.ArrayList<>();
 
         public Slot() {}
 
@@ -54,7 +59,26 @@ public final class CitizenBudget {
             this.autospawn = autospawn;
         }
 
+        /** Random pick from the (primary + extraAnchors) pool. */
+        public int[] pickAnchor() {
+            int total = 1 + (extraAnchors == null ? 0 : extraAnchors.size());
+            int idx = total <= 1 ? 0 : com.rs.utils.Utils.random(total);
+            if (idx == 0) return new int[] { x, y, plane };
+            return extraAnchors.get(idx - 1);
+        }
+
         public String toJson() {
+            StringBuilder extras = new StringBuilder();
+            if (extraAnchors != null && !extraAnchors.isEmpty()) {
+                extras.append(",\"extra_anchors\":[");
+                for (int i = 0; i < extraAnchors.size(); i++) {
+                    int[] a = extraAnchors.get(i);
+                    if (i > 0) extras.append(',');
+                    extras.append('[').append(a[0]).append(',').append(a[1])
+                        .append(',').append(a[2]).append(']');
+                }
+                extras.append(']');
+            }
             return "{\"archetype\":\"" + jsonEscape(archetype == null ? "" : archetype)
                 + "\",\"count\":" + count
                 + ",\"x\":" + x
@@ -62,6 +86,7 @@ public final class CitizenBudget {
                 + ",\"plane\":" + plane
                 + ",\"scatter\":" + scatter
                 + ",\"autospawn\":" + (autospawn ? "true" : "false")
+                + extras.toString()
                 + "}";
         }
     }
@@ -190,6 +215,21 @@ public final class CitizenBudget {
             int need = Math.max(0, s.count - alive);
             if (need == 0) continue;
             try {
+                // Each spawn picks a random anchor from the slot's pool
+                // (primary + extraAnchors). Spreads bots across multiple
+                // skill spots / GE corners / wildy zones from one slot
+                // entry instead of stacking them all at one tile.
+                int spawnedHere = 0;
+                for (int i = 0; i < need; i++) {
+                    int[] a = s.pickAnchor();
+                    com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(a[0], a[1], a[2]);
+                    java.util.List<com.rs.bot.AIPlayer> one =
+                        CitizenSpawner.spawnBatch(1, s.archetype, anchor, s.scatter);
+                    spawnedHere += (one == null ? 0 : one.size());
+                }
+                spawned += spawnedHere;
+                if (false) {
+                // Legacy single-anchor path kept as inline doc reference.
                 com.rs.game.WorldTile anchor = new com.rs.game.WorldTile(s.x, s.y, s.plane);
                 // Pass the archetype name directly so spawner picks THAT exact
                 // archetype (CITIZEN_GE_TRADER_RARE etc) instead of a random
@@ -199,12 +239,100 @@ public final class CitizenBudget {
                     CitizenSpawner.spawnBatch(need, s.archetype, anchor, s.scatter);
                 // batch.size() is just the FIRST sync spawn; the rest are
                 // queued. We count what we requested as "spawned planned".
-                spawned += need;
+                }
             } catch (Throwable t) {
                 System.err.println("[CitizenBudget] applyBudget slot failed: " + s.toJson() + " -> " + t);
             }
         }
         return spawned;
+    }
+
+    // === Named budget profiles ===
+    // Stored under data/citizens/budgets/<name>.json so admins can
+    // save snapshots ("debug-pkers", "live-prod", "wildy-stress")
+    // and swap between them without losing previous configs. Each
+    // profile is a complete slot list - load REPLACES the active
+    // budget atomically.
+
+    private static final String PROFILES_DIR = "data/citizens/budgets";
+
+    public static synchronized java.util.List<String> listProfiles() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        File dir = new File(PROFILES_DIR);
+        if (!dir.isDirectory()) return out;
+        File[] files = dir.listFiles();
+        if (files == null) return out;
+        for (File f : files) {
+            String n = f.getName();
+            if (f.isFile() && n.endsWith(".json")) {
+                out.add(n.substring(0, n.length() - 5));
+            }
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** Save the current active budget as a named profile. Overwrites
+     *  if a profile with the same name already exists. */
+    public static synchronized boolean saveProfile(String name) {
+        if (!isSafeProfileName(name)) return false;
+        load();
+        File dir = new File(PROFILES_DIR);
+        if (!dir.isDirectory()) dir.mkdirs();
+        File out = new File(dir, name + ".json");
+        try (PrintWriter w = new PrintWriter(out)) {
+            w.println(currentJson());
+            return true;
+        } catch (Throwable t) {
+            System.err.println("[CitizenBudget] saveProfile " + name + " failed: " + t);
+            return false;
+        }
+    }
+
+    /** Replace the active budget with the contents of a named profile.
+     *  Returns the slot count loaded, or -1 on failure. */
+    public static synchronized int loadProfile(String name) {
+        if (!isSafeProfileName(name)) return -1;
+        File f = new File(PROFILES_DIR, name + ".json");
+        if (!f.isFile()) return -1;
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line);
+            java.util.List<Slot> parsed = parseSlots(sb.toString());
+            slots = parsed;
+            loaded = true;
+            save();
+            return slots.size();
+        } catch (Throwable t) {
+            System.err.println("[CitizenBudget] loadProfile " + name + " failed: " + t);
+            return -1;
+        }
+    }
+
+    public static synchronized boolean deleteProfile(String name) {
+        if (!isSafeProfileName(name)) return false;
+        File f = new File(PROFILES_DIR, name + ".json");
+        return f.isFile() && f.delete();
+    }
+
+    private static boolean isSafeProfileName(String name) {
+        if (name == null || name.isEmpty()) return false;
+        // Disallow path traversal / special chars - admin panel only.
+        return name.matches("[A-Za-z0-9_\\-]{1,40}");
+    }
+
+    /** Build the on-disk JSON for the current slots without writing it,
+     *  reused by saveProfile(). Uses the same shape as save()'s output. */
+    private static String currentJson() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"schema\":").append(CURRENT_SCHEMA_VERSION).append(",\"slots\":[");
+        for (int i = 0; i < slots.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(slots.get(i).toJson());
+        }
+        sb.append("]}");
+        return sb.toString();
     }
 
     /** Default budget seed: a small mixed-population spawn at GE so first-time
@@ -312,7 +440,53 @@ public final class CitizenBudget {
         s.plane   = extractInt(obj, "plane", 0);
         s.scatter = extractInt(obj, "scatter", 8);
         s.autospawn = extractBool(obj, "autospawn", false);
+        s.extraAnchors = parseExtraAnchors(obj);
         return s.archetype == null ? null : s;
+    }
+
+    /** Parse "extra_anchors":[[x,y,p],[x,y,p],...] from a slot JSON. */
+    public static java.util.List<int[]> parseExtraAnchors(String obj) {
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        if (obj == null) return out;
+        int key = obj.indexOf("\"extra_anchors\"");
+        if (key < 0) return out;
+        int colon = obj.indexOf(':', key);
+        if (colon < 0) return out;
+        int arrStart = obj.indexOf('[', colon);
+        if (arrStart < 0) return out;
+        // Find matching close-bracket for the OUTER array
+        int depth = 0;
+        int arrEnd = -1;
+        for (int i = arrStart; i < obj.length(); i++) {
+            char c = obj.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') {
+                depth--;
+                if (depth == 0) { arrEnd = i; break; }
+            }
+        }
+        if (arrEnd < 0) return out;
+        String body = obj.substring(arrStart + 1, arrEnd);
+        // Split on inner [...]
+        int p = 0;
+        while (p < body.length()) {
+            int open = body.indexOf('[', p);
+            if (open < 0) break;
+            int close = body.indexOf(']', open);
+            if (close < 0) break;
+            String triple = body.substring(open + 1, close).trim();
+            String[] parts = triple.split(",");
+            try {
+                if (parts.length >= 2) {
+                    int xv = Integer.parseInt(parts[0].trim());
+                    int yv = Integer.parseInt(parts[1].trim());
+                    int pv = parts.length >= 3 ? Integer.parseInt(parts[2].trim()) : 0;
+                    out.add(new int[] { xv, yv, pv });
+                }
+            } catch (Throwable ignored) {}
+            p = close + 1;
+        }
+        return out;
     }
 
     private static String extractStr(String obj, String key) {
