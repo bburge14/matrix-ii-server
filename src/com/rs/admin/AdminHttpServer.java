@@ -135,6 +135,56 @@ public final class AdminHttpServer {
                     }
                 })));
             server.createContext("/admin/citizens/budget/apply", auth(postOnly(new CitizensBudgetApplyHandler())));
+            // Named budget profiles - GET lists names, POST {name,op}
+            // where op is "save" / "load" / "delete". Lets the admin
+            // panel save snapshots ("debug-pkers", "live-prod") and
+            // swap between them without losing previous configs.
+            server.createContext("/admin/citizens/budget/profiles",
+                auth(new HttpHandler() {
+                    @Override public void handle(HttpExchange ex) throws IOException {
+                        String method = ex.getRequestMethod();
+                        if ("GET".equalsIgnoreCase(method)) {
+                            java.util.List<String> names =
+                                com.rs.bot.ambient.CitizenBudget.listProfiles();
+                            StringBuilder sb = new StringBuilder("{\"profiles\":[");
+                            for (int i = 0; i < names.size(); i++) {
+                                if (i > 0) sb.append(',');
+                                sb.append('"').append(jsonEscape(names.get(i))).append('"');
+                            }
+                            sb.append("]}");
+                            sendText(ex, 200, sb.toString());
+                            return;
+                        }
+                        if (!"POST".equalsIgnoreCase(method)) {
+                            sendText(ex, 405, "{\"ok\":false,\"error\":\"method not allowed\"}");
+                            return;
+                        }
+                        try {
+                            String body = readBody(ex);
+                            String name = bExtractStr(body, "name");
+                            String op   = bExtractStr(body, "op");
+                            if (name == null || op == null) {
+                                sendText(ex, 400, "{\"ok\":false,\"error\":\"name+op required\"}");
+                                return;
+                            }
+                            if ("save".equals(op)) {
+                                boolean ok = com.rs.bot.ambient.CitizenBudget.saveProfile(name);
+                                sendText(ex, 200, "{\"ok\":" + ok + "}");
+                            } else if ("load".equals(op)) {
+                                int n = com.rs.bot.ambient.CitizenBudget.loadProfile(name);
+                                sendText(ex, 200, "{\"ok\":" + (n >= 0) + ",\"slots\":" + n + "}");
+                            } else if ("delete".equals(op)) {
+                                boolean ok = com.rs.bot.ambient.CitizenBudget.deleteProfile(name);
+                                sendText(ex, 200, "{\"ok\":" + ok + "}");
+                            } else {
+                                sendText(ex, 400, "{\"ok\":false,\"error\":\"op must be save|load|delete\"}");
+                            }
+                        } catch (Throwable t) {
+                            sendText(ex, 500, "{\"ok\":false,\"error\":\""
+                                + jsonEscape(t.toString()) + "\"}");
+                        }
+                    }
+                }));
             server.createContext("/admin/citizens/archetypes",   auth(new CitizensArchetypesHandler()));
 
             // Bulk GE price update - lets the audit script push live RS3
@@ -2419,6 +2469,7 @@ public final class AdminHttpServer {
         com.rs.bot.ambient.CitizenBudget.Slot s = new com.rs.bot.ambient.CitizenBudget.Slot();
         s.archetype = bExtractStr(obj, "archetype");
         s.count   = bExtractInt(obj, "count", 0);
+        s.extraAnchors = com.rs.bot.ambient.CitizenBudget.parseExtraAnchors(obj);
         s.x       = bExtractInt(obj, "x", 0);
         s.y       = bExtractInt(obj, "y", 0);
         s.plane   = bExtractInt(obj, "plane", 0);

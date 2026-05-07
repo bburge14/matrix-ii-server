@@ -283,6 +283,14 @@ class MatrixAPI:
                           {"includeManual": "true" if include_manual else "false"})
     def citizens_budget_reseed(self):
         return self._post("/admin/citizens/budget/reseed")
+    def citizens_budget_profiles(self):
+        return self._get("/admin/citizens/budget/profiles")
+    def citizens_budget_profile_save(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "save"})
+    def citizens_budget_profile_load(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "load"})
+    def citizens_budget_profile_delete(self, name):
+        return self._post("/admin/citizens/budget/profiles", {"name": name, "op": "delete"})
 
     # Phantom GE
     def phantom_ge_get(self):    return self._get("/admin/phantom-ge")
@@ -1045,6 +1053,8 @@ class CitizensFrame(ctk.CTkFrame):
                       command=self._clear_all).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Reseed Defaults", width=130, fg_color="#a05522",
                       command=self._reseed_defaults).pack(side="left", padx=4)
+        ctk.CTkButton(actions, text="Profiles…", width=90, fg_color="#3a5588",
+                      command=self._open_profiles_dialog).pack(side="left", padx=4)
         ctk.CTkLabel(actions, text=" │ ").pack(side="left", padx=2)
         ctk.CTkButton(actions, text="+ Add Row", width=90,
                       command=self._add_slot).pack(side="left", padx=4)
@@ -1299,6 +1309,16 @@ class CitizensFrame(ctk.CTkFrame):
         self.tree.selection_set(str(idx))
         SlotEditor(self, self.slots[idx], self.archetypes, self._on_slot_edited).load(idx)
 
+    def _open_profiles_dialog(self):
+        """Open the named-budget-profile manager. Lets the admin save
+        the current budget under a name, load a saved one (replaces
+        active budget), or delete a stale one. Profiles live under
+        data/citizens/budgets/<name>.json on the server."""
+        try:
+            BudgetProfilesDialog(self, self.api, on_change=self.refresh)
+        except Exception as e:
+            messagebox.showerror("Profiles dialog", str(e))
+
     def _reseed_defaults(self):
         if not messagebox.askyesno("Reseed defaults",
                 "Wipe the current budget and restore server defaults? "
@@ -1535,6 +1555,150 @@ class CitizensFrame(ctk.CTkFrame):
                 self.after(0, self.refresh)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+
+class BudgetProfilesDialog(ctk.CTkToplevel):
+    """Manage named budget profiles (save / load / delete).
+
+    Server stores profiles under data/citizens/budgets/<name>.json.
+    Loading a profile REPLACES the active budget (data/citizen_budget.json),
+    so the workflow is:
+        1. Tweak the budget in the table the way you want.
+        2. Save it as a named profile.
+        3. Tweak again for a different scenario, save under another name.
+        4. Load whichever profile you want active before clicking
+           "Apply Budget" / "Save Budget" in the main view.
+    """
+    def __init__(self, parent, api, on_change=None):
+        super().__init__(parent)
+        self.title("Budget Profiles")
+        self.geometry("420x360")
+        self.api = api
+        self.on_change = on_change
+        # Strong ref so customtkinter doesn't GC us mid-show.
+        try: parent._open_popups = getattr(parent, "_open_popups", []) + [self]
+        except Exception: pass
+
+        ctk.CTkLabel(self, text="Saved profiles",
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(
+                         anchor="w", padx=14, pady=(14, 4))
+
+        list_frame = ctk.CTkFrame(self)
+        list_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        self.listbox = tk.Listbox(list_frame, bg="#2b2b2b", fg="white",
+                                  selectbackground="#1f6aa5",
+                                  font=("Helvetica", 11), borderwidth=0,
+                                  highlightthickness=0)
+        self.listbox.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Save row
+        save_row = ctk.CTkFrame(self, fg_color="transparent")
+        save_row.pack(fill="x", padx=14, pady=(2, 6))
+        ctk.CTkLabel(save_row, text="Name:").pack(side="left")
+        self.name_var = tk.StringVar()
+        ctk.CTkEntry(save_row, textvariable=self.name_var,
+                     placeholder_text="profile-name (a-z 0-9 _ -)",
+                     width=200).pack(side="left", padx=6)
+        ctk.CTkButton(save_row, text="Save current", width=110,
+                      fg_color="#1b6e3a",
+                      command=self._save).pack(side="left", padx=4)
+
+        # Action row (load / delete on selected entry)
+        act_row = ctk.CTkFrame(self, fg_color="transparent")
+        act_row.pack(fill="x", padx=14, pady=(0, 12))
+        ctk.CTkButton(act_row, text="Load selected", width=130,
+                      fg_color="#3a5588",
+                      command=self._load).pack(side="left", padx=4)
+        ctk.CTkButton(act_row, text="Delete selected", width=130,
+                      fg_color="#aa3030",
+                      command=self._delete).pack(side="left", padx=4)
+        ctk.CTkButton(act_row, text="Refresh", width=80,
+                      command=self._refresh).pack(side="left", padx=4)
+
+        self._refresh()
+
+    def _refresh(self):
+        def do():
+            try:
+                resp = self.api.citizens_budget_profiles()
+                names = resp.get("profiles", []) if isinstance(resp, dict) else []
+                self.after(0, lambda: self._fill(names))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Profiles", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _fill(self, names):
+        self.listbox.delete(0, tk.END)
+        for n in names:
+            self.listbox.insert(tk.END, n)
+
+    def _selected(self):
+        sel = self.listbox.curselection()
+        if not sel: return None
+        return self.listbox.get(sel[0])
+
+    def _save(self):
+        name = (self.name_var.get() or "").strip()
+        if not name:
+            messagebox.showwarning("Save profile", "Enter a name first.")
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_save(name)
+                if resp.get("ok"):
+                    self.after(0, lambda: messagebox.showinfo("Saved",
+                        f"Profile '{name}' saved."))
+                    self.after(0, self._refresh)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Save profile",
+                        "Server rejected save (invalid name?)"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Save profile", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _load(self):
+        name = self._selected()
+        if not name:
+            messagebox.showwarning("Load profile", "Pick a profile first.")
+            return
+        if not messagebox.askyesno("Load profile",
+            f"Load '{name}'?\nThis REPLACES the active budget."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_load(name)
+                if resp.get("ok"):
+                    n = resp.get("slots", "?")
+                    self.after(0, lambda: messagebox.showinfo("Loaded",
+                        f"Profile '{name}' loaded ({n} slots active)"))
+                    if self.on_change:
+                        self.after(0, self.on_change)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Load profile",
+                        "Server returned ok=false"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Load profile", str(e)))
+        threading.Thread(target=do, daemon=True).start()
+
+    def _delete(self):
+        name = self._selected()
+        if not name:
+            messagebox.showwarning("Delete profile", "Pick a profile first.")
+            return
+        if not messagebox.askyesno("Delete profile",
+            f"Delete '{name}'? This cannot be undone."):
+            return
+        def do():
+            try:
+                resp = self.api.citizens_budget_profile_delete(name)
+                if resp.get("ok"):
+                    self.after(0, self._refresh)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Delete profile",
+                        "Server returned ok=false"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Delete profile", str(e)))
         threading.Thread(target=do, daemon=True).start()
 
 
