@@ -138,6 +138,16 @@ public class CitizenBrain extends BotBrain {
         // wandering - looks like a sync'd dance. User: "I AM SEEING GROUPS
         // MOVE IN SYNC".
         stateTicksRemaining += Utils.random(40);
+        // Belt-and-suspenders PK opt-in for combatants. CitizenSpawner
+        // already does this on its happy path, but the user reported
+        // PK bots showing as "not opted into pk" - this catches any
+        // path where a Citizen brain gets attached to a combatant
+        // without the spawner's setPkOptIn call having fired.
+        try {
+            if (archetype != null && archetype.isCombatant()) {
+                bot.setPkOptIn(true);
+            }
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -208,6 +218,13 @@ public class CitizenBrain extends BotBrain {
                     if (r < 98) next = State.IDLE;
                     else if (r < 99) next = State.TRAVERSING;
                     else next = State.INTERACTING;
+                } else if (archetype != null && archetype.isPker()) {
+                    // PKers should never enter TRAVERSING - they have no
+                    // training method to walk to and tickTraversing's
+                    // teleport-first logic was firing them out of the
+                    // wildy. Stay in INTERACTING (which has the wildy
+                    // victim-hunt + drift wander) most of the time.
+                    next = r < 90 ? State.INTERACTING : State.IDLE;
                 } else {
                     // Default: 60 traverse / 30 interact / 10 idle (legacy)
                     if (r < 60) next = State.TRAVERSING;
@@ -293,8 +310,12 @@ public class CitizenBrain extends BotBrain {
                 catch (Throwable ignored) {}
             }
             // Sometimes a chatty bot kicks off a 2-line convo with a
-            // nearby citizen instead of just speaking solo.
-            try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
+            // nearby citizen instead of just speaking solo. PK bots
+            // skip this - the THREADS pool has trader/gambler/skiller
+            // banter that breaks character for a wildy PKer.
+            if (archetype == null || !archetype.isPker()) {
+                try { BotConversations.maybeStart(bot); } catch (Throwable ignored) {}
+            }
         }
 
         // Idle fidget: 1-tile shuffle in a random direction so an
@@ -731,7 +752,13 @@ public class CitizenBrain extends BotBrain {
             set.add(com.rs.bot.ai.TrainingMethods.Kind.SMELTING);
             set.add(com.rs.bot.ai.TrainingMethods.Kind.PRAYER);
         }
-        if (arch.isCombatant()) {
+        // Dedicated PKers do NOT get combat training methods - they
+        // exclusively hunt opted-in players in the wildy. Without this
+        // gate, pickRandomMethodForRole returned a COMBAT method
+        // (rock crabs / sand crabs / etc.) and tickTraversing
+        // teleported the PKer there - users saw "they teleport right
+        // after spawn and don't fight anyone".
+        if (arch.isCombatant() && !arch.isPker()) {
             set.add(com.rs.bot.ai.TrainingMethods.Kind.COMBAT);
         }
         if (arch.isMinigamer()) {
