@@ -377,32 +377,34 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
-			// Force-retaliate when hit by a player. PlayerCombatNew /
-			// CombatScript.delayHit do call autoRelatie -> n.setTarget()
-			// AFTER the hit applies, but it's gated on
-			// canBeAttackedByAutoRelatie() which has a 12s lureDelay
-			// window keyed on lastAttackedByTarget. In several cases
-			// (multi-attack ticks, scripted bosses calling setTarget
-			// programmatically, lureDelay drift) the gate refused the
-			// retaliate set even on first hit and the NPC just stood
-			// there. Real RS behaviour is "if you hit it, it fights
-			// back" - so set target whenever combat.target is currently
-			// null AND the NPC is alive AND it has an Attack option.
+			// Force-retaliate when hit by a player. Always log the
+			// gate state so we can see exactly why an NPC didn't fight
+			// back (target already set, dead, cantInteract, etc).
+			// 1-in-3 sample on the always-fire branch keeps the volume
+			// reasonable while still catching every common scenario.
 			try {
-				if (combat != null && combat.getTarget() == null
-						&& !isDead() && !hasFinished()
-						&& !isCantInteract() && !isForceWalking()
+				boolean alive = !isDead() && !hasFinished();
+				boolean canInteract = !isCantInteract() && !isForceWalking();
+				boolean hasCombat = combat != null;
+				boolean targetEmpty = hasCombat && combat.getTarget() == null;
+				boolean attempted = false;
+				if (hasCombat && targetEmpty && alive && canInteract
 						&& getDefinitions() != null) {
 					setTarget(source);
-					// 1-in-5 sample (was 1-in-20), routed through BotLog
-					// so it lands in data/logs/bots.log alongside other
-					// bot diagnostics. tail -f data/logs/bots.log to watch.
-					if (com.rs.utils.Utils.random(5) == 0) {
-						com.rs.bot.BotLog.log("NPC-RETAL-HIT", getId()
-							+ " " + getDefinitions().name
-							+ " hit by " + ((Player) source).getDisplayName()
-							+ " - target now=" + (combat.getTarget() == null ? "null" : "set"));
-					}
+					attempted = true;
+				}
+				if (com.rs.utils.Utils.random(3) == 0) {
+					String state;
+					if (!alive)               state = "DEAD";
+					else if (!canInteract)    state = "CANT_INTERACT(force=" + isForceWalking() + ")";
+					else if (!hasCombat)      state = "NO_COMBAT";
+					else if (!targetEmpty)    state = "TARGET_ALREADY=" + combat.getTarget();
+					else if (attempted)       state = "SET_TARGET -> " + (combat.getTarget() == null ? "REJECTED" : "OK");
+					else                       state = "UNKNOWN";
+					com.rs.bot.BotLog.log("NPC-RETAL-HIT", getId()
+						+ " " + getDefinitions().name
+						+ " hit by " + ((Player) source).getDisplayName()
+						+ " state=" + state);
 				}
 			} catch (Throwable t) {
 				com.rs.bot.BotLog.log("NPC-RETAL-HIT", "hook threw: " + t);

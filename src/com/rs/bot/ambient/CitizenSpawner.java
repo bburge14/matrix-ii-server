@@ -223,7 +223,24 @@ public final class CitizenSpawner {
             // already correctly gated (no rune armor on a cb-3 bot, no
             // dragon dagger without 60 attack).
             try {
+                // BotFactory.createOffline already ran applyLoadout once with
+                // a guess at the archetype - clear the equipment slots first
+                // so the second pass (with true stats) doesn't leave stale
+                // items the new pool can't replace. Without this you get a
+                // "render shows X, examine shows Y" mismatch the user reported.
+                try {
+                    int size = bot.getEquipment().getItems().getSize();
+                    for (int s = 0; s < size; s++) {
+                        bot.getEquipment().getItems().set(s, null);
+                    }
+                } catch (Throwable ignored) {}
                 com.rs.bot.BotEquipment.applyLoadout(bot, archetypeStr, targetCb);
+                // Recompute appearance bytes so the visible character matches
+                // the equipment slot data. Without this the old appearance
+                // (from BotFactory's first applyLoadout) is what other clients
+                // see, while examine reads the latest equipment.
+                try { bot.getAppearence().generateAppearenceData(); }
+                catch (Throwable ignored) {}
             } catch (Throwable t) {
                 System.err.println("[CitizenSpawner] applyLoadout failed for " + name + ": " + t);
             }
