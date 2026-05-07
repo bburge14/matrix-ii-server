@@ -14,6 +14,102 @@ from tkinter import messagebox, simpledialog, ttk
 
 APP_NAME = "matrix-admin"
 
+
+# ----- Spawn presets -----
+# Flat (label -> (x, y, plane)) map for the location dropdown. Sorted
+# into category groups (label prefixes) so the dropdown reads top-down.
+# "Custom" leaves the X/Y/Plane fields untouched - lets the user type
+# their own coords without being forced into a preset.
+SPAWN_PRESETS = {
+    "— Custom —": None,
+
+    # === Grand Exchange ===
+    "GE — Centre":                  (3164, 3486, 0),
+    "GE — North bank counter":      (3165, 3490, 0),
+    "GE — East bank counter":       (3168, 3486, 0),
+    "GE — South bank counter":      (3164, 3482, 0),
+    "GE — West bank counter":       (3160, 3486, 0),
+    "GE — NW (rare trader corner)": (3147, 3472, 0),
+    "GE — Gambler fountain":        (3163, 3489, 0),
+
+    # === Cities & towns ===
+    "Lumbridge — Castle courtyard": (3222, 3218, 0),
+    "Lumbridge — Top of castle":    (3222, 3218, 2),
+    "Lumbridge — General store":    (3214, 3247, 0),
+    "Lumbridge — Cow field":        (3253, 3266, 0),
+    "Lumbridge — Goblins":          (3247, 3236, 0),
+    "Varrock — Square":             (3212, 3424, 0),
+    "Varrock — West bank":          (3185, 3441, 0),
+    "Varrock — East bank":          (3253, 3420, 0),
+    "Varrock — Grand Exchange entr":(3164, 3470, 0),
+    "Falador — Square":             (2965, 3380, 0),
+    "Falador — East bank":          (3013, 3355, 0),
+    "Falador — West bank":          (2946, 3368, 0),
+    "Edgeville — Bank":             (3094, 3494, 0),
+    "Edgeville — Yew trees":        (3087, 3477, 0),
+    "Edgeville — Furnace":          (3079, 3500, 0),
+    "Draynor — Bank":               (3092, 3243, 0),
+    "Draynor — Willow trees":       (3088, 3232, 0),
+    "Al Kharid — Bank":             (3270, 3167, 0),
+    "Al Kharid — Palace":           (3296, 3168, 0),
+    "Camelot — Bank":               (2725, 3493, 0),
+    "Catherby — Bank":              (2808, 3441, 0),
+    "Catherby — Fishing":           (2841, 3434, 0),
+    "Ardougne — South bank":        (2655, 3283, 0),
+    "Ardougne — North bank":        (2616, 3332, 0),
+    "Burthorpe — Lodestone":        (2899, 3545, 0),
+    "Yanille — Bank":               (2613, 3093, 0),
+    "Seers' Village — Bank":        (2725, 3493, 0),
+    "Canifis — Bank":               (3512, 3480, 0),
+    "Taverley — Lodestone":         (2884, 3450, 0),
+    "Rimmington — Lodestone":       (2956, 3225, 0),
+    "Lletya — Entrance":            (2330, 3171, 0),
+
+    # === Wilderness ===
+    "Wildy — Ditch (Edge crossing)":(3093, 3520, 0),
+    "Wildy — Lvl 1-3 (just north)": (3088, 3530, 0),
+    "Wildy — Lvl 5-10 (Bandit camp)":(3036, 3713, 0),
+    "Wildy — Lvl 13 (Lava maze)":   (3076, 3856, 0),
+    "Wildy — Lvl 18 (Mage arena)":  (3105, 3954, 0),
+    "Wildy — Lvl 25 (Demonic ruins)":(3294, 3886, 0),
+    "Wildy — Lvl 35 (Lava maze N)": (3072, 3934, 0),
+    "Wildy — Lvl 44 (Resource area)":(3186, 3933, 0),
+    "Wildy — Lvl 50 (Wildy bandits)":(3041, 3949, 0),
+
+    # === Skilling spots ===
+    "Mining guild — Falador":       (3047, 9762, 0),
+    "Mining guild — Living rock":   (3651, 5117, 0),
+    "Fishing guild":                (2599, 3422, 0),
+    "Cooks' guild":                 (3145, 3450, 0),
+    "Crafting guild":               (2933, 3287, 0),
+    "Woodcutting — Draynor willows":(3088, 3232, 0),
+    "Woodcutting — Seers yews":     (2706, 3464, 0),
+    "Runecrafting — Air altar":     (3127, 3404, 0),
+    "Runecrafting — Astral altar":  (2156, 3863, 0),
+
+    # === Minigame lobbies ===
+    "Castle Wars — Lobby":          (2442, 3090, 0),
+    "Soul Wars — Lobby":            (2210, 3056, 0),
+    "Stealing Creation — Lobby":    (2860, 5567, 0),
+    "Pest Control — Lobby":         (2657, 2659, 0),
+    "Duel Arena — Lobby":           (3367, 3267, 0),
+    "Fight Caves — Entrance":       (2438, 5168, 0),
+
+    # === Combat training ===
+    "Rock crabs — Relleka":         (2670, 3712, 0),
+    "Sand crabs — Hosidius":        (1779, 3469, 0),
+    "Slayer tower — Ground":        (3428, 3537, 0),
+    "Stronghold of security 1F":    (3081, 3421, 0),
+    "Bandits camp (Kharid desert)": (3168, 2981, 0),
+    "Frost dragons (Asgarnia ice)": (3060, 9572, 0),
+}
+
+
+def _preset_label_list():
+    """Categorised label list for the preset OptionMenu (preserves
+    insertion order from SPAWN_PRESETS)."""
+    return list(SPAWN_PRESETS.keys())
+
 def config_path():
     base = os.environ.get("APPDATA") or str(Path.home())
     d = Path(base) / APP_NAME
@@ -947,6 +1043,17 @@ class CitizensFrame(ctk.CTkFrame):
         ctk.CTkEntry(quick, textvariable=self.q_plane, width=40).pack(side="left", padx=2)
         ctk.CTkButton(quick, text="Spawn", width=80, fg_color="#1b6e3a",
                       command=self._quick_spawn).pack(side="left", padx=8)
+        # Preset row (own line - too many options to fit alongside the
+        # X/Y entries). Selecting a preset auto-fills X/Y/Plane above;
+        # selecting "Custom" leaves them alone so the user can type
+        # arbitrary coords.
+        preset_row = ctk.CTkFrame(self)
+        preset_row.pack(fill="x", padx=20, pady=(0, 4))
+        ctk.CTkLabel(preset_row, text="Location preset:").pack(side="left", padx=4)
+        self.q_preset = tk.StringVar(value="— Custom —")
+        ctk.CTkOptionMenu(preset_row, values=_preset_label_list(),
+                          variable=self.q_preset, width=320,
+                          command=self._apply_quick_preset).pack(side="left", padx=2)
         # Per-minigame + per-socialite-tier quick rows
         mg_quick = ctk.CTkFrame(self)
         mg_quick.pack(fill="x", padx=20, pady=4)
@@ -1260,6 +1367,18 @@ class CitizensFrame(ctk.CTkFrame):
                 self.after(0, lambda: messagebox.showerror("Clear failed", str(e)))
         threading.Thread(target=do, daemon=True).start()
 
+    def _apply_quick_preset(self, label):
+        """Preset OptionMenu callback. If the picked label maps to a
+        coord tuple, fill X/Y/Plane. "Custom" is a no-op (user keeps
+        whatever they typed)."""
+        coords = SPAWN_PRESETS.get(label)
+        if not coords:
+            return
+        x, y, p = coords
+        self.q_x.set(str(x))
+        self.q_y.set(str(y))
+        self.q_plane.set(str(p))
+
     def _quick_spawn(self):
         try:
             n = int(self.q_count.get())
@@ -1400,6 +1519,19 @@ class SlotEditor(ctk.CTkToplevel):
         self.plane_var = tk.StringVar(value=str(slot.get("plane", 0)))
         ctk.CTkEntry(row2, textvariable=self.plane_var, width=40).pack(side="left", padx=4)
 
+        # location preset shortcut - selects anchor coords for this slot
+        # from a curated list (towns, GE, wildy, minigames, etc).
+        # Picking anything except "Custom" overwrites the X/Y/Plane fields.
+        row_preset = ctk.CTkFrame(self, fg_color="transparent")
+        row_preset.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(row_preset, text="Location preset:").pack(side="left")
+        self.preset_var = tk.StringVar(value="— Custom —")
+        ctk.CTkOptionMenu(row_preset, values=_preset_label_list(),
+                          variable=self.preset_var, width=300,
+                          command=self._apply_preset).pack(side="left", padx=4)
+        # Window grew slightly to fit the new row.
+        self.geometry("440x380")
+
         # autospawn
         self.autospawn_var = tk.BooleanVar(value=bool(slot.get("autospawn", False)))
         ctk.CTkCheckBox(self, text="Auto-spawn on server start",
@@ -1418,6 +1550,17 @@ class SlotEditor(ctk.CTkToplevel):
         self.idx = idx
         self.lift()
         self.grab_set()
+
+    def _apply_preset(self, label):
+        """Preset OptionMenu callback. Fills X/Y/Plane from the picked
+        preset; "Custom" is a no-op."""
+        coords = SPAWN_PRESETS.get(label)
+        if not coords:
+            return
+        x, y, p = coords
+        self.x_var.set(str(x))
+        self.y_var.set(str(y))
+        self.plane_var.set(str(p))
 
     def _save(self):
         try:
