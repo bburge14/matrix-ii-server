@@ -134,6 +134,31 @@ public class CitizenBrain extends BotBrain {
     private int methodStuckTicks = 0;
     private static final int STUCK_TICKS_LIMIT = 40;
 
+    // PK contextual chatter. User: "they should only ask to fight while
+    // NOT in the wildy.. if they are actively fighting they should talk
+    // shit. say things like 'sit noob' when they kill their foes".
+    // CitizenBrain.tickIdle picks the right pool based on the bot's
+    // current state instead of using AmbientArchetype.randomChatter()
+    // for everything.
+    private static final String[] PK_CHATTER_LFG = {  // looking-for-fight, OUTSIDE wildy
+        "come dh me", "1v1 ditch", "low risk fight?", "anyone wanting a fight",
+        "ez ditch flame", "lf 1v1 cw", "any fights ditch", "low cb pk?",
+        "veng dh", "pst for fight", "pking right at ditch"
+    };
+    private static final String[] PK_CHATTER_FIGHTING = {  // mid-combat trash talk
+        "eat ags", "ez", "switch noob", "no def", "you're getting clapped",
+        "this is gonna be a sit", "low hp lol", "spec down", "pid'd",
+        "veng up come", "dropping you", "no honor pk", "rune scim noob"
+    };
+    private static final String[] PK_CHATTER_KILL = {  // post-kill smacktalk
+        "sit noob", "haha rekt", "ez clap", "easy money", "thanks for the loot",
+        "git gud", "ratio'd", "sat", "no skill", "pile dh ez", "owned",
+        "where pid", "my favorite kill"
+    };
+    /** When did our last combat action end with a dead target? Used to
+     *  fire kill-line + prioritize loot pickup. Wall-clock millis. */
+    private long lastKillMs = 0;
+
     public CitizenBrain(AIPlayer bot, AmbientArchetype archetype, WorldTile homeAnchor, int homeRadius) {
         super(bot);
         this.archetype = archetype;
@@ -201,6 +226,32 @@ public class CitizenBrain extends BotBrain {
                 int maxHp = bot.getMaxHitpoints();
                 if (hp > 0 && hp < maxHp / 2) {
                     eatHighestFood(bot, hp, maxHp);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Detect kill: if we just had a PlayerCombatNew action targeting
+        // a victim that's now dead/finished, mark lastKillMs so the next
+        // tick fires kill chatter + prioritizes loot.
+        try {
+            if (archetype != null && archetype.isPker()) {
+                Object lastVictim = bot.getTemporaryAttributtes().get("PkLastVictim");
+                Object curAction = bot.getActionManager().getAction();
+                if (curAction instanceof com.rs.game.player.actions.PlayerCombatNew) {
+                    // Track victim while in combat
+                    bot.getTemporaryAttributtes().put("PkLastVictim",
+                        ((com.rs.game.player.actions.PlayerCombatNew) curAction).getTarget());
+                } else if (lastVictim instanceof com.rs.game.Entity) {
+                    com.rs.game.Entity v = (com.rs.game.Entity) lastVictim;
+                    if (v.isDead() || v.hasFinished()) {
+                        lastKillMs = System.currentTimeMillis();
+                        // Fire kill chatter immediately (skip CHATTER_PROBABILITY).
+                        try {
+                            String line = PK_CHATTER_KILL[Utils.random(PK_CHATTER_KILL.length)];
+                            com.rs.bot.ambient.BotTradeHandler.sayBoth(bot, line, false);
+                        } catch (Throwable ignored) {}
+                    }
+                    bot.getTemporaryAttributtes().remove("PkLastVictim");
                 }
             }
         } catch (Throwable ignored) {}
@@ -339,7 +390,35 @@ public class CitizenBrain extends BotBrain {
         }
 
         if (Math.random() < CHATTER_PROBABILITY) {
-            String line = archetype == null ? null : archetype.randomChatter();
+            // PK contextual chatter overrides the generic archetype pool.
+            // Pool depends on state:
+            //   - Outside wildy   -> looking-for-fight ("come dh me")
+            //   - In combat       -> trash talk ("eat ags", "switch noob")
+            //   - Just-killed     -> handled above (immediate fire)
+            String line = null;
+            if (archetype != null && archetype.isPker()) {
+                boolean inCombat = bot.getActionManager() != null
+                    && bot.getActionManager().getAction()
+                        instanceof com.rs.game.player.actions.PlayerCombatNew;
+                boolean inWildy = false;
+                try {
+                    inWildy = com.rs.game.player.controllers.Wilderness.isAtWild(bot);
+                } catch (Throwable ignored) {}
+                if (inCombat) {
+                    line = PK_CHATTER_FIGHTING[Utils.random(PK_CHATTER_FIGHTING.length)];
+                } else if (!inWildy) {
+                    line = PK_CHATTER_LFG[Utils.random(PK_CHATTER_LFG.length)];
+                } else {
+                    // Idle in wildy with no fight - light banter from
+                    // the kill pool but rare. Most ticks they say
+                    // nothing while waiting / walking.
+                    if (Utils.random(3) == 0) {
+                        line = PK_CHATTER_KILL[Utils.random(PK_CHATTER_KILL.length)];
+                    }
+                }
+            } else {
+                line = archetype == null ? null : archetype.randomChatter();
+            }
             if (line != null) {
                 // sayBoth(plain) = no chat effect for casual chatter.
                 // Effects are reserved for trader/gambler hosts per user spec.
@@ -511,6 +590,15 @@ public class CitizenBrain extends BotBrain {
                 boolean dedicated = archetype.isPker();
                 boolean inWildy = bot.getControlerManager().getControler()
                     instanceof com.rs.game.player.controllers.Wilderness;
+                // Loot priority: if we just killed a victim within the
+                // last 10 seconds, PRIORITIZE looting their drop over
+                // engaging the next target. Real PKers walk over the
+                // corpse before re-engaging. Without this, bots clustered
+                // at the ditch immediately re-engaged the next bot and
+                // never picked up their kill's drops.
+                if (dedicated && (System.currentTimeMillis() - lastKillMs) < 10_000) {
+                    if (tryPkerLootPickup(bot, 6)) return;
+                }
                 if (dedicated || inWildy) {
                     // LURE 12 (ditch cluster), HUNTER 25 (spread roamers
                     // need a wider search ring to find each other in
@@ -530,49 +618,69 @@ public class CitizenBrain extends BotBrain {
                     }
                 }
                 if (dedicated) {
-                    // Semi-smart loot scan: before wandering, see if there's
-                    // a valuable ground item within ~8 tiles (could be from
-                    // the bot's last kill or a piled loot pool from nearby
-                    // fights). Skip in deep wildy where camping a corpse is
-                    // dangerous - LURE bots near the ditch loot eagerly,
-                    // HUNTERs only loot if a kill is REALLY close (3 tiles).
+                    // Idle loot scan when nothing's happening - eyeballs
+                    // the ground for piled loot from nearby fights.
+                    // LURE 8 (ditch cluster has lots of drops), HUNTER 3
+                    // (won't camp deep-wildy corpses).
                     int lootRadius = archetype.isPkerLure() ? 8 : 3;
                     if (tryPkerLootPickup(bot, lootRadius)) return;
                 }
                 if (dedicated) {
-                    // No victim - move so the bot doesn't just stand at
-                    // a single tile. Wander pattern depends on PK type:
-                    //   LURE   - 90% stays in lvl 1-3 wildy north of the
-                    //            ditch, 10% pushes a few tiles deeper.
-                    //            NEVER leaves wildy (Edge bank trip would
-                    //            put them at y<3525 which is OUT of wildy
-                    //            and they'd lose canPvp).
-                    //   HUNTER - 85% roams mid-to-deep wildy, 15% near
-                    //            ditch (so hunters can engage lure cluster).
-                    // Restocking now happens via the death-respawn flow,
-                    // so no need for a periodic Edge bank trip.
+                    // No victim - wander. Each variant has a wider range
+                    // than before so they don't pile up at the spawn tile.
+                    // Some rolls now intentionally cross the wildy ditch
+                    // (LURE patrols Edge ↔ wildy; HUNTER occasionally
+                    // surfaces back to Edge) so they don't ALL stay in
+                    // wildy 24/7.
+                    //   LURE   - 50% lvl 1-5 wildy, 25% lvl 5-15 deeper,
+                    //            15% Edge bank ↔ ditch patrol (NPC's
+                    //            see them at the ditch posing for fights),
+                    //            10% deeper push (1-3 wildy lvl drift).
+                    //   HUNTER - 60% mid-deep wildy (lvl 5-30), 20%
+                    //            deep wildy (lvl 25-50), 15% cuts back
+                    //            near ditch to engage lures, 5% Edge
+                    //            (resurface for restock).
                     int roll = Utils.random(100);
                     int tx, ty;
                     if (archetype.isPkerLure()) {
-                        if (roll < 90) {
-                            // Wildy lvl 1-3 (y 3525-3540)
-                            tx = 3085 + Utils.random(-5, 10);
-                            ty = 3525 + Utils.random(0, 16);
+                        if (roll < 50) {
+                            // Wildy lvl 1-5 (y 3525-3550)
+                            tx = 3082 + Utils.random(20);
+                            ty = 3525 + Utils.random(0, 30);
+                        } else if (roll < 75) {
+                            // Wildy lvl 5-15 (deeper push, tests their
+                            // new cb-diff exemption against lures of
+                            // different cb in the same zone)
+                            tx = 3070 + Utils.random(40);
+                            ty = 3550 + Utils.random(50);
+                        } else if (roll < 90) {
+                            // Edge ↔ ditch patrol (cross the ditch so
+                            // they aren't 100% stuck in wildy)
+                            tx = 3088 + Utils.random(-5, 10);
+                            ty = 3510 + Utils.random(0, 25); // y 3510-3535
                         } else {
-                            // Wildy lvl 4-8 (push deeper occasionally)
-                            tx = 3080 + Utils.random(20);
-                            ty = 3540 + Utils.random(20);
+                            // Deeper wildy - the bold lure pushes 15-25
+                            tx = 3075 + Utils.random(40);
+                            ty = 3580 + Utils.random(40);
                         }
                     } else {
-                        // HUNTER - active roamer, mid-deep wildy
-                        if (roll < 85) {
-                            // Wildy lvl 5-25 (y 3560-3700)
-                            tx = 3060 + Utils.random(70);
-                            ty = 3560 + Utils.random(140);
+                        // HUNTER - active roamer
+                        if (roll < 60) {
+                            // Wildy lvl 5-30 (y 3560-3760)
+                            tx = 3050 + Utils.random(90);
+                            ty = 3560 + Utils.random(200);
+                        } else if (roll < 80) {
+                            // Deep wildy lvl 25-50 (y 3720-3920)
+                            tx = 3040 + Utils.random(110);
+                            ty = 3720 + Utils.random(200);
+                        } else if (roll < 95) {
+                            // Cut back near ditch to engage lure cluster
+                            tx = 3082 + Utils.random(20);
+                            ty = 3525 + Utils.random(0, 20);
                         } else {
-                            // Cut back near ditch to fight lures
-                            tx = 3085 + Utils.random(-5, 10);
-                            ty = 3525 + Utils.random(0, 12);
+                            // Resurface to Edge bank briefly (restock)
+                            tx = 3094 + Utils.random(-3, 4);
+                            ty = 3494 + Utils.random(-2, 3);
                         }
                     }
                     com.rs.bot.ai.BotPathing.walkTo(bot, tx, ty);
@@ -771,9 +879,13 @@ public class CitizenBrain extends BotBrain {
                 int amount = 1;
                 try { amount = fi.getAmount(); } catch (Throwable ignored) {}
                 int score = value * Math.max(1, amount);
-                // Junk filter: ignore bones / ashes / burnt / arrows-1
-                // unless the score's still > 200 from quantity.
-                if (score < 200) continue;
+                // Junk filter: skip score==0 (truly worthless: bones,
+                // ashes, single arrows). Most equipment items have
+                // value > 0 even if low, so this catches bones (val 0)
+                // without filtering out a rune scimitar (val 25k) or
+                // sharks (val 50). Bot-killed-bot drops include real
+                // equipment so any positive-value pile is worth grabbing.
+                if (score <= 0) continue;
                 // Prefer higher score, break ties by closest tile.
                 if (score > bestScore || (score == bestScore && sq < bestSq)) {
                     best = fi;
