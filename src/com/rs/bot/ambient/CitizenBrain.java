@@ -262,21 +262,15 @@ public class CitizenBrain extends BotBrain {
         // packet sends that route through MockChannel for AIPlayers - in
         // theory harmless, in practice user reports "pets are stuck and
         // not following their owner". Force the pet to track the bot
-        // here every tick:
-        //   - too far (>12 tiles) -> teleport-call to a free tile next
-        //     to the bot
-        //   - in range -> calcFollow + face the bot
-        // This is purely additive - if Pet.processNPC's own follow
-        // works, this is a no-op (calcFollow won't queue duplicate
-        // steps for an already-adjacent pet).
+        // here every tick.
         try {
             com.rs.game.npc.others.Pet pet = bot.getPet();
             if (pet != null && !pet.hasFinished()) {
                 int dx = pet.getX() - bot.getX();
                 int dy = pet.getY() - bot.getY();
                 int sq = dx * dx + dy * dy;
-                if (sq > 144 || pet.getPlane() != bot.getPlane()) {
-                    // Too far OR wrong plane - teleport adjacent.
+                if (sq > 64 || pet.getPlane() != bot.getPlane()) {
+                    // > 8 tiles or different plane: hard teleport.
                     com.rs.game.WorldTile teleTile = null;
                     int[] dxs = {0, 1, -1, 0, 0, 1, -1, 1, -1};
                     int[] dys = {0, 0, 0, 1, -1, 1, 1, -1, -1};
@@ -290,11 +284,26 @@ public class CitizenBrain extends BotBrain {
                         }
                     }
                     if (teleTile != null) pet.setNextWorldTile(teleTile);
-                } else if (sq > 4 && !pet.hasWalkSteps()) {
-                    // Not adjacent (>2 tiles diagonal) - tell pet to walk
-                    // toward the bot. calcFollow uses RouteFinder under
-                    // the hood so it handles obstacles.
-                    pet.calcFollow(bot, 2, true, false);
+                } else if (sq > 2) {
+                    // Within follow range but not adjacent. Try
+                    // calcFollow first; if that didn't queue any
+                    // walk steps, force a one-tile addWalkSteps
+                    // toward the bot. This is the path that was
+                    // previously failing silently.
+                    if (!pet.hasWalkSteps()) {
+                        try {
+                            pet.calcFollow(bot, 2, true, false);
+                        } catch (Throwable ignored) {}
+                        if (!pet.hasWalkSteps()) {
+                            int stepX = pet.getX();
+                            int stepY = pet.getY();
+                            if (dx > 0) stepX--;
+                            else if (dx < 0) stepX++;
+                            if (dy > 0) stepY--;
+                            else if (dy < 0) stepY++;
+                            pet.addWalkSteps(stepX, stepY, 1, true);
+                        }
+                    }
                 }
                 // Always face the bot so the pet looks attached.
                 if (pet.getLastFaceEntity() != bot.getClientIndex()) {

@@ -351,6 +351,18 @@ public class AIPlayer extends Player {
         // controller/cutscene logout - none apply to a bot.
         if (hasFinished()) return;
         try {
+            // Despawn the pet first - Pet.processNPC dereferences the
+            // owner's packet path and would NPE the moment owner is
+            // marked finished. Without this, the pet NPC stays in the
+            // world after the bot despawns - user reported "they do
+            // not despawn".
+            try {
+                com.rs.game.npc.others.Pet pet = getPet();
+                if (pet != null && !pet.hasFinished()) {
+                    pet.finish();
+                }
+                setPet(null);
+            } catch (Throwable ignored) {}
             // Clean up the brain so it stops trying to walk a finished bot
             setBrain(null);
             setFinished(true);
