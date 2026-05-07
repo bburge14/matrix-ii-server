@@ -467,6 +467,13 @@ public final class CitizenSpawner {
     /**
      * Map our internal AmbientArchetype to the string keys BotEquipment
      * expects (archetype-aware loadout dispatch).
+     *
+     * Style variety for hybrids + PKers:
+     *   COMBATANT_HYBRID and COMBATANT_PKER_* roll a combat style at
+     *   spawn time so we don't get a wildy full of melee-only PKers.
+     *   Distribution: 50% melee / 30% ranged / 20% magic, matching the
+     *   real-RS PK scene (rune pures, range tanks, NH tribrids).
+     *   Pures/tanks remain pure-melee to match their archetype identity.
      */
     private static String archetypeToLoadoutString(AmbientArchetype arch) {
         if (arch == null) return "main";
@@ -474,7 +481,10 @@ public final class CitizenSpawner {
             switch (arch) {
                 case COMBATANT_PURE:   return "pure";
                 case COMBATANT_TANK:   return "tank";
-                case COMBATANT_HYBRID: return "hybrid";
+                case COMBATANT_HYBRID: return rollCombatStyle();
+                case COMBATANT_PKER_LURE:
+                case COMBATANT_PKER_HUNTER:
+                    return rollCombatStyle();
                 default: return "melee";
             }
         }
@@ -486,5 +496,12 @@ public final class CitizenSpawner {
         // small fashionscape pool incl. holiday rares.
         if (arch.isSocialite()) return "socialite";
         return "main";
+    }
+
+    private static String rollCombatStyle() {
+        int r = Utils.random(100);
+        if (r < 50) return "melee";
+        if (r < 80) return "ranged";
+        return "magic";
     }
 }

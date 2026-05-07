@@ -168,6 +168,17 @@ public class CitizenBrain extends BotBrain {
             if (bot.getRunEnergy() < 30) bot.setRunEnergy(100);
         } catch (Throwable ignored) {}
 
+        // PK opt-in is supposed to be ON forever for combatants. Re-assert
+        // every tick - belt-and-suspenders. User reported PK bots showing
+        // as not opted in even after spawn, and spawn-time setPkOptIn calls
+        // could miss if a bot got rehydrated from disk or had its
+        // controller swapped. This is the cheapest fix.
+        try {
+            if (archetype != null && archetype.isCombatant() && !bot.isPkOptIn()) {
+                bot.setPkOptIn(true);
+            }
+        } catch (Throwable ignored) {}
+
         // Trade lifecycle for socialite gambler/trader bots. Runs first so
         // they can accept inbound trade requests before any other behavior
         // moves them away from the trade UI.

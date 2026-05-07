@@ -25,11 +25,11 @@ SPAWN_PRESETS = {
 
     # === Grand Exchange ===
     "GE — Centre":                  (3164, 3486, 0),
-    "GE — North bank counter":      (3165, 3490, 0),
-    "GE — East bank counter":       (3168, 3486, 0),
-    "GE — South bank counter":      (3164, 3482, 0),
-    "GE — West bank counter":       (3160, 3486, 0),
-    "GE — NW (rare trader corner)": (3147, 3472, 0),
+    "GE — NW bank counter":         (3160, 3489, 0),
+    "GE — NE bank counter":         (3168, 3489, 0),
+    "GE — SW bank counter":         (3160, 3483, 0),
+    "GE — SE bank counter":         (3168, 3483, 0),
+    "GE — Rare trader corner (NW)": (3147, 3472, 0),
     "GE — Gambler fountain":        (3163, 3489, 0),
 
     # === Cities & towns ===
@@ -109,6 +109,53 @@ def _preset_label_list():
     """Categorised label list for the preset OptionMenu (preserves
     insertion order from SPAWN_PRESETS)."""
     return list(SPAWN_PRESETS.keys())
+
+
+# Recommended category per preset. When the user picks a preset that has
+# a hint, the Quick Spawn dropdown auto-flips to the matching category
+# so traders don't accidentally spawn at the wildy ditch (user report).
+# Presets without a hint leave the category alone.
+PRESET_CATEGORY_HINTS = {
+    # Wildy = PKers only
+    "Wildy — Ditch (Edge crossing)":  "pker_lure",
+    "Wildy — Lvl 1-3 (just north)":   "pker_lure",
+    "Wildy — Lvl 5-10 (Bandit camp)": "pker_hunter",
+    "Wildy — Lvl 13 (Lava maze)":     "pker_hunter",
+    "Wildy — Lvl 18 (Mage arena)":    "pker_hunter",
+    "Wildy — Lvl 25 (Demonic ruins)": "pker_hunter",
+    "Wildy — Lvl 35 (Lava maze N)":   "pker_hunter",
+    "Wildy — Lvl 44 (Resource area)": "pker_hunter",
+    "Wildy — Lvl 50 (Wildy bandits)": "pker_hunter",
+    # GE = socialites only (traders / gamblers / bankstanders)
+    "GE — Centre":                   "socialite",
+    "GE — NW bank counter":          "bankstand",
+    "GE — NE bank counter":          "bankstand",
+    "GE — SW bank counter":          "bankstand",
+    "GE — SE bank counter":          "bankstand",
+    "GE — Rare trader corner (NW)":  "trader_rare",
+    "GE — Gambler fountain":         "gambler",
+    # Skilling guilds + spots
+    "Mining guild — Falador":        "skiller",
+    "Mining guild — Living rock":    "skiller",
+    "Fishing guild":                 "skiller",
+    "Cooks' guild":                  "skiller",
+    "Crafting guild":                "skiller",
+    "Woodcutting — Draynor willows": "skiller",
+    "Woodcutting — Seers yews":      "skiller",
+    "Runecrafting — Air altar":      "skiller",
+    "Runecrafting — Astral altar":   "skiller",
+    # Minigame lobbies
+    "Castle Wars — Lobby":           "castlewars",
+    "Soul Wars — Lobby":             "soulwars",
+    "Stealing Creation — Lobby":     "stealingcreation",
+    # Combat training spots = combatant (NPC training, not PvP)
+    "Rock crabs — Relleka":          "combatant",
+    "Sand crabs — Hosidius":         "combatant",
+    "Slayer tower — Ground":         "combatant",
+    "Stronghold of security 1F":     "combatant",
+    "Bandits camp (Kharid desert)":  "combatant",
+    "Frost dragons (Asgarnia ice)":  "combatant",
+}
 
 def config_path():
     base = os.environ.get("APPDATA") or str(Path.home())
@@ -1016,12 +1063,14 @@ class CitizensFrame(ctk.CTkFrame):
         # spawn each citizen subtype + sub cat separately.
         category_choices = [
             "mixed", "skiller", "combatant", "socialite", "minigamer",
+            "pker", "pker_lure", "pker_hunter",
             "castlewars", "soulwars", "stealingcreation",
             "trader_skill", "trader_combat", "trader_rare",
             "gambler", "bankstand",
             # exact archetype names
             "SKILLER_EFFICIENT", "SKILLER_CASUAL", "SKILLER_NOOB",
             "COMBATANT_PURE", "COMBATANT_TANK", "COMBATANT_HYBRID",
+            "COMBATANT_PKER_LURE", "COMBATANT_PKER_HUNTER",
             "SOCIALITE_GAMBLER", "SOCIALITE_GE_TRADER",
             "SOCIALITE_GE_TRADER_SKILL", "SOCIALITE_GE_TRADER_COMBAT",
             "SOCIALITE_GE_TRADER_RARE", "SOCIALITE_BANKSTAND",
@@ -1370,7 +1419,9 @@ class CitizensFrame(ctk.CTkFrame):
     def _apply_quick_preset(self, label):
         """Preset OptionMenu callback. If the picked label maps to a
         coord tuple, fill X/Y/Plane. "Custom" is a no-op (user keeps
-        whatever they typed)."""
+        whatever they typed). Also auto-flips the category dropdown to
+        the recommended archetype if the preset has a hint - prevents
+        traders spawning at wildy ditch and similar leaks."""
         coords = SPAWN_PRESETS.get(label)
         if not coords:
             return
@@ -1378,6 +1429,12 @@ class CitizensFrame(ctk.CTkFrame):
         self.q_x.set(str(x))
         self.q_y.set(str(y))
         self.q_plane.set(str(p))
+        hint = PRESET_CATEGORY_HINTS.get(label)
+        if hint:
+            try:
+                self.q_category.set(hint)
+            except Exception:
+                pass
 
     def _quick_spawn(self):
         try:
