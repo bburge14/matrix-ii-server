@@ -202,20 +202,24 @@ public class CitizenBrain extends BotBrain {
             }
         } catch (Throwable ignored) {}
 
-        // Assign a deterministic wildy home for PK bots so they have a
-        // consistent destination after death-respawn / Edge restock
-        // trip. LURE: tightly clustered north of ditch (lvl 1-3).
-        // HUNTER: scattered across mid-deep wildy (lvl 5-25) so a
-        // batch of hunters spreads naturally instead of stacking.
+        // Assign a wildy home for PK bots so they have a consistent
+        // destination after death-respawn / Edge restock trip. The
+        // home is a small jitter (+/- 5 tiles) around their actual
+        // SPAWN tile (homeAnchor) - that way multi-anchor budgets
+        // genuinely spread bots across the map instead of every PKer
+        // re-rolling pkWildyHome from a global range and clustering
+        // (user: "I have like 3-4 spawns... they all still spawning
+        // in the first anchor"). If the spawn tile is outside wildy
+        // (e.g. Edge bank fallback), nudge it inside the wildy
+        // boundary for the home target.
         if (archetype != null && archetype.isPker()) {
-            int hx, hy;
-            if (archetype.isPkerLure()) {
-                hx = 3082 + Utils.random(20);   // 3082-3101
-                hy = 3530 + Utils.random(15);   // 3530-3544 (lvl 1-3)
-            } else {
-                hx = 3050 + Utils.random(90);   // wide x spread
-                hy = 3580 + Utils.random(180);  // 3580-3760 (lvl 7-30)
-            }
+            int hx = homeAnchor.getX() + Utils.random(-5, 6);
+            int hy = homeAnchor.getY() + Utils.random(-5, 6);
+            // Force at least y >= 3525 so the home is in wildy.
+            if (hy < 3525) hy = 3525 + Utils.random(8);
+            // Clamp x within the standard wildy strip.
+            if (hx < 2940) hx = 2940;
+            if (hx > 3395) hx = 3395;
             this.pkWildyHome = new WorldTile(hx, hy, 0);
         }
     }
@@ -1080,41 +1084,26 @@ public class CitizenBrain extends BotBrain {
         return false;
     }
 
-    /** Pick a wander target for a PK bot. Pulled out of tickInteracting
-     *  so it can be called from the persistent-target branch. */
+    /** Pick a wander target for a PK bot. Centred on the bot's
+     *  pkWildyHome (which is already biased to their spawn anchor)
+     *  with a small drift radius - keeps each bot in their assigned
+     *  zone instead of every bot rolling a target from the same
+     *  global range. User: "they are all still spawning in the first
+     *  anchor". Multi-anchor budgets work properly now: bot at
+     *  anchor A drifts around A; bot at anchor B drifts around B.
+     *  Lures get tighter drift (camp the ditch); hunters get wider
+     *  drift (active roam). */
     private com.rs.game.WorldTile pickPkWanderTarget(AIPlayer bot) {
-        if (archetype == null) return null;
-        int roll = Utils.random(100);
-        int tx, ty;
-        if (archetype.isPkerLure()) {
-            if (roll < 50) {
-                tx = 3082 + Utils.random(20);
-                ty = 3525 + Utils.random(0, 30);
-            } else if (roll < 75) {
-                tx = 3070 + Utils.random(40);
-                ty = 3550 + Utils.random(50);
-            } else if (roll < 90) {
-                tx = 3088 + Utils.random(-5, 10);
-                ty = 3510 + Utils.random(0, 25);
-            } else {
-                tx = 3075 + Utils.random(40);
-                ty = 3580 + Utils.random(40);
-            }
-        } else {
-            if (roll < 60) {
-                tx = 3050 + Utils.random(90);
-                ty = 3560 + Utils.random(200);
-            } else if (roll < 80) {
-                tx = 3040 + Utils.random(110);
-                ty = 3720 + Utils.random(200);
-            } else if (roll < 95) {
-                tx = 3082 + Utils.random(20);
-                ty = 3525 + Utils.random(0, 20);
-            } else {
-                tx = 3094 + Utils.random(-3, 4);
-                ty = 3494 + Utils.random(-2, 3);
-            }
-        }
+        if (archetype == null || pkWildyHome == null) return null;
+        int homeX = pkWildyHome.getX();
+        int homeY = pkWildyHome.getY();
+        int spread = archetype.isPkerLure() ? 10 : 25;
+        int tx = homeX + Utils.random(-spread, spread + 1);
+        int ty = homeY + Utils.random(-spread, spread + 1);
+        // Stay in wildy
+        if (ty < 3525) ty = 3525 + Utils.random(8);
+        if (tx < 2940) tx = 2940;
+        if (tx > 3395) tx = 3395;
         return new com.rs.game.WorldTile(tx, ty, 0);
     }
 
