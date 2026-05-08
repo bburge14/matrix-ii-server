@@ -673,23 +673,63 @@ public final class BotEquipment {
      *  terminates. */
     private static void applyTieredSet(Player bot,
             com.rs.bot.TieredOutfitPool.Style style, int cb) {
-        com.rs.bot.TieredOutfitPool.Tier tier =
+        // Outfit cohesion: pick ONE tier the bot's actual stats can
+        // afford, then equip every slot from THAT tier's set. No more
+        // per-slot tier walking which produced "sirenic mask + bronze
+        // body" mixes when only the high-tier helm passed but the
+        // body failed and fell back to bronze.
+        //
+        // Tier picked by walking down WEALTHY -> RICH -> MIDDLE ->
+        // POOR; pick the highest tier where the bot can actually
+        // wear the SIGNATURE piece (the body slot - that's the gate
+        // item for each tier in real RS gear progression).
+        com.rs.bot.TieredOutfitPool.Tier startTier =
             com.rs.bot.TieredOutfitPool.tierForCb(cb);
-        equipFromTierStack(bot, Equipment.SLOT_HAT,    style, tier, SlotKind.HAT);
-        equipFromTierStack(bot, Equipment.SLOT_CHEST,  style, tier, SlotKind.BODY);
-        equipFromTierStack(bot, Equipment.SLOT_LEGS,   style, tier, SlotKind.LEGS);
-        equipFromTierStack(bot, Equipment.SLOT_WEAPON, style, tier, SlotKind.WEAPON);
-        equipFromTierStack(bot, Equipment.SLOT_SHIELD, style, tier, SlotKind.SHIELD);
-        equipFromTierStack(bot, Equipment.SLOT_CAPE,   style, tier, SlotKind.CAPE);
-        equipFromTierStack(bot, Equipment.SLOT_HANDS,  style, tier, SlotKind.GLOVES);
-        equipFromTierStack(bot, Equipment.SLOT_FEET,   style, tier, SlotKind.FEET);
-        // Fallback: any slot still empty after the tier walk (no
-        // qualifying item even at POOR) gets a no-requirements
-        // bronze/leather/staff piece. User: "why do I see combatants
-        // or pkers spawning with out weapons or armour pieces?? they
-        // HAVE to have everything". Combat-style bots can't function
-        // without at least bronze + a weapon.
+        com.rs.bot.TieredOutfitPool.Tier picked = null;
+        for (com.rs.bot.TieredOutfitPool.Tier t : tierStackFrom(startTier)) {
+            com.rs.bot.TieredOutfitPool.Set set =
+                com.rs.bot.TieredOutfitPool.pick(style, t);
+            int[] pool = set == null ? null : set.bodies;
+            if (pool == null || pool.length == 0) continue;
+            int[] filtered = com.rs.bot.ItemRequirements.filter(bot, pool);
+            if (filtered != null && filtered.length > 0) {
+                picked = t;
+                break;
+            }
+        }
+        if (picked == null) picked = com.rs.bot.TieredOutfitPool.Tier.POOR;
+        // Equip ALL slots from the chosen tier (no fallback to a
+        // different tier - that's what was breaking outfit cohesion).
+        com.rs.bot.TieredOutfitPool.Set set =
+            com.rs.bot.TieredOutfitPool.pick(style, picked);
+        equipFromTierSet(bot, Equipment.SLOT_HAT,    set, SlotKind.HAT);
+        equipFromTierSet(bot, Equipment.SLOT_CHEST,  set, SlotKind.BODY);
+        equipFromTierSet(bot, Equipment.SLOT_LEGS,   set, SlotKind.LEGS);
+        equipFromTierSet(bot, Equipment.SLOT_WEAPON, set, SlotKind.WEAPON);
+        equipFromTierSet(bot, Equipment.SLOT_SHIELD, set, SlotKind.SHIELD);
+        equipFromTierSet(bot, Equipment.SLOT_CAPE,   set, SlotKind.CAPE);
+        equipFromTierSet(bot, Equipment.SLOT_HANDS,  set, SlotKind.GLOVES);
+        equipFromTierSet(bot, Equipment.SLOT_FEET,   set, SlotKind.FEET);
+        // Fallback for any slot the chosen tier's pool didn't fill
+        // (some sets have empty SHIELD pools for 2H styles, etc.) -
+        // gives style-aware bronze/leather/staff so combatants always
+        // spawn fully geared.
         ensureCombatFallbacks(bot, style);
+    }
+
+    /** Equip a random item from this tier's slot pool. Filters
+     *  through ItemRequirements first; if NOTHING in the pool
+     *  qualifies, leaves the slot empty (the chosen tier's body was
+     *  affordable but maybe a 2h-only set has nothing for SHIELD
+     *  etc. - ensureCombatFallbacks fills it). */
+    private static void equipFromTierSet(Player bot, int slot,
+            com.rs.bot.TieredOutfitPool.Set set, SlotKind kind) {
+        if (set == null) return;
+        int[] pool = poolFor(set, kind);
+        if (pool == null || pool.length == 0) return;
+        int[] filtered = com.rs.bot.ItemRequirements.filter(bot, pool);
+        if (filtered == null || filtered.length == 0) return;
+        equip(bot, slot, pick(filtered));
     }
 
     /** Backstop: if the tier walk left any combat-relevant slot empty,
