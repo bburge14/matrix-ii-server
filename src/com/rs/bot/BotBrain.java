@@ -2166,7 +2166,8 @@ public class BotBrain {
     // fucking seeing that debug").
 
     private static int bestLogIdForFm(int fm) {
-        if (fm >= 75) return 3239; // arctic pine
+        // 830 cache: id 3239 is "Bark" not arctic pine. Cap at magic.
+        if (fm >= 75) return 1513; // magic (was 3239 "Bark")
         if (fm >= 60) return 1513; // magic
         if (fm >= 50) return 1515; // yew
         if (fm >= 35) return 1517; // maple

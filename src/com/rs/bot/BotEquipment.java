@@ -54,10 +54,12 @@ public final class BotEquipment {
             // accounts with accumulated stuff, not freshly-loaded NPCs.
             applyAccumulatedWealth(bot, combatLevel);
             // Skill prerequisite stack (logs / raw food / ores / herbs /
-            // essence / bones). Without this, bots picked a firemaking /
-            // cooking / smithing method and instantly bailed with "no
-            // logs to burn" / "no raw food to cook" / "no ores to smelt".
-            applySkillStartupKit(bot);
+            // essence / bones). ONLY for skillers - PK bots / combatants
+            // / socialites don't skill so giving them logs etc. produced
+            // weird inventories (user: "alot of pk bots are dropping bark").
+            if ("skiller".equals(archetype)) {
+                applySkillStartupKit(bot);
+            }
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
         }
@@ -301,7 +303,11 @@ public final class BotEquipment {
     }
 
     private static int bestLogIdForLevel(int fm) {
-        if (fm >= 75) return 3239; // arctic pine
+        // 830 cache: id 3239 is "Bark" (construction material), NOT
+        // arctic pine logs - the comment was wrong. Cap the FM
+        // startup kit at magic logs so PK bots don't end up
+        // carrying mystery construction items.
+        if (fm >= 75) return 1513; // magic logs (was 3239 "Bark")
         if (fm >= 60) return 1513; // magic
         if (fm >= 50) return 1515; // yew
         if (fm >= 35) return 1517; // maple
