@@ -185,9 +185,34 @@ public final class ItemRequirements {
         REQS.put(itemId, pairs);
     }
 
-    /** True if {@code player} meets every (skill, level) pair recorded
-     *  for {@code itemId}. Items not in the table are always wearable. */
+    /** True if {@code player} meets every (skill, level) requirement
+     *  for {@code itemId}. Layered:
+     *    1. Engine cache table via ItemDefinitions.getWearingSkillRequiriments()
+     *       - canonical source the real-player wear gate uses.
+     *    2. Hand-curated REQS map below as a backup for items the
+     *       cache opcodes don't cover (legacy / custom items).
+     *  Items in NEITHER table are wearable. */
     public static boolean canEquip(Player player, int itemId) {
+        // Canonical engine check first.
+        try {
+            com.rs.cache.loaders.ItemDefinitions def =
+                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId);
+            if (def != null) {
+                java.util.HashMap<Integer, Integer> engineReqs =
+                    def.getWearingSkillRequiriments();
+                if (engineReqs != null) {
+                    for (java.util.Map.Entry<Integer, Integer> e : engineReqs.entrySet()) {
+                        Integer skill = e.getKey();
+                        Integer needed = e.getValue();
+                        if (skill == null || needed == null) continue;
+                        if (player.getSkills().getLevelForXp(skill) < needed) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        // Hand-curated backup table.
         int[] reqs = REQS.get(itemId);
         if (reqs == null) return true;
         try {

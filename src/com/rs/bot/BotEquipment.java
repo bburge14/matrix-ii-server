@@ -1364,11 +1364,36 @@ public final class BotEquipment {
                     return;
                 }
             }
-            // Stat gate: bots can't wear gear above their level.
+            // Stat gate. Three checks layered:
+            //   1. ItemDefinitions.getWearingSkillRequiriments() -
+            //      canonical engine source pulled from the cache's
+            //      clientScriptData (opcodes 749/750..767/768). Every
+            //      item with stat reqs has these populated. This is
+            //      what real players hit when clicking "Wield".
+            //   2. EquipmentReqs.canWear - hand-curated table covering
+            //      gaps where the cache opcodes are missing (some
+            //      legacy items).
+            //   3. ItemRequirements.canEquip - second hand-curated
+            //      table covering tiered-pool items (drygore, zaryte,
+            //      hatchets-as-weapons, etc.).
+            // ALL THREE must pass. Engine table is the primary check
+            // so any item the cache says is gated gets rejected even
+            // if our hand tables didn't list it.
+            try {
+                java.util.HashMap<Integer, Integer> reqs = def.getWearingSkillRequiriments();
+                if (reqs != null && !reqs.isEmpty()) {
+                    for (java.util.Map.Entry<Integer, Integer> e : reqs.entrySet()) {
+                        Integer skill = e.getKey();
+                        Integer needed = e.getValue();
+                        if (skill == null || needed == null) continue;
+                        int have;
+                        try { have = bot.getSkills().getLevelForXp(skill); }
+                        catch (Throwable t) { have = 1; }
+                        if (have < needed) return; // can't wear
+                    }
+                }
+            } catch (Throwable ignored) {}
             if (!EquipmentReqs.canWear(bot, itemId)) return;
-            // Per-item table mirrors EquipmentReqs but covers the
-            // tiered-pool (drygore, zaryte, hatchets, etc.) so the
-            // structured loadout path is also gated.
             if (!ItemRequirements.canEquip(bot, itemId)) return;
             // 2H / shield mutual exclusion. Without this, bots end up
             // wielding a godsword while ALSO carrying a kiteshield -
@@ -1393,7 +1418,29 @@ public final class BotEquipment {
 
     private static void equip(Player bot, int slot, Item item) {
         if (item == null || item.getId() <= 0) return;
+        // Same canonical check as the int-id overload: engine cache
+        // requirements first, then our two hand tables. Items that
+        // fail any of the three are silently skipped.
+        try {
+            com.rs.cache.loaders.ItemDefinitions def =
+                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(item.getId());
+            if (def != null) {
+                java.util.HashMap<Integer, Integer> reqs = def.getWearingSkillRequiriments();
+                if (reqs != null && !reqs.isEmpty()) {
+                    for (java.util.Map.Entry<Integer, Integer> e : reqs.entrySet()) {
+                        Integer skill = e.getKey();
+                        Integer needed = e.getValue();
+                        if (skill == null || needed == null) continue;
+                        int have;
+                        try { have = bot.getSkills().getLevelForXp(skill); }
+                        catch (Throwable t) { have = 1; }
+                        if (have < needed) return;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         if (!EquipmentReqs.canWear(bot, item.getId())) return;
+        if (!ItemRequirements.canEquip(bot, item.getId())) return;
         try { bot.getEquipment().getItems().set(slot, item); } catch (Throwable ignored) {}
     }
 
