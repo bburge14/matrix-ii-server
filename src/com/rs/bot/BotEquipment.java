@@ -1258,41 +1258,159 @@ public final class BotEquipment {
         if ("skiller".equals(archetype) || "maxed".equals(archetype)
                 || "socialite".equals(archetype)) return;
 
-        // Amulet - 60% chance
-        if (chance(60) && bot.getEquipment().getItem(Equipment.SLOT_AMULET) == null) {
-            int amulet;
-            if (cb >= 90 && chance(40)) amulet = 6585;       // Fury
-            else if (cb >= 60)          amulet = pick(new int[]{1725, 1731, 1712, 1727});  // Strength/Power/Glory(4)/Magic
-            else                        amulet = pick(new int[]{1725, 1731, 1727, 1729});
-            equip(bot, Equipment.SLOT_AMULET, amulet);
+        // === AMULET ===
+        // Tier-aware random pool. Each cb bracket pulls from a wider
+        // mix of period-correct amulets. equip() gates each item via
+        // the engine + name-pattern requirement layers so a low-cb
+        // bot rolling Saradomin's whisper still gets rejected.
+        if (chance(70) && bot.getEquipment().getItem(Equipment.SLOT_AMULET) == null) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    24278, 24291,         // Saradomin's hiss/whisper (mage / range t90 amulets)
+                    6585,                  // Fury
+                    6586,                  // Onyx amulet (e)
+                    1725, 1731,            // Strength / Power
+                    20068                  // Reefshark amulet (high-tier example)
+                };
+            } else if (cb >= 80) {
+                pool = new int[] {
+                    6585, 6586,            // Fury / Onyx
+                    1725, 1731,            // Strength / Power
+                    1712,                  // Glory (4)
+                    4677                   // Amulet of ranging
+                };
+            } else if (cb >= 50) {
+                pool = new int[] {
+                    1712,                  // Glory (4)
+                    1725, 1731, 1727,      // Strength / Power / Magic
+                    4677,                  // Ranging
+                    1729                   // Defence
+                };
+            } else {
+                pool = new int[] {
+                    1725, 1727, 1729,      // Strength / Magic / Defence
+                    1731,                  // Power
+                    1718,                  // Holy symbol
+                    1722                   // Unholy symbol
+                };
+            }
+            equip(bot, Equipment.SLOT_AMULET, pick(pool));
         }
 
-        // Ring - 40% chance
-        if (chance(40) && bot.getEquipment().getItem(Equipment.SLOT_RING) == null) {
-            int ring;
-            if (cb >= 90 && chance(30)) ring = pick(new int[]{6737, 6735});  // Berserker / Warrior
-            else if (cb >= 60)          ring = pick(new int[]{2572, 1641, 1643});  // Wealth / Ruby / Diamond
-            else                        ring = pick(new int[]{1635, 1637, 1639});
-            equip(bot, Equipment.SLOT_RING, ring);
+        // === RING ===
+        if (chance(50) && bot.getEquipment().getItem(Equipment.SLOT_RING) == null) {
+            int[] pool;
+            if (cb >= 100) {
+                pool = new int[] {
+                    6737, 6735,            // Berserker / Warrior
+                    6733, 6731,            // Archer / Seers
+                    6583,                  // Onyx ring
+                    2572,                  // Wealth
+                    1643, 6575             // Dragonstone / Ring of vigour
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    6737, 6735, 6733, 6731,// Berserker/Warrior/Archer/Seers (gated by stats)
+                    2572,                  // Wealth
+                    1643, 1641,            // Dragonstone / Diamond
+                    2570                   // Ring of life
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    1641, 1639, 1637,      // Diamond / Ruby / Emerald
+                    2572, 2570,            // Wealth / Life
+                    1645                   // Sapphire
+                };
+            } else {
+                pool = new int[] {
+                    1635, 1637, 1639,      // Sapphire / Emerald / Ruby
+                    2570                   // Life
+                };
+            }
+            equip(bot, Equipment.SLOT_RING, pick(pool));
         }
 
-        // Cape - 50% chance if no cape yet
+        // === CAPE === (kept simple - real cape variety lives in
+        // TieredOutfitPool's cape pools per style)
         if (chance(50) && bot.getEquipment().getItem(Equipment.SLOT_CAPE) == null) {
             int cape;
             if (cb >= 100 && chance(20))      cape = 6570;                 // Fire cape
-            else if (cb >= 70 && chance(40))  cape = 6570;                 // Fire cape
-            else                              cape = pick(new int[]{14641, 14642, 4514, 4516});  // colored team capes
+            else if (cb >= 70 && chance(40))  cape = 6570;
+            else                              cape = pick(new int[]{14641, 14642, 4514, 4516, 1019, 1021, 1023});
             equip(bot, Equipment.SLOT_CAPE, cape);
         }
 
-        // Boots fallback (if not set)
-        if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null && chance(70)) {
-            equip(bot, Equipment.SLOT_FEET, pick(new int[]{88, 4121}));  // Boots of lightness, iron boots
+        // === BOOTS ===
+        if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null && chance(80)) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    21790, 21787, 21795,   // Glaiven / Steadfast / Ragefire (T80 dragonkin boots)
+                    11728,                 // Bandos boots
+                    11732,                 // Dragon boots
+                    2577,                  // Ranger boots
+                    2579                   // Wizard boots
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    11728, 11732,          // Bandos / Dragon
+                    2577, 2579,            // Ranger / Wizard
+                    4131,                  // Rune boots
+                    88                      // Boots of lightness
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    4131, 4129,            // Rune / Adamant
+                    2577, 2579,            // Ranger / Wizard
+                    3105,                  // Climbing boots
+                    88                      // Boots of lightness
+                };
+            } else {
+                pool = new int[] {
+                    1837, 4121, 4123, 4125, // Leather / Iron / Steel / Black
+                    3105,                   // Climbing
+                    88                      // Lightness
+                };
+            }
+            equip(bot, Equipment.SLOT_FEET, pick(pool));
         }
 
-        // Gloves fallback
-        if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null && chance(50)) {
-            equip(bot, Equipment.SLOT_HANDS, 1059);
+        // === GLOVES ===
+        if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null && chance(70)) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    24977,                 // Torva gloves
+                    24974,                 // Pernix gloves
+                    24980,                 // Virtus gloves
+                    22358, 22361,          // Goliath gloves (red/black)
+                    22362, 22364,          // Swift gloves
+                    22366, 22368,          // Spellcaster gloves
+                    7462                    // Barrows gloves
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    22358, 22361,          // Goliath
+                    22362, 22364,          // Swift
+                    22366, 22368,          // Spellcaster
+                    7462,                  // Barrows gloves
+                    7461,                  // Dragonstone gauntlets
+                    1065                   // Combat bracelet (item-slot wrong, but harmless if rejected)
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    7460, 7461,            // Mithril/Adamant gauntlets
+                    1065,                  // Combat bracelet (wrong slot - filtered)
+                    1059                   // Leather
+                };
+            } else {
+                pool = new int[] {
+                    1059, 1063,            // Leather / Hardleather
+                    7459                   // Bronze gauntlets
+                };
+            }
+            equip(bot, Equipment.SLOT_HANDS, pick(pool));
         }
     }
 
