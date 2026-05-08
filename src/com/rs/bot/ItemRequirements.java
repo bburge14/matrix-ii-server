@@ -171,9 +171,11 @@ public final class ItemRequirements {
         req(33468, Skills.MAGIC, 90);    // Blood tectonic top
 
         // === CAPES with prerequisites ===
-        req(20767, Skills.HITPOINTS, 99); // Max cape (uses HP as proxy for 'maxed')
-        req(20769, Skills.HITPOINTS, 99); // Comp
-        req(20771, Skills.HITPOINTS, 99); // Trimmed comp
+        // Max + Completionist + Trimmed Comp need 99 in EVERY skill
+        // (Dungeoneering needs 120). Handled as a special case in
+        // canEquip() rather than a list of (skill, 99) pairs because
+        // the engine's getWearingSkillRequiriments table doesn't
+        // expose the all-99 condition for those items.
         req(31284, Skills.SLAYER, 120);   // 120 slayer cape
         req(19709, Skills.DUNGEONEERING, 120);
         req(31277, Skills.HERBLORE, 120);
@@ -185,6 +187,41 @@ public final class ItemRequirements {
         REQS.put(itemId, pairs);
     }
 
+    /** Item ids that require 99 in every skill (and 120 Dungeoneering)
+     *  to wear - max / comp / trimmed comp capes (and their hood/cosmetic
+     *  variants). Real RS gates these on completionist progress; we
+     *  approximate via the all-99 stat check. */
+    private static final java.util.Set<Integer> COMPLETIONIST_ITEMS =
+        new java.util.HashSet<>(java.util.Arrays.asList(
+            20767, 20768,   // Max cape + hood
+            20769, 20770,   // Completionist cape + hood
+            20771, 20772    // Trimmed comp cape + hood
+        ));
+
+    /** True if the player has 99 in every base skill (and 120 in Dungeoneering)
+     *  - the hard requirement to wear max / comp / trimmed comp. */
+    private static boolean isMaxedAccount(Player player) {
+        try {
+            int[] skills = {
+                Skills.ATTACK, Skills.DEFENCE, Skills.STRENGTH, Skills.HITPOINTS,
+                Skills.RANGE, Skills.PRAYER, Skills.MAGIC, Skills.COOKING,
+                Skills.WOODCUTTING, Skills.FLETCHING, Skills.FISHING, Skills.FIREMAKING,
+                Skills.CRAFTING, Skills.SMITHING, Skills.MINING, Skills.HERBLORE,
+                Skills.AGILITY, Skills.THIEVING, Skills.SLAYER, Skills.FARMING,
+                Skills.RUNECRAFTING, Skills.HUNTER, Skills.CONSTRUCTION, Skills.SUMMONING,
+                Skills.DIVINATION
+            };
+            for (int s : skills) {
+                if (player.getSkills().getLevelForXp(s) < 99) return false;
+            }
+            // Dungeoneering needs 120
+            if (player.getSkills().getLevelForXp(Skills.DUNGEONEERING) < 120) return false;
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** True if {@code player} meets every (skill, level) requirement
      *  for {@code itemId}. Layered:
      *    1. Engine cache table via ItemDefinitions.getWearingSkillRequiriments()
@@ -193,6 +230,12 @@ public final class ItemRequirements {
      *       cache opcodes don't cover (legacy / custom items).
      *  Items in NEITHER table are wearable. */
     public static boolean canEquip(Player player, int itemId) {
+        // Special case: completionist-grade capes need all 99s.
+        // Engine table doesn't express the all-99 condition so we
+        // gate it explicitly.
+        if (COMPLETIONIST_ITEMS.contains(itemId) && !isMaxedAccount(player)) {
+            return false;
+        }
         // Canonical engine check first.
         try {
             com.rs.cache.loaders.ItemDefinitions def =
