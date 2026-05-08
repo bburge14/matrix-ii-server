@@ -228,7 +228,10 @@ public final class ItemRequirements {
      *       - canonical source the real-player wear gate uses.
      *    2. Hand-curated REQS map below as a backup for items the
      *       cache opcodes don't cover (legacy / custom items).
-     *  Items in NEITHER table are wearable. */
+     *    3. Name-pattern fallback for high-tier gear families - catches
+     *       every shadow/blood/barrows variant of an item without each
+     *       id needing its own table entry.
+     *  Items in NONE of these are wearable. */
     public static boolean canEquip(Player player, int itemId) {
         // Special case: completionist-grade capes need all 99s.
         // Engine table doesn't express the all-99 condition so we
@@ -237,9 +240,9 @@ public final class ItemRequirements {
             return false;
         }
         // Canonical engine check first.
+        com.rs.cache.loaders.ItemDefinitions def = null;
         try {
-            com.rs.cache.loaders.ItemDefinitions def =
-                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId);
+            def = com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(itemId);
             if (def != null) {
                 java.util.HashMap<Integer, Integer> engineReqs =
                     def.getWearingSkillRequiriments();
@@ -257,12 +260,130 @@ public final class ItemRequirements {
         } catch (Throwable ignored) {}
         // Hand-curated backup table.
         int[] reqs = REQS.get(itemId);
-        if (reqs == null) return true;
+        if (reqs != null) {
+            try {
+                for (int i = 0; i + 1 < reqs.length; i += 2) {
+                    int skill = reqs[i];
+                    int needed = reqs[i + 1];
+                    if (player.getSkills().getLevelForXp(skill) < needed) {
+                        return false;
+                    }
+                }
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+        // Name-pattern fallback. Catches all variants of a gear family
+        // without each id needing a hand entry. Triggers ONLY when the
+        // engine + hand tables didn't already reject (we returned
+        // already on those) - so this is a final layer for items the
+        // cache shipped without proper requirement opcodes.
+        if (def != null) {
+            try {
+                if (!checkNamePattern(player, def.getName())) return false;
+            } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    /** Name-based requirement fallback. Returns false if the name
+     *  matches a known high-tier family AND the player doesn't meet
+     *  the family's stat floor. Returns true if no match (no opinion). */
+    private static boolean checkNamePattern(Player player, String name) {
+        if (name == null) return true;
+        String n = name.toLowerCase();
+        // Drygore weapons - 90 attack
+        if (n.contains("drygore"))
+            return meetsAll(player, Skills.ATTACK, 90);
+        // Noxious weapons (scythe = 2h melee, longbow, staff)
+        if (n.contains("noxious") || n.contains("noxious longbow"))
+            return meetsAll(player, Skills.ATTACK, 90, Skills.STRENGTH, 90);
+        // Tectonic robes - 90 magic
+        if (n.contains("tectonic"))
+            return meetsAll(player, Skills.MAGIC, 90);
+        // Sirenic armor - 90 range + 90 defence
+        if (n.contains("sirenic"))
+            return meetsAll(player, Skills.RANGE, 90, Skills.DEFENCE, 90);
+        // Malevolent - 90 defence
+        if (n.contains("malevolent"))
+            return meetsAll(player, Skills.DEFENCE, 90);
+        // Seismic singularity / wand - 90 magic
+        if (n.contains("seismic"))
+            return meetsAll(player, Skills.MAGIC, 90);
+        // Ascension crossbow + bolts - 90 range
+        if (n.contains("ascension"))
+            return meetsAll(player, Skills.RANGE, 90);
+        // Virtus (mage) - 80 magic + 80 defence
+        if (n.contains("virtus"))
+            return meetsAll(player, Skills.MAGIC, 80, Skills.DEFENCE, 80);
+        // Pernix (range) - 80 range + 80 defence
+        if (n.contains("pernix"))
+            return meetsAll(player, Skills.RANGE, 80, Skills.DEFENCE, 80);
+        // Torva (melee) - 80 defence (str/atk implicit but defence is the gate)
+        if (n.contains("torva"))
+            return meetsAll(player, Skills.DEFENCE, 80);
+        // Bandos - 65 def
+        if (n.contains("bandos chestplate") || n.contains("bandos tassets")
+                || n.contains("bandos boots"))
+            return meetsAll(player, Skills.DEFENCE, 65);
+        // Armadyl ranged - 70 range
+        if (n.contains("armadyl helmet") || n.contains("armadyl chestplate")
+                || n.contains("armadyl chainskirt") || n.contains("armadyl buckler")
+                || n.contains("armadyl crossbow"))
+            return meetsAll(player, Skills.RANGE, 70);
+        // Zaryte bow - 80 range
+        if (n.contains("zaryte"))
+            return meetsAll(player, Skills.RANGE, 80);
+        // Barrows brothers - all need 70 def + their skill 70
+        if (n.contains("ahrim"))   return meetsAll(player, Skills.MAGIC,    70, Skills.DEFENCE, 70);
+        if (n.contains("karil"))   return meetsAll(player, Skills.RANGE,    70, Skills.DEFENCE, 70);
+        if (n.contains("dharok"))  return meetsAll(player, Skills.STRENGTH, 70, Skills.DEFENCE, 70);
+        if (n.contains("guthan"))  return meetsAll(player, Skills.ATTACK,   70, Skills.DEFENCE, 70);
+        if (n.contains("torag"))   return meetsAll(player, Skills.ATTACK,   70, Skills.DEFENCE, 70);
+        if (n.contains("verac"))   return meetsAll(player, Skills.ATTACK,   70, Skills.DEFENCE, 70);
+        // Chaotic - 80 attack/range/magic + 80 dungeoneering
+        if (n.contains("chaotic"))
+            return meetsAll(player, Skills.ATTACK, 80);
+        // Godswords (any) - 75 attack
+        if (n.endsWith(" godsword") || n.contains("godsword"))
+            return meetsAll(player, Skills.ATTACK, 75);
+        // Whips
+        if (n.contains("abyssal whip") || n.contains("vine whip")
+                || n.contains("abyssal vine whip"))
+            return meetsAll(player, Skills.ATTACK, 70);
+        // Dark bow
+        if (n.contains("dark bow"))
+            return meetsAll(player, Skills.RANGE, 60);
+        // Dragon family - generic 60 atk for weapons + 60 def for armor
+        if (n.startsWith("dragon ")) {
+            if (n.contains("scimitar") || n.contains("longsword") || n.contains("dagger")
+                    || n.contains("mace") || n.contains("battleaxe") || n.contains("2h")
+                    || n.contains("spear") || n.contains("halberd") || n.contains("hatchet")
+                    || n.contains("pickaxe") || n.contains("warhammer"))
+                return meetsAll(player, Skills.ATTACK, 60);
+            if (n.contains("chainbody") || n.contains("platebody") || n.contains("med helm")
+                    || n.contains("full helm") || n.contains("kiteshield") || n.contains("sq shield")
+                    || n.contains("boots") || n.contains("plateskirt") || n.contains("platelegs"))
+                return meetsAll(player, Skills.DEFENCE, 60);
+        }
+        // Rune armor / weapons - 40 def / 40 atk
+        if (n.startsWith("rune ")) {
+            if (n.contains("plate") || n.contains("chain") || n.contains("kite")
+                    || n.contains("med helm") || n.contains("full helm") || n.contains("boots"))
+                return meetsAll(player, Skills.DEFENCE, 40);
+            if (n.contains("scimitar") || n.contains("longsword") || n.contains("dagger")
+                    || n.contains("battleaxe") || n.contains("mace") || n.contains("2h")
+                    || n.contains("warhammer") || n.contains("crossbow"))
+                return meetsAll(player, Skills.ATTACK, 40);
+        }
+        // No match - no opinion.
+        return true;
+    }
+
+    private static boolean meetsAll(Player player, int... pairs) {
         try {
-            for (int i = 0; i + 1 < reqs.length; i += 2) {
-                int skill = reqs[i];
-                int needed = reqs[i + 1];
-                if (player.getSkills().getLevelForXp(skill) < needed) {
+            for (int i = 0; i + 1 < pairs.length; i += 2) {
+                if (player.getSkills().getLevelForXp(pairs[i]) < pairs[i + 1]) {
                     return false;
                 }
             }
