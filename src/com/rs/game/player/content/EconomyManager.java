@@ -428,7 +428,7 @@ public class EconomyManager {
 				for (int i = 0; i < show; i++) {
 					buffer[i] = currentOptions[currentOptionsOffset + i];
 				}
-				if (hasNext) buffer[CHATBOX_PAGE_FIRST] = "Next ▶";
+				if (hasNext) buffer[CHATBOX_PAGE_FIRST] = "Next >>";
 				// Title shows tip + page indicator if multi-page.
 				String title = currentTip;
 				if (total > CHATBOX_PAGE_LAST) {
@@ -440,43 +440,25 @@ public class EconomyManager {
 			}
 
 			private void handlePage(int optionId) {
-				if (pageId == 0) { // title page
-					if (optionId == 0) // information & links
-						setPage(1, "This section contains links to our websites and wiki<br>If you are beginner, it is strongly advisted to read our beginners guide.", "Website & Forums", "Wiki", "Beginners guide", "Back");
-					else if (optionId == 1) // Account & character management.
+				if (pageId == 0) { // title page (5 options)
+					if (optionId == 0) // Account & character management
 						setManagementPage();
-					else if (optionId == 2) // Teleports
+					else if (optionId == 1) // Teleports
 						setTeleportsTitlePage();
-					else if (optionId == 3) { // Dungeoneering
+					else if (optionId == 2) { // Dungeoneering
 						player.setNextGraphics(new Graphics(3224));
 						Magic.sendTeleportSpell(player, 17108, -2, 3225, 3019, 1, 0, new WorldTile(3448, 3698, 0), 18, true, 0);
-					} else if (optionId == 4) // Shops
+					} else if (optionId == 3) // Shops
 						setPage(4, "Here you can access various global shops.", SHOPS_NAMES);
-					else if (optionId == 5) // Vote
-						player.getPackets().sendOpenURL(Settings.VOTE_LINK);
-					else if (optionId == 6) // Donate
-						player.getPackets().sendOpenURL(Settings.DONATE_LINK);
-					else if (optionId == 7) { // Ticket
-						if (player.isMuted()) {
-							player.getPackets().sendGameMessage("You can't submit ticket when you are muted.");
-							return;
-						}
+					else if (optionId == 4) // Back (closes dialogue at title)
 						end();
-						player.getDialogueManager().startDialogue("TicketDialouge");
-					} else if (optionId == 8) // nevermind
-						end();
-				} else if (pageId == 1) { // information & links
-					if (optionId == 0)
-						player.getPackets().sendOpenURL(Settings.WEBSITE_LINK);
-					else if (optionId == 1)
-						player.getPackets().sendOpenURL(Settings.WIKI_LINK);
-					else if (optionId == 2)
-						player.getPackets().sendOpenURL(Settings.HELP_LINK);
-					else if (optionId == 3)
-						setTitlePage();
 				} else if (pageId == 2) { // character management
 					if (optionId == 0) { // change your password
-						player.getPackets().sendOpenURL(Settings.PASSWORD_LINK);
+						// User: "any links that go to like a webpage or
+						// anything need to be removed". In-game prompt
+						// instead of sending them to a website.
+						player.getPackets().sendGameMessage(
+							"Password changes are handled by an admin in-game. Please contact staff.");
 					} else if (optionId == 1) { // auth forum acc
 						player.getTemporaryAttributtes().put("forum_authuserinput", true);
 						player.getPackets().sendInputLongTextScript("Enter your forum username:");
@@ -691,7 +673,23 @@ public class EconomyManager {
 			}
 
 			private void setTitlePage() {
-				setPage(0, "Welcome to " + Settings.SERVER_NAME + "!<br>I provide various services to make your life here easier.", "Information & Links", "Account & Character management", (tileEventHappening || surpriseEvent != null) ? "Teleports (Click here for event)" : "Teleports", "Dungeoneering", "Shops", "Vote", "—", "Submit a ticket", "Close Oracle");
+				// Trimmed to 5 options so the chatbox shows them in one
+				// page (no garbled "Next ▶" button - the Unicode ▶ broke
+				// the cache font). Removed: Information & Links / Vote /
+				// Donate / Submit ticket - all of those used
+				// sendOpenURL or external pages which the user wants
+				// stripped entirely. "Close Oracle" renamed to "Back"
+				// per user request - on the title page Back closes the
+				// dialogue; sub-pages already use Back to return here.
+				setPage(0,
+					"Welcome to " + Settings.SERVER_NAME + "!<br>"
+					+ "I provide various services to make your life here easier.",
+					"Account & Character management",
+					(tileEventHappening || surpriseEvent != null)
+						? "Teleports (Click here for event)" : "Teleports",
+					"Dungeoneering",
+					"Shops",
+					"Back");
 			}
 
 			private void setManagementPage() {

@@ -54,10 +54,12 @@ public final class BotEquipment {
             // accounts with accumulated stuff, not freshly-loaded NPCs.
             applyAccumulatedWealth(bot, combatLevel);
             // Skill prerequisite stack (logs / raw food / ores / herbs /
-            // essence / bones). Without this, bots picked a firemaking /
-            // cooking / smithing method and instantly bailed with "no
-            // logs to burn" / "no raw food to cook" / "no ores to smelt".
-            applySkillStartupKit(bot);
+            // essence / bones). ONLY for skillers - PK bots / combatants
+            // / socialites don't skill so giving them logs etc. produced
+            // weird inventories (user: "alot of pk bots are dropping bark").
+            if ("skiller".equals(archetype)) {
+                applySkillStartupKit(bot);
+            }
         } catch (Throwable t) {
             System.err.println("[BotEquipment] failed for archetype=" + archetype + " cb=" + combatLevel + ": " + t);
         }
@@ -301,7 +303,11 @@ public final class BotEquipment {
     }
 
     private static int bestLogIdForLevel(int fm) {
-        if (fm >= 75) return 3239; // arctic pine
+        // 830 cache: id 3239 is "Bark" (construction material), NOT
+        // arctic pine logs - the comment was wrong. Cap the FM
+        // startup kit at magic logs so PK bots don't end up
+        // carrying mystery construction items.
+        if (fm >= 75) return 1513; // magic logs (was 3239 "Bark")
         if (fm >= 60) return 1513; // magic
         if (fm >= 50) return 1515; // yew
         if (fm >= 35) return 1517; // maple
@@ -667,16 +673,111 @@ public final class BotEquipment {
      *  terminates. */
     private static void applyTieredSet(Player bot,
             com.rs.bot.TieredOutfitPool.Style style, int cb) {
-        com.rs.bot.TieredOutfitPool.Tier tier =
+        // Outfit cohesion: pick ONE tier the bot's actual stats can
+        // afford, then equip every slot from THAT tier's set. No more
+        // per-slot tier walking which produced "sirenic mask + bronze
+        // body" mixes when only the high-tier helm passed but the
+        // body failed and fell back to bronze.
+        //
+        // Tier picked by walking down WEALTHY -> RICH -> MIDDLE ->
+        // POOR; pick the highest tier where the bot can actually
+        // wear the SIGNATURE piece (the body slot - that's the gate
+        // item for each tier in real RS gear progression).
+        com.rs.bot.TieredOutfitPool.Tier startTier =
             com.rs.bot.TieredOutfitPool.tierForCb(cb);
-        equipFromTierStack(bot, Equipment.SLOT_HAT,    style, tier, SlotKind.HAT);
-        equipFromTierStack(bot, Equipment.SLOT_CHEST,  style, tier, SlotKind.BODY);
-        equipFromTierStack(bot, Equipment.SLOT_LEGS,   style, tier, SlotKind.LEGS);
-        equipFromTierStack(bot, Equipment.SLOT_WEAPON, style, tier, SlotKind.WEAPON);
-        equipFromTierStack(bot, Equipment.SLOT_SHIELD, style, tier, SlotKind.SHIELD);
-        equipFromTierStack(bot, Equipment.SLOT_CAPE,   style, tier, SlotKind.CAPE);
-        equipFromTierStack(bot, Equipment.SLOT_HANDS,  style, tier, SlotKind.GLOVES);
-        equipFromTierStack(bot, Equipment.SLOT_FEET,   style, tier, SlotKind.FEET);
+        com.rs.bot.TieredOutfitPool.Tier picked = null;
+        for (com.rs.bot.TieredOutfitPool.Tier t : tierStackFrom(startTier)) {
+            com.rs.bot.TieredOutfitPool.Set set =
+                com.rs.bot.TieredOutfitPool.pick(style, t);
+            int[] pool = set == null ? null : set.bodies;
+            if (pool == null || pool.length == 0) continue;
+            int[] filtered = com.rs.bot.ItemRequirements.filter(bot, pool);
+            if (filtered != null && filtered.length > 0) {
+                picked = t;
+                break;
+            }
+        }
+        if (picked == null) picked = com.rs.bot.TieredOutfitPool.Tier.POOR;
+        // Equip ALL slots from the chosen tier (no fallback to a
+        // different tier - that's what was breaking outfit cohesion).
+        com.rs.bot.TieredOutfitPool.Set set =
+            com.rs.bot.TieredOutfitPool.pick(style, picked);
+        equipFromTierSet(bot, Equipment.SLOT_HAT,    set, SlotKind.HAT);
+        equipFromTierSet(bot, Equipment.SLOT_CHEST,  set, SlotKind.BODY);
+        equipFromTierSet(bot, Equipment.SLOT_LEGS,   set, SlotKind.LEGS);
+        equipFromTierSet(bot, Equipment.SLOT_WEAPON, set, SlotKind.WEAPON);
+        equipFromTierSet(bot, Equipment.SLOT_SHIELD, set, SlotKind.SHIELD);
+        equipFromTierSet(bot, Equipment.SLOT_CAPE,   set, SlotKind.CAPE);
+        equipFromTierSet(bot, Equipment.SLOT_HANDS,  set, SlotKind.GLOVES);
+        equipFromTierSet(bot, Equipment.SLOT_FEET,   set, SlotKind.FEET);
+        // Fallback for any slot the chosen tier's pool didn't fill
+        // (some sets have empty SHIELD pools for 2H styles, etc.) -
+        // gives style-aware bronze/leather/staff so combatants always
+        // spawn fully geared.
+        ensureCombatFallbacks(bot, style);
+    }
+
+    /** Equip a random item from this tier's slot pool. Filters
+     *  through ItemRequirements first; if NOTHING in the pool
+     *  qualifies, leaves the slot empty (the chosen tier's body was
+     *  affordable but maybe a 2h-only set has nothing for SHIELD
+     *  etc. - ensureCombatFallbacks fills it). */
+    private static void equipFromTierSet(Player bot, int slot,
+            com.rs.bot.TieredOutfitPool.Set set, SlotKind kind) {
+        if (set == null) return;
+        int[] pool = poolFor(set, kind);
+        if (pool == null || pool.length == 0) return;
+        int[] filtered = com.rs.bot.ItemRequirements.filter(bot, pool);
+        if (filtered == null || filtered.length == 0) return;
+        equip(bot, slot, pick(filtered));
+    }
+
+    /** Backstop: if the tier walk left any combat-relevant slot empty,
+     *  drop in a bronze / leather / staff piece (zero level reqs) so
+     *  every combatant spawns visibly geared. Skips rings / amulets /
+     *  pocket - those are handled by applyAccessories. */
+    private static void ensureCombatFallbacks(Player bot,
+            com.rs.bot.TieredOutfitPool.Style style) {
+        try {
+            // Helm
+            if (bot.getEquipment().getItem(Equipment.SLOT_HAT) == null) {
+                equip(bot, Equipment.SLOT_HAT, 1155);  // bronze full helm
+            }
+            // Body
+            if (bot.getEquipment().getItem(Equipment.SLOT_CHEST) == null) {
+                equip(bot, Equipment.SLOT_CHEST, 1117); // bronze chainbody
+            }
+            // Legs
+            if (bot.getEquipment().getItem(Equipment.SLOT_LEGS) == null) {
+                equip(bot, Equipment.SLOT_LEGS, 1075);  // bronze platelegs
+            }
+            // Shield (only if weapon slot ends up with a one-handed
+            // weapon - 2H detection happens in equip()).
+            if (bot.getEquipment().getItem(Equipment.SLOT_SHIELD) == null
+                    && bot.getEquipment().getItem(Equipment.SLOT_WEAPON) == null) {
+                equip(bot, Equipment.SLOT_SHIELD, 1189); // bronze kite
+            }
+            // Weapon - style-aware fallback so a magic bot doesn't
+            // get a scim and a ranger doesn't get a wand.
+            if (bot.getEquipment().getItem(Equipment.SLOT_WEAPON) == null) {
+                int weaponId;
+                if (style == com.rs.bot.TieredOutfitPool.Style.RANGED) {
+                    weaponId = 841;  // shortbow
+                } else if (style == com.rs.bot.TieredOutfitPool.Style.MAGIC) {
+                    weaponId = 1381; // staff of air
+                } else {
+                    weaponId = 1321; // bronze scimitar
+                }
+                equip(bot, Equipment.SLOT_WEAPON, weaponId);
+            }
+            // Boots / gloves - any combatant should have at least these.
+            if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null) {
+                equip(bot, Equipment.SLOT_FEET, 1837);  // leather boots
+            }
+            if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null) {
+                equip(bot, Equipment.SLOT_HANDS, 1059); // leather gloves
+            }
+        } catch (Throwable ignored) {}
     }
 
     private enum SlotKind { HAT, BODY, LEGS, WEAPON, SHIELD, CAPE, GLOVES, FEET }
@@ -1157,41 +1258,159 @@ public final class BotEquipment {
         if ("skiller".equals(archetype) || "maxed".equals(archetype)
                 || "socialite".equals(archetype)) return;
 
-        // Amulet - 60% chance
-        if (chance(60) && bot.getEquipment().getItem(Equipment.SLOT_AMULET) == null) {
-            int amulet;
-            if (cb >= 90 && chance(40)) amulet = 6585;       // Fury
-            else if (cb >= 60)          amulet = pick(new int[]{1725, 1731, 1712, 1727});  // Strength/Power/Glory(4)/Magic
-            else                        amulet = pick(new int[]{1725, 1731, 1727, 1729});
-            equip(bot, Equipment.SLOT_AMULET, amulet);
+        // === AMULET ===
+        // Tier-aware random pool. Each cb bracket pulls from a wider
+        // mix of period-correct amulets. equip() gates each item via
+        // the engine + name-pattern requirement layers so a low-cb
+        // bot rolling Saradomin's whisper still gets rejected.
+        if (chance(70) && bot.getEquipment().getItem(Equipment.SLOT_AMULET) == null) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    24278, 24291,         // Saradomin's hiss/whisper (mage / range t90 amulets)
+                    6585,                  // Fury
+                    6586,                  // Onyx amulet (e)
+                    1725, 1731,            // Strength / Power
+                    20068                  // Reefshark amulet (high-tier example)
+                };
+            } else if (cb >= 80) {
+                pool = new int[] {
+                    6585, 6586,            // Fury / Onyx
+                    1725, 1731,            // Strength / Power
+                    1712,                  // Glory (4)
+                    4677                   // Amulet of ranging
+                };
+            } else if (cb >= 50) {
+                pool = new int[] {
+                    1712,                  // Glory (4)
+                    1725, 1731, 1727,      // Strength / Power / Magic
+                    4677,                  // Ranging
+                    1729                   // Defence
+                };
+            } else {
+                pool = new int[] {
+                    1725, 1727, 1729,      // Strength / Magic / Defence
+                    1731,                  // Power
+                    1718,                  // Holy symbol
+                    1722                   // Unholy symbol
+                };
+            }
+            equip(bot, Equipment.SLOT_AMULET, pick(pool));
         }
 
-        // Ring - 40% chance
-        if (chance(40) && bot.getEquipment().getItem(Equipment.SLOT_RING) == null) {
-            int ring;
-            if (cb >= 90 && chance(30)) ring = pick(new int[]{6737, 6735});  // Berserker / Warrior
-            else if (cb >= 60)          ring = pick(new int[]{2572, 1641, 1643});  // Wealth / Ruby / Diamond
-            else                        ring = pick(new int[]{1635, 1637, 1639});
-            equip(bot, Equipment.SLOT_RING, ring);
+        // === RING ===
+        if (chance(50) && bot.getEquipment().getItem(Equipment.SLOT_RING) == null) {
+            int[] pool;
+            if (cb >= 100) {
+                pool = new int[] {
+                    6737, 6735,            // Berserker / Warrior
+                    6733, 6731,            // Archer / Seers
+                    6583,                  // Onyx ring
+                    2572,                  // Wealth
+                    1643, 6575             // Dragonstone / Ring of vigour
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    6737, 6735, 6733, 6731,// Berserker/Warrior/Archer/Seers (gated by stats)
+                    2572,                  // Wealth
+                    1643, 1641,            // Dragonstone / Diamond
+                    2570                   // Ring of life
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    1641, 1639, 1637,      // Diamond / Ruby / Emerald
+                    2572, 2570,            // Wealth / Life
+                    1645                   // Sapphire
+                };
+            } else {
+                pool = new int[] {
+                    1635, 1637, 1639,      // Sapphire / Emerald / Ruby
+                    2570                   // Life
+                };
+            }
+            equip(bot, Equipment.SLOT_RING, pick(pool));
         }
 
-        // Cape - 50% chance if no cape yet
+        // === CAPE === (kept simple - real cape variety lives in
+        // TieredOutfitPool's cape pools per style)
         if (chance(50) && bot.getEquipment().getItem(Equipment.SLOT_CAPE) == null) {
             int cape;
             if (cb >= 100 && chance(20))      cape = 6570;                 // Fire cape
-            else if (cb >= 70 && chance(40))  cape = 6570;                 // Fire cape
-            else                              cape = pick(new int[]{14641, 14642, 4514, 4516});  // colored team capes
+            else if (cb >= 70 && chance(40))  cape = 6570;
+            else                              cape = pick(new int[]{14641, 14642, 4514, 4516, 1019, 1021, 1023});
             equip(bot, Equipment.SLOT_CAPE, cape);
         }
 
-        // Boots fallback (if not set)
-        if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null && chance(70)) {
-            equip(bot, Equipment.SLOT_FEET, pick(new int[]{88, 4121}));  // Boots of lightness, iron boots
+        // === BOOTS ===
+        if (bot.getEquipment().getItem(Equipment.SLOT_FEET) == null && chance(80)) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    21790, 21787, 21795,   // Glaiven / Steadfast / Ragefire (T80 dragonkin boots)
+                    11728,                 // Bandos boots
+                    11732,                 // Dragon boots
+                    2577,                  // Ranger boots
+                    2579                   // Wizard boots
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    11728, 11732,          // Bandos / Dragon
+                    2577, 2579,            // Ranger / Wizard
+                    4131,                  // Rune boots
+                    88                      // Boots of lightness
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    4131, 4129,            // Rune / Adamant
+                    2577, 2579,            // Ranger / Wizard
+                    3105,                  // Climbing boots
+                    88                      // Boots of lightness
+                };
+            } else {
+                pool = new int[] {
+                    1837, 4121, 4123, 4125, // Leather / Iron / Steel / Black
+                    3105,                   // Climbing
+                    88                      // Lightness
+                };
+            }
+            equip(bot, Equipment.SLOT_FEET, pick(pool));
         }
 
-        // Gloves fallback
-        if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null && chance(50)) {
-            equip(bot, Equipment.SLOT_HANDS, 1059);
+        // === GLOVES ===
+        if (bot.getEquipment().getItem(Equipment.SLOT_HANDS) == null && chance(70)) {
+            int[] pool;
+            if (cb >= 110) {
+                pool = new int[] {
+                    24977,                 // Torva gloves
+                    24974,                 // Pernix gloves
+                    24980,                 // Virtus gloves
+                    22358, 22361,          // Goliath gloves (red/black)
+                    22362, 22364,          // Swift gloves
+                    22366, 22368,          // Spellcaster gloves
+                    7462                    // Barrows gloves
+                };
+            } else if (cb >= 70) {
+                pool = new int[] {
+                    22358, 22361,          // Goliath
+                    22362, 22364,          // Swift
+                    22366, 22368,          // Spellcaster
+                    7462,                  // Barrows gloves
+                    7461,                  // Dragonstone gauntlets
+                    1065                   // Combat bracelet (item-slot wrong, but harmless if rejected)
+                };
+            } else if (cb >= 40) {
+                pool = new int[] {
+                    7460, 7461,            // Mithril/Adamant gauntlets
+                    1065,                  // Combat bracelet (wrong slot - filtered)
+                    1059                   // Leather
+                };
+            } else {
+                pool = new int[] {
+                    1059, 1063,            // Leather / Hardleather
+                    7459                   // Bronze gauntlets
+                };
+            }
+            equip(bot, Equipment.SLOT_HANDS, pick(pool));
         }
     }
 
@@ -1303,11 +1522,36 @@ public final class BotEquipment {
                     return;
                 }
             }
-            // Stat gate: bots can't wear gear above their level.
+            // Stat gate. Three checks layered:
+            //   1. ItemDefinitions.getWearingSkillRequiriments() -
+            //      canonical engine source pulled from the cache's
+            //      clientScriptData (opcodes 749/750..767/768). Every
+            //      item with stat reqs has these populated. This is
+            //      what real players hit when clicking "Wield".
+            //   2. EquipmentReqs.canWear - hand-curated table covering
+            //      gaps where the cache opcodes are missing (some
+            //      legacy items).
+            //   3. ItemRequirements.canEquip - second hand-curated
+            //      table covering tiered-pool items (drygore, zaryte,
+            //      hatchets-as-weapons, etc.).
+            // ALL THREE must pass. Engine table is the primary check
+            // so any item the cache says is gated gets rejected even
+            // if our hand tables didn't list it.
+            try {
+                java.util.HashMap<Integer, Integer> reqs = def.getWearingSkillRequiriments();
+                if (reqs != null && !reqs.isEmpty()) {
+                    for (java.util.Map.Entry<Integer, Integer> e : reqs.entrySet()) {
+                        Integer skill = e.getKey();
+                        Integer needed = e.getValue();
+                        if (skill == null || needed == null) continue;
+                        int have;
+                        try { have = bot.getSkills().getLevelForXp(skill); }
+                        catch (Throwable t) { have = 1; }
+                        if (have < needed) return; // can't wear
+                    }
+                }
+            } catch (Throwable ignored) {}
             if (!EquipmentReqs.canWear(bot, itemId)) return;
-            // Per-item table mirrors EquipmentReqs but covers the
-            // tiered-pool (drygore, zaryte, hatchets, etc.) so the
-            // structured loadout path is also gated.
             if (!ItemRequirements.canEquip(bot, itemId)) return;
             // 2H / shield mutual exclusion. Without this, bots end up
             // wielding a godsword while ALSO carrying a kiteshield -
@@ -1332,7 +1576,29 @@ public final class BotEquipment {
 
     private static void equip(Player bot, int slot, Item item) {
         if (item == null || item.getId() <= 0) return;
+        // Same canonical check as the int-id overload: engine cache
+        // requirements first, then our two hand tables. Items that
+        // fail any of the three are silently skipped.
+        try {
+            com.rs.cache.loaders.ItemDefinitions def =
+                com.rs.cache.loaders.ItemDefinitions.getItemDefinitions(item.getId());
+            if (def != null) {
+                java.util.HashMap<Integer, Integer> reqs = def.getWearingSkillRequiriments();
+                if (reqs != null && !reqs.isEmpty()) {
+                    for (java.util.Map.Entry<Integer, Integer> e : reqs.entrySet()) {
+                        Integer skill = e.getKey();
+                        Integer needed = e.getValue();
+                        if (skill == null || needed == null) continue;
+                        int have;
+                        try { have = bot.getSkills().getLevelForXp(skill); }
+                        catch (Throwable t) { have = 1; }
+                        if (have < needed) return;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         if (!EquipmentReqs.canWear(bot, item.getId())) return;
+        if (!ItemRequirements.canEquip(bot, item.getId())) return;
         try { bot.getEquipment().getItems().set(slot, item); } catch (Throwable ignored) {}
     }
 

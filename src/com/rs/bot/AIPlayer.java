@@ -258,6 +258,17 @@ public class AIPlayer extends Player {
                             com.rs.bot.BotEquipment.applyLoadout(AIPlayer.this,
                                 getArchetype(), cb);
                             getAppearence().generateAppearenceData();
+                            // Refresh action bar to match whatever weapon
+                            // style the new loadout rolled (a melee bot
+                            // that respawned as ranged needs range
+                            // abilities, not the old melee bar).
+                            try { getActionbar().setupBar(); }
+                            catch (Throwable ignored) {}
+                            // Top off prayer too.
+                            try {
+                                getPrayer().setPrayerpoints(
+                                    getPrayer().getMaxPrayerpoints());
+                            } catch (Throwable ignored) {}
                         } catch (Throwable t) {
                             System.err.println("[AIPlayer] respawn loadout failed for "
                                 + getDisplayName() + ": " + t);
@@ -351,6 +362,18 @@ public class AIPlayer extends Player {
         // controller/cutscene logout - none apply to a bot.
         if (hasFinished()) return;
         try {
+            // Despawn the pet first - Pet.processNPC dereferences the
+            // owner's packet path and would NPE the moment owner is
+            // marked finished. Without this, the pet NPC stays in the
+            // world after the bot despawns - user reported "they do
+            // not despawn".
+            try {
+                com.rs.game.npc.others.Pet pet = getPet();
+                if (pet != null && !pet.hasFinished()) {
+                    pet.finish();
+                }
+                setPet(null);
+            } catch (Throwable ignored) {}
             // Clean up the brain so it stops trying to walk a finished bot
             setBrain(null);
             setFinished(true);

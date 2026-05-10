@@ -114,6 +114,23 @@ public final class BotFactory {
                 }
             }
 
+            // Sync HP to max for the bot's HITPOINTS level. Player ctor
+            // initialised hitpoints=START_PLAYER_HITPOINTS (10) but the
+            // skill profile just bumped HITPOINTS level - without this
+            // the bot spawns at 10/8000 hp and looks like they're 1
+            // shot from death (user report: "everytime I watch a bot
+            // or attack a bot, it has barely any health").
+            try {
+                bot.setHitpoints(bot.getMaxHitpoints());
+            } catch (Throwable ignored) {}
+            // Same fix for prayer points - Prayer ctor initialises to 10
+            // (1 prayer point) regardless of prayer level. Without this
+            // a level-80-prayer PK bot can flick a protect prayer for
+            // ~1 second before running dry. Top them off to max.
+            try {
+                bot.getPrayer().setPrayerpoints(bot.getPrayer().getMaxPrayerpoints());
+            } catch (Throwable ignored) {}
+
             // Stamp archetype on the bot (persistent identity for AI behavior + equipment)
             // Resolve "random" archetype before setting it on the bot
             String resolvedArchetype = archetype;

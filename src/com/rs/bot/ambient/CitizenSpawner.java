@@ -222,6 +222,15 @@ public final class CitizenSpawner {
             // Match BotPool.spawn() order exactly: hydrate -> start -> setBrain.
             bot.hydrate(name); // single init() - same path Legends use
             bot.start();       // bot.start() finalizes the entry into world
+            // Force HP to max post-hydrate. BotFactory already does this,
+            // but hydrate's init() flow sometimes resets HP to the
+            // Player ctor default (START_PLAYER_HITPOINTS=10) for paths
+            // that go through reset(false) somewhere. Belt-and-suspenders.
+            try { bot.setHitpoints(bot.getMaxHitpoints()); } catch (Throwable ignored) {}
+            // Same belt-and-suspenders for prayer points.
+            try {
+                bot.getPrayer().setPrayerpoints(bot.getPrayer().getMaxPrayerpoints());
+            } catch (Throwable ignored) {}
             // Bots default to walking. Toggle run on so they actually
             // RUN to far-away training spots / GE / etc instead of
             // shuffling. Player.run() ticks regenerate energy when
@@ -297,6 +306,17 @@ public final class CitizenSpawner {
                 if (Utils.random(100) < 12) maybeSpawnPet(bot);
             } catch (Throwable ignored) {}
 
+            // Retro item-look toggle: 50/50 each spawn so the
+            // population looks visually mixed (some bots wearing
+            // current models, some wearing the retro/old-look
+            // counterparts via the existing per-player swap path).
+            try {
+                if (Utils.random(2) == 0) {
+                    bot.switchItemsLook(); // toggles on
+                    bot.getAppearence().generateAppearenceData();
+                }
+            } catch (Throwable ignored) {}
+
             // Sheathe roll. CombatDefinitions defaults sheathe=true (weapon
             // hidden, total skill level shown over the head). Real players
             // mostly walk around with their weapon out (combat level shown);
@@ -321,6 +341,34 @@ public final class CitizenSpawner {
                         com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
                     bot.getCombatDefinitions().setCombatMode(
                         com.rs.game.player.CombatDefinitions.REVOLUTION_COMBAT_MODE);
+                    // Action bar setup matching the equipped weapon's
+                    // combat style. ActionBar.setupBar reads the weapon
+                    // slot, looks up every ability the bot's stats
+                    // qualify for in that style, and fills slots 0-11
+                    // with primary-style abilities + slots 12/13 with
+                    // defence abilities. With REVOLUTION mode + a
+                    // populated bar the engine auto-fires abilities
+                    // when the bot enters combat.
+                    //
+                    // Effective revo bars per style (filtered by stat
+                    // requirements - low-cb bots get the basics, maxed
+                    // get full top-tier):
+                    //   MELEE  : Slice / Backhand / Sever / Smash /
+                    //            Cleave / Kick / Punish / Dismember /
+                    //            Decimate / Assault + Anticipation /
+                    //            Freedom (defence)
+                    //   RANGE  : Piercing Shot / Snipe / Snap Shot /
+                    //            Bombardment / Fragmentation / Tight
+                    //            Bindings / Escape (similar pattern)
+                    //   MAGIC  : Wrack / Dragon Breath / Sonic Wave /
+                    //            Combust / Asphyxiate / Concentrated
+                    //            Blast / Wild Magic / Surge
+                    // Order is determined by ClientScriptMap so the
+                    // ability list mirrors what real RS3 revolution
+                    // bars in 2014 used (the engine's CS_DATA_ID
+                    // entries are the canonical 2014-era ordering).
+                    try { bot.getActionbar().setupBar(); }
+                    catch (Throwable ignored) {}
                 }
             } catch (Throwable ignored) {}
 

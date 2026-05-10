@@ -1147,9 +1147,12 @@ public class BotBrain {
             } catch (Throwable ignored) {}
         }
         if (targetBone == null) {
-            lastDiagnostic = "prayer: no bones in inventory";
-            if (Utils.random(100) < 3) sayDebug("no bones to offer");
-            goalBlacklist.add(method);
+            // Restock bones so prayer training never stalls.
+            int praLvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
+            int boneId = praLvl >= 30 ? 532 /*big bones*/ : 526 /*regular bones*/;
+            try { bot.getInventory().addItem(boneId, 28); } catch (Throwable ignored) {}
+            lastDiagnostic = "prayer: restocked bones " + boneId + " x28";
+            sayDebug("restocked bones (" + boneId + " x28)");
             return;
         }
         int qty = bot.getInventory().getAmountOf(targetItem.getId());
@@ -1178,9 +1181,15 @@ public class BotBrain {
             if (target == null || g.getLevelRequired() > target.getLevelRequired()) target = g;
         }
         if (target == null) {
-            lastDiagnostic = "craft: no uncut gems in inventory";
-            if (Utils.random(100) < 3) sayDebug("no uncut gems");
-            goalBlacklist.add(method);
+            // Restock matched-tier uncut gems.
+            int gemId;
+            if      (botLvl >= 55) gemId = 1631; // uncut diamond
+            else if (botLvl >= 40) gemId = 1633; // uncut ruby
+            else if (botLvl >= 27) gemId = 1635; // uncut emerald
+            else                    gemId = 1637; // uncut sapphire
+            try { bot.getInventory().addItem(gemId, 28); } catch (Throwable ignored) {}
+            lastDiagnostic = "craft: restocked uncut " + gemId + " x28";
+            sayDebug("restocked uncut gems (" + gemId + " x28)");
             return;
         }
         int qty = bot.getInventory().getAmountOf(target.getUncut());
@@ -1228,9 +1237,17 @@ public class BotBrain {
             if (hasMats) { targetBar = bar; break; }
         }
         if (targetBar == null) {
-            lastDiagnostic = "smelt: no bar mats in inventory";
-            if (Utils.random(100) < 3) sayDebug("no ores to smelt");
-            goalBlacklist.add(method);
+            // Restock matched ore + coal pair. Iron requires only iron
+            // ore; steel/mithril/adamant/runite need ore + coal. Push
+            // 14 of each so the bot can do half an inventory of bars.
+            int sm = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
+            int oreId = bestOreForSmith(sm);
+            try {
+                bot.getInventory().addItem(oreId, 14);
+                if (sm >= 20) bot.getInventory().addItem(453, 14); // coal
+            } catch (Throwable ignored) {}
+            lastDiagnostic = "smelt: restocked ore " + oreId + " x14";
+            sayDebug("restocked ores (" + oreId + " x14)");
             return;
         }
         bot.getActionManager().setAction(new com.rs.game.player.actions.Smelting(targetBar, furnace, 28));
@@ -1278,9 +1295,12 @@ public class BotBrain {
             } catch (Throwable ignored) {}
         }
         if (rawItem == null) {
-            lastDiagnostic = "cook: no raw food in inventory";
-            if (Utils.random(100) < 3) sayDebug("no raw food to cook");
-            goalBlacklist.add(method);
+            // Restock raw food and let next tick pick it up.
+            int rawId = bestRawFoodForCook(
+                bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING));
+            try { bot.getInventory().addItem(rawId, 28); } catch (Throwable ignored) {}
+            lastDiagnostic = "cook: restocked raw " + rawId + " x28";
+            sayDebug("restocked raw food (" + rawId + " x28)");
             return;
         }
         bot.getActionManager().setAction(
@@ -1321,10 +1341,17 @@ public class BotBrain {
             } catch (Throwable ignored) {}
         }
         if (targetFire == null) {
-            // No logs - blacklist FM, switch to WC to chop some
-            lastDiagnostic = "fm: no logs in inventory, need to chop first";
-            if (Utils.random(100) < 3) sayDebug("no logs to burn");
-            goalBlacklist.add(method);
+            // Restock instead of blacklisting. User: "if a bot has a
+            // debug that says they don't have something, they either
+            // spawn it. OR go to the trader at burthorp and buy what
+            // they need". Fast path: spawn a stack of the highest-tier
+            // log they can use straight into inventory and re-pick
+            // the target on next tick. No more "no logs" spam +
+            // bots actually progress firemaking.
+            int logId = bestLogIdForFm(botFmLvl);
+            try { bot.getInventory().addItem(logId, 28); } catch (Throwable ignored) {}
+            lastDiagnostic = "fm: restocked " + logId + " x28";
+            sayDebug("restocked logs (" + logId + " x28)");
             return;
         }
         bot.getActionManager().setAction(new com.rs.game.player.actions.Firemaking(targetFire));
@@ -2124,9 +2151,47 @@ public class BotBrain {
         if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [step] " + text);
     }
     private void sayDebug(String text) {
-        say("[Debug] " + text);
+        // Per user request: debug spam goes to LOGS ONLY, never chat.
+        // No more "[debug] no logs to burn" balloons floating over
+        // every shuffling skiller.
         com.rs.bot.BotLog.log(bot.getDisplayName(), "[debug] " + text);
         if (com.rs.bot.AuditLog.isStreaming()) com.rs.bot.AuditLog.log(bot.getDisplayName() + " [debug] " + text);
+    }
+
+    // === Skill restock tier pickers ===
+    // Match the highest-tier material the bot can use for the skill.
+    // Used by the "no X in inventory" branches to auto-restock instead
+    // of blacklisting the method (user: "they either spawn it. OR go
+    // to the trader at burthorp and buy what they need - I'm tired of
+    // fucking seeing that debug").
+
+    private static int bestLogIdForFm(int fm) {
+        // 830 cache: id 3239 is "Bark" not arctic pine. Cap at magic.
+        if (fm >= 75) return 1513; // magic (was 3239 "Bark")
+        if (fm >= 60) return 1513; // magic
+        if (fm >= 50) return 1515; // yew
+        if (fm >= 35) return 1517; // maple
+        if (fm >= 30) return 1519; // willow
+        if (fm >= 15) return 1521; // oak
+        return 1511;               // regular
+    }
+
+    private static int bestRawFoodForCook(int ck) {
+        if (ck >= 80) return 383;  // raw shark
+        if (ck >= 62) return 397;  // raw monkfish
+        if (ck >= 35) return 371;  // raw swordfish
+        if (ck >= 25) return 377;  // raw lobster
+        if (ck >= 15) return 359;  // raw trout
+        if (ck >= 5)  return 355;  // raw sardine
+        return 317;                // raw shrimp
+    }
+
+    private static int bestOreForSmith(int sm) {
+        if (sm >= 70) return 451; // runite
+        if (sm >= 50) return 449; // adamantite
+        if (sm >= 30) return 447; // mithril
+        if (sm >= 20) return 441; // iron
+        return 437;               // copper
     }
 
     private void broadcastPublicMessage(String text) {

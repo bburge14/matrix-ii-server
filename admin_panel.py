@@ -111,6 +111,168 @@ def _preset_label_list():
     return list(SPAWN_PRESETS.keys())
 
 
+class AnchorListWidget(ctk.CTkFrame):
+    """Unified spawn-anchor selector.
+
+    Replaces the older "X/Y/P entry + preset dropdown + separate
+    extra_anchors list" trio that competed with each other in both
+    the Quick Spawn row and the SlotEditor. Single source of truth:
+    a list of (x, y, plane) tuples; spawn won't fire if the list is
+    empty.
+
+    Add modes:
+      Preset  - pick from SPAWN_PRESETS dropdown, click +
+      Custom  - type X / Y / P, click +
+
+    Public API:
+      get_anchors() -> List[Tuple[int, int, int]]
+      set_anchors(list_of_xyz)
+      clear()
+    """
+    def __init__(self, parent, *, title="Spawn anchors",
+                 initial=None, height=4, **kwargs):
+        super().__init__(parent, **kwargs)
+        ctk.CTkLabel(self, text=title,
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(
+                         anchor="w", padx=4, pady=(4, 2))
+
+        list_frame = ctk.CTkFrame(self)
+        list_frame.pack(fill="x", padx=4, pady=2)
+        self.listbox = tk.Listbox(list_frame, height=height,
+                                   bg="#2b2b2b", fg="white",
+                                   selectbackground="#1f6aa5",
+                                   font=("Helvetica", 10),
+                                   borderwidth=0, highlightthickness=0,
+                                   exportselection=False)
+        self.listbox.pack(side="left", fill="x", expand=True, padx=4, pady=4)
+
+        # Mode + add controls.
+        ctrl = ctk.CTkFrame(self, fg_color="transparent")
+        ctrl.pack(fill="x", padx=4, pady=2)
+        self.mode_var = tk.StringVar(value="preset")
+        ctk.CTkRadioButton(ctrl, text="Preset", variable=self.mode_var,
+                           value="preset",
+                           command=self._on_mode).pack(side="left", padx=2)
+        ctk.CTkRadioButton(ctrl, text="Custom", variable=self.mode_var,
+                           value="custom",
+                           command=self._on_mode).pack(side="left", padx=2)
+
+        # Preset row (visible by default)
+        self.preset_row = ctk.CTkFrame(self, fg_color="transparent")
+        self.preset_row.pack(fill="x", padx=4, pady=2)
+        self.preset_var = tk.StringVar(value="— Custom —")
+        ctk.CTkOptionMenu(self.preset_row, values=_preset_label_list(),
+                          variable=self.preset_var, width=300).pack(
+                              side="left", padx=2)
+
+        # Custom row (hidden by default)
+        self.custom_row = ctk.CTkFrame(self, fg_color="transparent")
+        self.x_var = tk.StringVar(); self.y_var = tk.StringVar()
+        self.p_var = tk.StringVar(value="0")
+        ctk.CTkLabel(self.custom_row, text="X").pack(side="left", padx=2)
+        ctk.CTkEntry(self.custom_row, textvariable=self.x_var,
+                     width=70).pack(side="left", padx=2)
+        ctk.CTkLabel(self.custom_row, text="Y").pack(side="left", padx=2)
+        ctk.CTkEntry(self.custom_row, textvariable=self.y_var,
+                     width=70).pack(side="left", padx=2)
+        ctk.CTkLabel(self.custom_row, text="P").pack(side="left", padx=2)
+        ctk.CTkEntry(self.custom_row, textvariable=self.p_var,
+                     width=40).pack(side="left", padx=2)
+
+        # +/- buttons (always visible)
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(fill="x", padx=4, pady=(2, 6))
+        ctk.CTkButton(btns, text="+ Add", width=80, fg_color="#1b6e3a",
+                      command=self._add).pack(side="left", padx=2)
+        ctk.CTkButton(btns, text="− Remove selected", width=140,
+                      fg_color="#aa3030",
+                      command=self._remove).pack(side="left", padx=2)
+        ctk.CTkButton(btns, text="Clear all", width=80,
+                      command=self.clear).pack(side="left", padx=2)
+
+        if initial:
+            self.set_anchors(initial)
+
+    def _on_mode(self):
+        if self.mode_var.get() == "preset":
+            self.custom_row.pack_forget()
+            self.preset_row.pack(fill="x", padx=4, pady=2,
+                                  before=self.children_after_modes())
+        else:
+            self.preset_row.pack_forget()
+            self.custom_row.pack(fill="x", padx=4, pady=2,
+                                  before=self.children_after_modes())
+
+    def children_after_modes(self):
+        """Return the +/- buttons frame so pack(before=...) places
+        the mode row in the correct slot when toggling."""
+        # Re-find buttons frame by index - it's the last frame packed.
+        kids = [w for w in self.winfo_children()
+                if isinstance(w, ctk.CTkFrame) and w.winfo_manager() == "pack"]
+        return kids[-1] if kids else None
+
+    def _add(self):
+        if self.mode_var.get() == "preset":
+            label = self.preset_var.get()
+            coords = SPAWN_PRESETS.get(label)
+            if not coords:
+                messagebox.showwarning("Add anchor",
+                    "Pick a preset (or switch to Custom).")
+                return
+            x, y, p = coords
+        else:
+            try:
+                x = int(self.x_var.get())
+                y = int(self.y_var.get())
+                p = int(self.p_var.get() or 0)
+            except ValueError:
+                messagebox.showwarning("Add anchor",
+                    "X / Y must be numeric.")
+                return
+        self.listbox.insert(tk.END, f"{x}, {y}, p{p}")
+        # Clear custom entries so the next add doesn't re-commit.
+        self.x_var.set("")
+        self.y_var.set("")
+        self.p_var.set("0")
+
+    def _remove(self):
+        sel = list(self.listbox.curselection())
+        if not sel:
+            return
+        for idx in reversed(sel):
+            self.listbox.delete(idx)
+
+    def clear(self):
+        self.listbox.delete(0, tk.END)
+
+    def get_anchors(self):
+        """Return list of (x, y, plane) tuples in display order."""
+        out = []
+        for i in range(self.listbox.size()):
+            line = self.listbox.get(i)
+            # Format "X, Y, pZ" -> parse.
+            try:
+                parts = [p.strip() for p in line.split(",")]
+                xv = int(parts[0])
+                yv = int(parts[1])
+                pv = int(parts[2].lstrip("p"))
+                out.append((xv, yv, pv))
+            except Exception:
+                continue
+        return out
+
+    def set_anchors(self, anchors):
+        self.clear()
+        if not anchors:
+            return
+        for a in anchors:
+            try:
+                xv, yv, pv = int(a[0]), int(a[1]), int(a[2]) if len(a) > 2 else 0
+                self.listbox.insert(tk.END, f"{xv}, {yv}, p{pv}")
+            except Exception:
+                continue
+
+
 # Recommended category per preset. When the user picks a preset that has
 # a hint, the Quick Spawn dropdown auto-flips to the matching category
 # so traders don't accidentally spawn at the wildy ditch (user report).
@@ -1091,28 +1253,15 @@ class CitizensFrame(ctk.CTkFrame):
         ]
         ctk.CTkOptionMenu(quick, values=category_choices,
                           variable=self.q_category, width=240).pack(side="left", padx=2)
-        ctk.CTkLabel(quick, text=" at X").pack(side="left", padx=(8,2))
-        self.q_x = tk.StringVar(value="3164")
-        ctk.CTkEntry(quick, textvariable=self.q_x, width=70).pack(side="left", padx=2)
-        ctk.CTkLabel(quick, text="Y").pack(side="left", padx=(8,2))
-        self.q_y = tk.StringVar(value="3486")
-        ctk.CTkEntry(quick, textvariable=self.q_y, width=70).pack(side="left", padx=2)
-        ctk.CTkLabel(quick, text="P").pack(side="left", padx=(8,2))
-        self.q_plane = tk.StringVar(value="0")
-        ctk.CTkEntry(quick, textvariable=self.q_plane, width=40).pack(side="left", padx=2)
         ctk.CTkButton(quick, text="Spawn", width=80, fg_color="#1b6e3a",
                       command=self._quick_spawn).pack(side="left", padx=8)
-        # Preset row (own line - too many options to fit alongside the
-        # X/Y entries). Selecting a preset auto-fills X/Y/Plane above;
-        # selecting "Custom" leaves them alone so the user can type
-        # arbitrary coords.
-        preset_row = ctk.CTkFrame(self)
-        preset_row.pack(fill="x", padx=20, pady=(0, 4))
-        ctk.CTkLabel(preset_row, text="Location preset:").pack(side="left", padx=4)
-        self.q_preset = tk.StringVar(value="— Custom —")
-        ctk.CTkOptionMenu(preset_row, values=_preset_label_list(),
-                          variable=self.q_preset, width=320,
-                          command=self._apply_quick_preset).pack(side="left", padx=2)
+        # Unified anchor selector. Replaces the older X/Y/P entries +
+        # parallel preset dropdown that argued with each other. Add at
+        # least one anchor (preset OR custom) before clicking Spawn -
+        # bots can't spawn without a destination.
+        self.q_anchors = AnchorListWidget(self, title="Spawn anchors (need >= 1)",
+                                           height=4)
+        self.q_anchors.pack(fill="x", padx=20, pady=(0, 4))
         # Per-minigame + per-socialite-tier quick rows
         mg_quick = ctk.CTkFrame(self)
         mg_quick.pack(fill="x", padx=20, pady=4)
@@ -1166,9 +1315,9 @@ class CitizensFrame(ctk.CTkFrame):
         ctk.CTkLabel(self, text="Budget slots", font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=20, pady=(10,2))
         tree_frame = ctk.CTkFrame(self)
         tree_frame.pack(fill="both", expand=True, padx=20, pady=(0,5))
-        cols = ("archetype", "count", "x", "y", "plane", "scatter", "autospawn", "live")
+        cols = ("archetype", "count", "anchors", "scatter", "autospawn", "live")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse", height=8)
-        widths = {"archetype":210, "count":60, "x":80, "y":80, "plane":50,
+        widths = {"archetype":210, "count":60, "anchors":260,
                   "scatter":70, "autospawn":80, "live":60}
         for c in cols:
             self.tree.heading(c, text=c)
@@ -1277,12 +1426,18 @@ class CitizensFrame(ctk.CTkFrame):
             self.tree.delete(iid)
         for i, s in enumerate(self.slots):
             name = s.get("archetype", "?")
+            # Anchors column shows total count + brief preview so admins
+            # see at a glance how many spawn locations a slot uses.
+            primary = (s.get("x", 0), s.get("y", 0), s.get("plane", 0))
+            extras = s.get("extra_anchors") or []
+            total = 1 + len(extras)
+            anchors_str = f"{total} anchor{'s' if total != 1 else ''}: {primary[0]},{primary[1]}"
+            if extras:
+                anchors_str += f" + {len(extras)} more"
             self.tree.insert("", "end", iid=str(i), values=(
                 name,
                 s.get("count", 0),
-                s.get("x", 0),
-                s.get("y", 0),
-                s.get("plane", 0),
+                anchors_str,
                 s.get("scatter", 8),
                 "yes" if s.get("autospawn", False) else "no",
                 live_by_arch.get(name, 0)
@@ -1436,40 +1591,44 @@ class CitizensFrame(ctk.CTkFrame):
                 self.after(0, lambda: messagebox.showerror("Clear failed", str(e)))
         threading.Thread(target=do, daemon=True).start()
 
-    def _apply_quick_preset(self, label):
-        """Preset OptionMenu callback. If the picked label maps to a
-        coord tuple, fill X/Y/Plane. "Custom" is a no-op (user keeps
-        whatever they typed). Also auto-flips the category dropdown to
-        the recommended archetype if the preset has a hint - prevents
-        traders spawning at wildy ditch and similar leaks."""
-        coords = SPAWN_PRESETS.get(label)
-        if not coords:
-            return
-        x, y, p = coords
-        self.q_x.set(str(x))
-        self.q_y.set(str(y))
-        self.q_plane.set(str(p))
-        hint = PRESET_CATEGORY_HINTS.get(label)
-        if hint:
-            try:
-                self.q_category.set(hint)
-            except Exception:
-                pass
-
     def _quick_spawn(self):
+        """Quick-spawn N citizens distributed across the anchor list.
+        Refuses to spawn if the list is empty (the new unified UI
+        requires >=1 anchor)."""
         try:
             n = int(self.q_count.get())
-            x = int(self.q_x.get()); y = int(self.q_y.get()); p = int(self.q_plane.get())
         except ValueError:
-            messagebox.showerror("Bad input", "count/x/y/plane must be numbers")
+            messagebox.showerror("Bad input", "count must be numeric")
+            return
+        anchors = self.q_anchors.get_anchors()
+        if not anchors:
+            messagebox.showwarning("Pick an anchor",
+                "Add at least one spawn anchor before spawning.\n"
+                "Use the Preset dropdown or switch to Custom and type X/Y/P, then click +.")
             return
         cat = self.q_category.get()
-        if cat == "mixed": cat = None
+        if cat == "mixed":
+            cat = None
+        # Distribute count across anchors as evenly as possible. Any
+        # leftover goes to the first anchor (e.g. count=10, anchors=3
+        # -> [4, 3, 3]).
+        per = n // len(anchors)
+        extra = n - per * len(anchors)
+        plan = []
+        for i, (x, y, p) in enumerate(anchors):
+            count = per + (1 if i < extra else 0)
+            if count > 0:
+                plan.append((count, x, y, p))
+
         def do():
+            spawned_total = 0
             try:
-                resp = self.api.citizens_spawn(n, category=cat, x=x, y=y, plane=p, scatter=12)
+                for (count, x, y, p) in plan:
+                    resp = self.api.citizens_spawn(count, category=cat,
+                        x=x, y=y, plane=p, scatter=12)
+                    spawned_total += resp.get("spawned", 0)
                 self.after(0, lambda: messagebox.showinfo("Spawned",
-                    f"Spawned {resp.get('spawned',0)} (live total: {resp.get('total',0)})"))
+                    f"Spawned {spawned_total} citizens across {len(plan)} anchor(s)."))
                 self.after(0, self.refresh)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Spawn failed", str(e)))
@@ -1730,73 +1889,28 @@ class SlotEditor(ctk.CTkToplevel):
         self.scatter_var = tk.StringVar(value=str(slot.get("scatter", 8)))
         ctk.CTkEntry(row1, textvariable=self.scatter_var, width=60).pack(side="left", padx=4)
 
-        # anchor x/y/plane
-        row2 = ctk.CTkFrame(self, fg_color="transparent")
-        row2.pack(fill="x", padx=20, pady=4)
-        ctk.CTkLabel(row2, text="Anchor X:").pack(side="left")
-        self.x_var = tk.StringVar(value=str(slot.get("x", 3164)))
-        ctk.CTkEntry(row2, textvariable=self.x_var, width=80).pack(side="left", padx=4)
-        ctk.CTkLabel(row2, text="Y:").pack(side="left", padx=(20,4))
-        self.y_var = tk.StringVar(value=str(slot.get("y", 3486)))
-        ctk.CTkEntry(row2, textvariable=self.y_var, width=80).pack(side="left", padx=4)
-        ctk.CTkLabel(row2, text="Plane:").pack(side="left", padx=(20,4))
-        self.plane_var = tk.StringVar(value=str(slot.get("plane", 0)))
-        ctk.CTkEntry(row2, textvariable=self.plane_var, width=40).pack(side="left", padx=4)
-
-        # location preset shortcut - selects anchor coords for this slot
-        # from a curated list (towns, GE, wildy, minigames, etc).
-        # Picking anything except "Custom" overwrites the X/Y/Plane fields.
-        row_preset = ctk.CTkFrame(self, fg_color="transparent")
-        row_preset.pack(fill="x", padx=20, pady=4)
-        ctk.CTkLabel(row_preset, text="Location preset:").pack(side="left")
-        self.preset_var = tk.StringVar(value="— Custom —")
-        ctk.CTkOptionMenu(row_preset, values=_preset_label_list(),
-                          variable=self.preset_var, width=300,
-                          command=self._apply_preset).pack(side="left", padx=4)
-
-        # Extra anchors - optional list of additional spawn tiles. Each
-        # spawn picks one at random from {primary} U extras. Lets one
-        # slot scatter bots across multiple skill spots / GE corners /
-        # wildy zones without duplicating the row.
-        ctk.CTkLabel(self, text="Extra anchors (optional):",
-                     font=ctk.CTkFont(size=11, weight="bold")).pack(
-                         anchor="w", padx=20, pady=(8, 2))
-        # Initial population from the slot's existing extra_anchors list
+        # Unified anchor list. Replaces the old "primary X/Y/P + preset
+        # dropdown + extras list" trio. The first anchor in the list is
+        # the slot's primary (Slot.x/y/plane); the rest get serialized
+        # as extra_anchors. Slot.pickAnchor on the server randomly
+        # picks one per spawn.
         existing_extras = slot.get("extra_anchors") or []
-        self.extras = list(existing_extras)  # list of [x,y,plane]
+        initial_anchors = [(slot.get("x", 3164),
+                             slot.get("y", 3486),
+                             slot.get("plane", 0))]
+        for a in existing_extras:
+            try:
+                initial_anchors.append((int(a[0]), int(a[1]),
+                                         int(a[2]) if len(a) > 2 else 0))
+            except Exception:
+                continue
+        self.anchors_widget = AnchorListWidget(self,
+            title="Spawn anchors (need >= 1)",
+            initial=initial_anchors, height=5)
+        self.anchors_widget.pack(fill="x", padx=20, pady=(8, 4))
 
-        extras_frame = ctk.CTkFrame(self)
-        extras_frame.pack(fill="x", padx=20, pady=2)
-        self.extras_listbox = tk.Listbox(extras_frame, height=4,
-                                          bg="#2b2b2b", fg="white",
-                                          selectbackground="#1f6aa5",
-                                          font=("Helvetica", 10),
-                                          borderwidth=0, highlightthickness=0)
-        self.extras_listbox.pack(side="left", fill="x", expand=True, padx=4, pady=4)
-        for a in self.extras:
-            self.extras_listbox.insert(tk.END, f"{a[0]}, {a[1]}, p{a[2]}")
-
-        # Add-extra row: preset OR x/y/plane entry + Add button
-        add_row = ctk.CTkFrame(self, fg_color="transparent")
-        add_row.pack(fill="x", padx=20, pady=2)
-        self.add_preset_var = tk.StringVar(value="— Custom —")
-        ctk.CTkOptionMenu(add_row, values=_preset_label_list(),
-                          variable=self.add_preset_var, width=200,
-                          command=self._extras_preset_picked).pack(side="left", padx=2)
-        self.add_x = tk.StringVar(); self.add_y = tk.StringVar(); self.add_p = tk.StringVar(value="0")
-        ctk.CTkEntry(add_row, textvariable=self.add_x, width=55,
-                     placeholder_text="X").pack(side="left", padx=2)
-        ctk.CTkEntry(add_row, textvariable=self.add_y, width=55,
-                     placeholder_text="Y").pack(side="left", padx=2)
-        ctk.CTkEntry(add_row, textvariable=self.add_p, width=30,
-                     placeholder_text="P").pack(side="left", padx=2)
-        ctk.CTkButton(add_row, text="+", width=28, fg_color="#1b6e3a",
-                      command=self._add_extra).pack(side="left", padx=2)
-        ctk.CTkButton(add_row, text="− Remove", width=80, fg_color="#aa3030",
-                      command=self._remove_extra).pack(side="left", padx=2)
-
-        # Bigger window to fit the extras section.
-        self.geometry("520x520")
+        # Bigger window to fit the unified anchor section.
+        self.geometry("560x560")
 
         # autospawn
         self.autospawn_var = tk.BooleanVar(value=bool(slot.get("autospawn", False)))
@@ -1817,63 +1931,26 @@ class SlotEditor(ctk.CTkToplevel):
         self.lift()
         self.grab_set()
 
-    def _apply_preset(self, label):
-        """Preset OptionMenu callback. Fills X/Y/Plane from the picked
-        preset; "Custom" is a no-op."""
-        coords = SPAWN_PRESETS.get(label)
-        if not coords:
-            return
-        x, y, p = coords
-        self.x_var.set(str(x))
-        self.y_var.set(str(y))
-        self.plane_var.set(str(p))
-
-    def _extras_preset_picked(self, label):
-        """Filling the X/Y/P entries when a preset is picked from the
-        extras row's preset dropdown. Doesn't auto-add - user clicks
-        + to commit, so they can tweak coords first."""
-        coords = SPAWN_PRESETS.get(label)
-        if not coords:
-            return
-        x, y, p = coords
-        self.add_x.set(str(x))
-        self.add_y.set(str(y))
-        self.add_p.set(str(p))
-
-    def _add_extra(self):
-        try:
-            x = int(self.add_x.get())
-            y = int(self.add_y.get())
-            p = int(self.add_p.get() or 0)
-        except ValueError:
-            messagebox.showwarning("Add anchor", "X/Y must be numeric.")
-            return
-        self.extras.append([x, y, p])
-        self.extras_listbox.insert(tk.END, f"{x}, {y}, p{p}")
-        # Clear entries so the next add doesn't re-commit the same tile.
-        self.add_x.set(""); self.add_y.set(""); self.add_p.set("0")
-        self.add_preset_var.set("— Custom —")
-
-    def _remove_extra(self):
-        sel = self.extras_listbox.curselection()
-        if not sel:
-            return
-        idx = sel[0]
-        if 0 <= idx < len(self.extras):
-            del self.extras[idx]
-            self.extras_listbox.delete(idx)
-
     def _save(self):
+        anchors = self.anchors_widget.get_anchors()
+        if not anchors:
+            messagebox.showwarning("Pick an anchor",
+                "A slot needs at least one spawn anchor.\n"
+                "Add a preset or custom X/Y/P first.")
+            return
+        # First anchor is primary (Slot.x/y/plane); rest go to extras.
+        primary = anchors[0]
+        extras = [list(a) for a in anchors[1:]]
         try:
             updated = {
                 "archetype": self.arch_var.get(),
                 "count":   int(self.count_var.get()),
-                "x":       int(self.x_var.get()),
-                "y":       int(self.y_var.get()),
-                "plane":   int(self.plane_var.get()),
+                "x":       primary[0],
+                "y":       primary[1],
+                "plane":   primary[2],
                 "scatter": int(self.scatter_var.get()),
                 "autospawn": bool(self.autospawn_var.get()),
-                "extra_anchors": list(self.extras),
+                "extra_anchors": extras,
             }
         except ValueError as e:
             messagebox.showerror("Invalid", f"Numeric field error: {e}")
