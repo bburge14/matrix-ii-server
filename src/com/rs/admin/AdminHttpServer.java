@@ -399,7 +399,21 @@ public final class AdminHttpServer {
             StringBuilder offline = new StringBuilder();
             boolean firstOff = true;
             try {
+                // The login server normally owns LoginFilesManager. When
+                // the game server runs as a separate process its
+                // filesystem field is null and getAllAccounts() returns
+                // nothing. Lazy-init here so the admin endpoint can
+                // read the same accounts/ MiniFS file (read-only).
+                try { com.rs.utils.LoginFilesManager.init(); }
+                catch (Throwable ignored) {}
                 String[] all = com.rs.utils.LoginFilesManager.getAllAccounts();
+                if (all == null || all.length == 0) {
+                    // Fallback: directly enumerate the accounts MiniFS
+                    // by re-opening it read-only (handles the case
+                    // where init() bailed because the login server has
+                    // the file open exclusively).
+                    all = listAccountsFromMinifs();
+                }
                 if (all != null) {
                     java.util.Arrays.sort(all);
                     for (String f : all) {
@@ -422,6 +436,34 @@ public final class AdminHttpServer {
             sb.append("{\"ok\":true,\"players\":[").append(online)
               .append("],\"offline\":[").append(offline).append("]}");
             sendText(ex, 200, sb.toString());
+        }
+
+        /** Open the accounts MiniFS read-only (separate handle from the
+         *  one the login server might hold) and list the accounts/
+         *  directory. Returns null if it can't access the file. */
+        private static String[] listAccountsFromMinifs() {
+            try {
+                // Try both production (HOSTED) and dev paths, since
+                // we don't know which one the live server uses.
+                java.io.File hostedFile = new java.io.File(
+                    com.rs.Settings.LOGIN_DATA_PATH + ".data");
+                java.io.File devFile = new java.io.File(
+                    com.rs.Settings.LOGIN_DATA_PATH + "_"
+                    + System.getProperty("user.name") + ".data");
+                String basePath;
+                if (hostedFile.exists()) basePath = com.rs.Settings.LOGIN_DATA_PATH;
+                else if (devFile.exists()) basePath = com.rs.Settings.LOGIN_DATA_PATH
+                    + "_" + System.getProperty("user.name");
+                else return null;
+                minifs.MiniFS fs = minifs.MiniFS.open(basePath);
+                if (fs == null) return null;
+                String[] files = fs.listFiles("accounts/");
+                try { fs.flush(); } catch (Throwable ignored) {}
+                return files;
+            } catch (Throwable t) {
+                System.err.println("[AdminHttpServer] listAccountsFromMinifs failed: " + t);
+                return null;
+            }
         }
     }
 
