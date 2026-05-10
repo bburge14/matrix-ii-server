@@ -364,15 +364,23 @@ public final class AdminHttpServer {
 
     private static class PlayersHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) throws IOException {
-            StringBuilder sb = new StringBuilder("{\"ok\":true,\"players\":[");
-            boolean first = true;
+            // Online players (full detail) + offline accounts (name + flags
+            // only - inspecting offline accounts would mean loading every
+            // serialized Player file which is too expensive for a list).
+            // Two separate JSON arrays so the panel can show them in
+            // distinct sections.
+            java.util.HashSet<String> onlineLower = new java.util.HashSet<String>();
+            StringBuilder online = new StringBuilder();
+            boolean firstOn = true;
             try {
                 for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
                     if (p == null || p.isHeadless()) continue;
-                    if (!first) sb.append(",");
-                    first = false;
-                    sb.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
-                      .append("\",\"username\":\"").append(jsonEscape(p.getUsername()))
+                    if (!firstOn) online.append(",");
+                    firstOn = false;
+                    String uname = p.getUsername();
+                    if (uname != null) onlineLower.add(uname.toLowerCase());
+                    online.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
+                      .append("\",\"username\":\"").append(jsonEscape(uname))
                       .append("\",\"rights\":").append(p.getRights())
                       .append(",\"combat\":").append(p.getSkills().getCombatLevel())
                       .append(",\"total\":").append(p.getSkills().getTotalLevel())
@@ -387,7 +395,32 @@ public final class AdminHttpServer {
                       .append(",\"plane\":").append(p.getPlane()).append("}");
                 }
             } catch (Throwable ignored) {}
-            sb.append("]}");
+
+            StringBuilder offline = new StringBuilder();
+            boolean firstOff = true;
+            try {
+                String[] all = com.rs.utils.LoginFilesManager.getAllAccounts();
+                if (all != null) {
+                    java.util.Arrays.sort(all);
+                    for (String f : all) {
+                        if (f == null) continue;
+                        // Strip accounts/ prefix + .acc suffix.
+                        String name = f;
+                        int slash = name.lastIndexOf('/');
+                        if (slash >= 0) name = name.substring(slash + 1);
+                        if (name.endsWith(".acc")) name = name.substring(0, name.length() - 4);
+                        if (name.isEmpty()) continue;
+                        if (onlineLower.contains(name.toLowerCase())) continue;
+                        if (!firstOff) offline.append(",");
+                        firstOff = false;
+                        offline.append("{\"username\":\"").append(jsonEscape(name)).append("\"}");
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"ok\":true,\"players\":[").append(online)
+              .append("],\"offline\":[").append(offline).append("]}");
             sendText(ex, 200, sb.toString());
         }
     }
