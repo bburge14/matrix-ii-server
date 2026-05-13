@@ -263,7 +263,22 @@ public final class NPCCombat {
 				npc.resetWalkSteps();
 				// is far from target, moves to it till can attack
 				if ((!npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target))) || !Utils.isOnRange(npc.getX(), npc.getY(), size, target.getX(), target.getY(), targetSize, maxDistance)) {
-					npc.calcFollow(target, npc.getRun() ? 2 : 1, true, npc.isIntelligentRouteFinder());
+					// NPCs in combat run + use intelligent routing.
+					// Defaults were:
+					//   getRun() ? 2 : 1  -> NPCs walk at 1 tile/tick by
+					//   default, half a running player's speed, so a
+					//   fleeing player permanently outpaces every melee
+					//   monster.
+					//   isIntelligentRouteFinder()  -> defaults to false
+					//   for most NPCs, which routes them through
+					//   findBasicRoute (single-tile step straight at
+					//   target, no obstacle navigation, fails when any
+					//   other NPC sits on the next tile). Clustered
+					//   monsters end up blocking each other and never
+					//   converge on the player.
+					// Force both on during combat so monsters actually
+					// chase their target.
+					npc.calcFollow(target, 2, true, true);
 					return true;
 				}
 				// if under target, moves
