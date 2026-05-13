@@ -198,17 +198,25 @@ public final class NPCCombat {
 	}
 
 	/** Force-kick a combat tick. Called by NPC.handleIngoingHit after
-	 *  setTarget so the NPC swings back on the same tick instead of
-	 *  waiting for the next processNPC pass (which user reports often
-	 *  never happens). Resets combatDelay so the next process() runs
-	 *  combatAttack instead of decrementing. */
+	 *  setTarget so the next natural process() call attacks
+	 *  immediately instead of waiting on combatDelay.
+	 *
+	 *  IMPORTANT: this does NOT call process() inline. Earlier
+	 *  attempt called process() here, which fought with the
+	 *  WorldThread's natural NPC tick: both calls hit checkAll which
+	 *  resetWalkSteps the first call had just queued, so the NPC
+	 *  played walk animation but never moved a tile (user report:
+	 *  "they animate like they are walking but they are not moving").
+	 *  Resetting combatDelay alone is enough - the next natural tick
+	 *  fires combatAttack on its own. */
 	public void kickCombat() {
 		try {
 			combatDelay = 0;
-			com.rs.bot.BotLog.log("NPC-KICK", npc.getId()
-				+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-				+ " kickCombat - target=" + (target == null ? "null" : target.toString()));
-			process();
+			if (com.rs.utils.Utils.random(6) == 0) {
+				com.rs.bot.BotLog.log("NPC-KICK", npc.getId()
+					+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+					+ " kickCombat - target=" + (target == null ? "null" : target.toString()));
+			}
 		} catch (Throwable t) {
 			com.rs.bot.BotLog.log("NPC-KICK", "kick threw: " + t);
 		}
