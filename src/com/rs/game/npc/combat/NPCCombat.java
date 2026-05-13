@@ -254,11 +254,16 @@ public final class NPCCombat {
 					return false;
 				}
 			}
-			maxDistance = agroRatio > 16 ? agroRatio : 16;
+			// Target-distance check: max distance between NPC and the
+			// target it's chasing. Bumped 16 -> 24 so NPCs don't drop
+			// target the moment the player walks a couple of tiles
+			// away. Real RS NPCs persist target longer; 16 was too
+			// twitchy.
+			maxDistance = agroRatio > 24 ? agroRatio : 24;
 			distanceX = target.getX() - npc.getX();
 			distanceY = target.getY() - npc.getY();
 			if (distanceX > size + maxDistance || distanceX < -1 - maxDistance || distanceY > size + maxDistance || distanceY < -1 - maxDistance) {
-				return false; // if target distance higher 16
+				return false; // if target distance > 24
 			}
 		} else {
 			distanceX = target.getX() - npc.getX();

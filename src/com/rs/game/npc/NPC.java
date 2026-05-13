@@ -220,15 +220,17 @@ public class NPC extends Entity implements Serializable {
 		// Top-level diagnostic. Fires BEFORE the dead/locked
 		// short-circuit so we can definitively prove processNPC is
 		// being called for an NPC the player is fighting. Sampled
-		// 1-in-50 so it doesn't spam (with hundreds of NPCs and a
-		// 600ms tick rate that's still ~2 lines/second world-wide).
-		if (com.rs.utils.Utils.random(50) == 0
+		// 1-in-10 (was 1-in-50) so it actually shows up in the user's
+		// short log windows. Only fires when target is a real Player
+		// so bot-vs-bot doesn't drown the signal.
+		if (com.rs.utils.Utils.random(10) == 0
 				&& combat != null && combat.getTarget() instanceof com.rs.game.player.Player
 				&& !(combat.getTarget() instanceof com.rs.bot.AIPlayer)) {
 			try {
 				com.rs.bot.BotLog.log("NPC-TICK", getId()
 					+ " " + (getDefinitions() != null ? getDefinitions().name : "?")
 					+ " dead=" + isDead() + " locked=" + locked
+					+ " hasWalkSteps=" + hasWalkSteps()
 					+ " target=" + combat.getTarget());
 			} catch (Throwable ignored) {}
 		}
