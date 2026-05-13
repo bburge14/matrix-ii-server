@@ -657,6 +657,18 @@ public class NPC extends Entity implements Serializable {
 				if (playerIndexes != null) {
 					for (int playerIndex : playerIndexes) {
 						Player player = World.getPlayers().get(playerIndex);
+						// Skip AIPlayers (bots) from the aggression target
+						// pool. With hundreds of bots spawned in populated
+						// zones the random selection downstream picked a
+						// bot 99% of the time, so aggressive monsters
+						// effectively "stopped attacking" real players.
+						// Bots still attack NPCs themselves via their own
+						// CitizenBrain combat path, and NPCs still
+						// retaliate against bots via the standard
+						// engine autoRelatie/applyHit flow after a bot
+						// hits them - this only stops bots from being
+						// PROACTIVELY aggro'd by aggressive monsters.
+						if (player instanceof com.rs.bot.AIPlayer) continue;
 						if (player == null || player.getCutscenesManager().hasCutscene() || !player.clientHasLoadedMapRegion() || player.getPlane() != getPlane() || player.isDead() || player.hasFinished() || !player.isRunning() || player.getAppearence().isHidden() || !Utils.isOnRange(getX(), getY(), size, player.getX(), player.getY(), player.getSize(), forceTargetDistance > 0 ? forceTargetDistance : agroRatio) || !clipedProjectile(player, false) || (!forceAgressive && !Wilderness.isAtWild(this) && player.getSkills().getCombatLevelWithSummoning() >= getCombatLevel() * 2))
 							continue;
 						possibleTarget.add(player);
