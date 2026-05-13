@@ -323,6 +323,29 @@ public class NPC extends Entity implements Serializable {
 	public void handleIngoingHit(final Hit hit) {
 		if (capDamage != -1 && hit.getDamage() > capDamage)
 			hit.setDamage(capDamage);
+		Entity hitSource = hit.getSource();
+		// Force-retaliate BEFORE the look filter. Stock RS retaliates on
+		// every successful swing including misses - an admin / low-level
+		// player attacking a high-level NPC almost always rolls MISSED,
+		// and the look filter below bails out before our retal hook ever
+		// runs. Moving the hook above the filter ensures MISSED hits
+		// still trigger retal. Also preempts AIPlayer (bot) targets so
+		// real players are never ignored in favour of a residual bot
+		// face-target.
+		if (hitSource instanceof Player
+				&& !(hitSource instanceof com.rs.bot.AIPlayer)) {
+			try {
+				if (combat != null
+						&& !isDead() && !hasFinished()
+						&& !isCantInteract() && !isForceWalking()
+						&& getDefinitions() != null) {
+					Entity cur = combat.getTarget();
+					if (cur != hitSource) {
+						setTarget(hitSource);
+					}
+				}
+			} catch (Throwable ignored) {}
+		}
 		if (hit.getLook() != HitLook.MELEE_DAMAGE && hit.getLook() != HitLook.RANGE_DAMAGE && hit.getLook() != HitLook.MAGIC_DAMAGE)
 			return;
 		Entity source = hit.getSource();
@@ -333,26 +356,6 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
-			// Force-retaliate when hit by a real player. The engine's
-			// stock retal path (autoRelatie) is gated by lureDelay so
-			// it rejects retaliate during the 12s window after a prior
-			// setTarget. Real RS behaviour is "fight back whoever hit
-			// you most recently" - so retarget any time the current
-			// target isn't the actual player attacking us. This also
-			// PREEMPTS bot targets: NPCs locked onto an AIPlayer get
-			// switched to the real player on the first hit.
-			try {
-				if (combat != null
-						&& !(source instanceof com.rs.bot.AIPlayer)
-						&& !isDead() && !hasFinished()
-						&& !isCantInteract() && !isForceWalking()
-						&& getDefinitions() != null) {
-					Entity cur = combat.getTarget();
-					if (cur != source) {
-						setTarget(source);
-					}
-				}
-			} catch (Throwable ignored) {}
 		}
 
 	}
@@ -645,7 +648,14 @@ public class NPC extends Entity implements Serializable {
 		if (isForceWalking() || cantInteract) // if force walk not gonna get target
 			return;
 		combat.setTarget(entity);
-		lastAttackedByTarget = Utils.currentTimeMillis();
+		// Only stamp lastAttackedByTarget if combat ACTUALLY locked onto
+		// this target. combat.setTarget calls checkAll and clears the
+		// target on failure (distance, plane mismatch, etc) - stamping
+		// the timestamp anyway would gate autoRelatie for the next 12
+		// seconds even though no engagement happened, so subsequent
+		// hits also can't retaliate. Stamp only on success.
+		if (combat.getTarget() == entity)
+			lastAttackedByTarget = Utils.currentTimeMillis();
 	}
 
 	public void removeTarget() {
