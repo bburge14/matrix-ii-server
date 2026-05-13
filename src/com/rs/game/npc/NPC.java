@@ -333,24 +333,24 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
-			// Force-retaliate when hit by a player. The engine's stock
-			// retal path (PlayerCombatNew.delayHit -> autoRelatie ->
-			// n.setTarget(player)) is gated by canBeAttackedByAutoRelatie
-			// which checks a 12-second lureDelay window. In several real
-			// scenarios (multi-attack ticks, lureDelay drift, scripted
-			// bosses) that gate rejects the retaliate even on first hit
-			// and the NPC just stands there. Real RS behaviour is "if
-			// you hit it, it fights back" - so set target whenever
-			// combat.target is currently null AND the NPC is alive AND
-			// interactable. Single setTarget call, no extra ticks, no
-			// kickCombat - lets the engine's natural process() loop
-			// handle everything else.
+			// Force-retaliate when hit by a real player. The engine's
+			// stock retal path (autoRelatie) is gated by lureDelay so
+			// it rejects retaliate during the 12s window after a prior
+			// setTarget. Real RS behaviour is "fight back whoever hit
+			// you most recently" - so retarget any time the current
+			// target isn't the actual player attacking us. This also
+			// PREEMPTS bot targets: NPCs locked onto an AIPlayer get
+			// switched to the real player on the first hit.
 			try {
-				if (combat != null && combat.getTarget() == null
+				if (combat != null
+						&& !(source instanceof com.rs.bot.AIPlayer)
 						&& !isDead() && !hasFinished()
 						&& !isCantInteract() && !isForceWalking()
 						&& getDefinitions() != null) {
-					setTarget(source);
+					Entity cur = combat.getTarget();
+					if (cur != source) {
+						setTarget(source);
+					}
 				}
 			} catch (Throwable ignored) {}
 		}
@@ -743,7 +743,14 @@ public class NPC extends Entity implements Serializable {
 	public boolean checkAgressivity() {
 		if (!forceAgressive) {
 			NPCCombatDefinitions defs = getCombatDefinitions();
-			if (!defs.isAgressive())
+			// Stock RuneScape rule: monsters that aren't aggressive in
+			// safe zones BECOME aggressive in the wilderness. The data
+			// file flags Greater Demons / Dark Wizards / etc. as
+			// aggressive=false so they don't aggro Lumby tutorial spots,
+			// but in wildy they SHOULD aggro. Without this override,
+			// nothing in the wildy chases the player and "monsters don't
+			// attack me anymore".
+			if (!defs.isAgressive() && !com.rs.game.player.controllers.Wilderness.isAtWild(this))
 				return false;
 		}
 		ArrayList<Entity> possibleTarget = getPossibleTargets();
