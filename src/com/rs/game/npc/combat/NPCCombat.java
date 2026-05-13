@@ -213,7 +213,16 @@ public final class NPCCombat {
 		int maxDistance;
 		int agroRatio = npc.getCombatDefinitions().getAgroRatio();
 		if (!npc.isNoDistanceCheck() && !npc.isCantFollowUnderCombat()) {
-			maxDistance = agroRatio > 12 ? agroRatio : 12; //before 32, but its too much
+			// User report: NPCs don't retaliate. Root cause: this
+			// distance check wipes the target the moment the NPC
+			// drifts past `maxDistance` tiles from its respawn tile.
+			// At maxDistance=12 even a few seconds of wandering puts
+			// regular mobs (Goblins / Cows / Guards) out of range,
+			// so every checkAll fires forceWalkRespawnTile + removes
+			// the target before combatAttack ever runs. Bumped the
+			// floor from 12 to 32 so NPCs can chase a player a
+			// realistic distance before rubber-banding home.
+			maxDistance = agroRatio > 32 ? agroRatio : 32;
 			if (!(npc instanceof Familiar)) {
 
 				if (npc.getMapAreaNameHash() != -1) {
