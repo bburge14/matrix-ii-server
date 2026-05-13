@@ -32,12 +32,28 @@ public final class WorldThread extends Thread {
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
-					player.processEntity();
+					// Per-entity try/catch. The shared try/catch around the
+					// player AND npc loop meant a single bot throwing in
+					// processEntity aborted the rest of THAT player loop
+					// AND the entire npc loop for the tick - every tick.
+					// NPCs never got their processNPC call, so no
+					// aggression, no retaliation, no movement, while
+					// players still moved fine (processMovement lives
+					// in the separate processEntityUpdate try block).
+					try {
+						player.processEntity();
+					} catch (Throwable t) {
+						Logger.handle(t);
+					}
 				}
 				for (NPC npc : World.getNPCs()) {
 					if (npc == null || npc.hasFinished())
 						continue;
-					npc.processEntity();
+					try {
+						npc.processEntity();
+					} catch (Throwable t) {
+						Logger.handle(t);
+					}
 				}
 				WorldTickProfiler.end("processEntity");
 			} catch (Throwable e) {
@@ -48,12 +64,20 @@ public final class WorldThread extends Thread {
 				for (Player player : World.getPlayers()) {
 					if (!player.hasStarted() || player.hasFinished())
 						continue;
-					player.processEntityUpdate();
+					try {
+						player.processEntityUpdate();
+					} catch (Throwable t) {
+						Logger.handle(t);
+					}
 				}
 				for (NPC npc : World.getNPCs()) {
 					if (npc == null || npc.hasFinished())
 						continue;
-					npc.processEntityUpdate();
+					try {
+						npc.processEntityUpdate();
+					} catch (Throwable t) {
+						Logger.handle(t);
+					}
 				}
 				WorldTickProfiler.end("processEntityUpdate");
 			} catch (Throwable e) {
