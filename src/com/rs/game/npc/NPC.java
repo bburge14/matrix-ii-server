@@ -333,6 +333,26 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
+			// Force-retaliate when hit by a player. The engine's stock
+			// retal path (PlayerCombatNew.delayHit -> autoRelatie ->
+			// n.setTarget(player)) is gated by canBeAttackedByAutoRelatie
+			// which checks a 12-second lureDelay window. In several real
+			// scenarios (multi-attack ticks, lureDelay drift, scripted
+			// bosses) that gate rejects the retaliate even on first hit
+			// and the NPC just stands there. Real RS behaviour is "if
+			// you hit it, it fights back" - so set target whenever
+			// combat.target is currently null AND the NPC is alive AND
+			// interactable. Single setTarget call, no extra ticks, no
+			// kickCombat - lets the engine's natural process() loop
+			// handle everything else.
+			try {
+				if (combat != null && combat.getTarget() == null
+						&& !isDead() && !hasFinished()
+						&& !isCantInteract() && !isForceWalking()
+						&& getDefinitions() != null) {
+					setTarget(source);
+				}
+			} catch (Throwable ignored) {}
 		}
 
 	}
