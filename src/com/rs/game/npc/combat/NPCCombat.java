@@ -197,6 +197,23 @@ public final class NPCCombat {
 		}
 	}
 
+	/** Force-kick a combat tick. Called by NPC.handleIngoingHit after
+	 *  setTarget so the NPC swings back on the same tick instead of
+	 *  waiting for the next processNPC pass (which user reports often
+	 *  never happens). Resets combatDelay so the next process() runs
+	 *  combatAttack instead of decrementing. */
+	public void kickCombat() {
+		try {
+			combatDelay = 0;
+			com.rs.bot.BotLog.log("NPC-KICK", npc.getId()
+				+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+				+ " kickCombat - target=" + (target == null ? "null" : target.toString()));
+			process();
+		} catch (Throwable t) {
+			com.rs.bot.BotLog.log("NPC-KICK", "kick threw: " + t);
+		}
+	}
+
 	public boolean checkAll() {
 		Entity target = this.target; // prevents multithread issues
 		if (target == null)
@@ -213,7 +230,16 @@ public final class NPCCombat {
 		int maxDistance;
 		int agroRatio = npc.getCombatDefinitions().getAgroRatio();
 		if (!npc.isNoDistanceCheck() && !npc.isCantFollowUnderCombat()) {
-			maxDistance = agroRatio > 12 ? agroRatio : 12; //before 32, but its too much
+			// User report: NPCs don't retaliate. Root cause: this
+			// distance check wipes the target the moment the NPC
+			// drifts past `maxDistance` tiles from its respawn tile.
+			// At maxDistance=12 even a few seconds of wandering puts
+			// regular mobs (Goblins / Cows / Guards) out of range,
+			// so every checkAll fires forceWalkRespawnTile + removes
+			// the target before combatAttack ever runs. Bumped the
+			// floor from 12 to 32 so NPCs can chase a player a
+			// realistic distance before rubber-banding home.
+			maxDistance = agroRatio > 32 ? agroRatio : 32;
 			if (!(npc instanceof Familiar)) {
 
 				if (npc.getMapAreaNameHash() != -1) {
@@ -228,11 +254,16 @@ public final class NPCCombat {
 					return false;
 				}
 			}
-			maxDistance = agroRatio > 16 ? agroRatio : 16;
+			// Target-distance check: max distance between NPC and the
+			// target it's chasing. Bumped 16 -> 24 so NPCs don't drop
+			// target the moment the player walks a couple of tiles
+			// away. Real RS NPCs persist target longer; 16 was too
+			// twitchy.
+			maxDistance = agroRatio > 24 ? agroRatio : 24;
 			distanceX = target.getX() - npc.getX();
 			distanceY = target.getY() - npc.getY();
 			if (distanceX > size + maxDistance || distanceX < -1 - maxDistance || distanceY > size + maxDistance || distanceY < -1 - maxDistance) {
-				return false; // if target distance higher 16
+				return false; // if target distance > 24
 			}
 		} else {
 			distanceX = target.getX() - npc.getX();

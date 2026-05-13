@@ -3095,11 +3095,14 @@ class PlayersFrame(ctk.CTkFrame):
         ctk.CTkLabel(self, text="Right-click a player for admin actions. Double-click to view stats.",
                      font=ctk.CTkFont(size=11)).pack(anchor="w", padx=20)
 
+        # Online players section
+        ctk.CTkLabel(self, text="Online", font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color="#5fbd5f").pack(anchor="w", padx=20, pady=(8, 2))
         tree_frame = ctk.CTkFrame(self)
-        tree_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=(0, 6))
 
         cols = ("name", "rights", "donator", "extreme", "supporter", "muted", "combat", "total", "x", "y", "plane")
-        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse", height=10)
         widths = (160, 70, 70, 70, 80, 60, 70, 60, 60, 60, 50)
         for c, w in zip(cols, widths):
             self.tree.heading(c, text=c.title(), anchor="w")
@@ -3109,10 +3112,27 @@ class PlayersFrame(ctk.CTkFrame):
         sb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=sb.set)
 
+        # Offline accounts section
+        ctk.CTkLabel(self, text="Offline (saved accounts)",
+                     font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color="#888888").pack(anchor="w", padx=20, pady=(8, 2))
+        offline_frame = ctk.CTkFrame(self)
+        offline_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        off_cols = ("username",)
+        self.offline_tree = ttk.Treeview(offline_frame, columns=off_cols,
+                                          show="headings", selectmode="browse", height=10)
+        self.offline_tree.heading("username", text="Username", anchor="w")
+        self.offline_tree.column("username", width=240, anchor="w")
+        self.offline_tree.pack(side="left", fill="both", expand=True)
+        osb = ttk.Scrollbar(offline_frame, orient="vertical", command=self.offline_tree.yview)
+        osb.pack(side="right", fill="y")
+        self.offline_tree.configure(yscrollcommand=osb.set)
+
         self._build_menu()
         self.tree.bind("<Button-3>", self._on_right_click)
         self.tree.bind("<Double-1>", lambda e: self._action("view_stats"))
         self.players = []
+        self.offline = []
 
     def _build_menu(self):
         m = tk.Menu(self, tearoff=0)
@@ -3156,9 +3176,12 @@ class PlayersFrame(ctk.CTkFrame):
             try:
                 r = self.api.players()
                 self.players = r.get("players", [])
+                self.offline = r.get("offline", [])
                 self.after(0, self._update)
-                player_count = len(self.players)
-                self.after(0, lambda: self.count_label.configure(text=f"{player_count} online"))
+                p_on = len(self.players)
+                p_off = len(self.offline)
+                self.after(0, lambda: self.count_label.configure(
+                    text=f"{p_on} online / {p_off} offline"))
             except Exception as e:
                 error_msg = str(e)
                 self.after(0, lambda: messagebox.showerror("Error", error_msg))
@@ -3173,6 +3196,10 @@ class PlayersFrame(ctk.CTkFrame):
                 "✓" if p.get("supporter") else "", "✓" if p.get("muted") else "",
                 p.get("combat",""), p.get("total",""),
                 p.get("x",""), p.get("y",""), p.get("plane","")))
+        self.offline_tree.delete(*self.offline_tree.get_children())
+        for p in self.offline:
+            self.offline_tree.insert("", "end",
+                values=(p.get("username", ""),))
 
     def _on_right_click(self, e):
         row = self.tree.identify_row(e.y)

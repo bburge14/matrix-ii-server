@@ -217,6 +217,23 @@ public class NPC extends Entity implements Serializable {
 	}
 
 	public void processNPC() {
+		// Top-level diagnostic. Fires BEFORE the dead/locked
+		// short-circuit so we can definitively prove processNPC is
+		// being called for an NPC the player is fighting. Sampled
+		// 1-in-10 (was 1-in-50) so it actually shows up in the user's
+		// short log windows. Only fires when target is a real Player
+		// so bot-vs-bot doesn't drown the signal.
+		if (com.rs.utils.Utils.random(10) == 0
+				&& combat != null && combat.getTarget() instanceof com.rs.game.player.Player
+				&& !(combat.getTarget() instanceof com.rs.bot.AIPlayer)) {
+			try {
+				com.rs.bot.BotLog.log("NPC-TICK", getId()
+					+ " " + (getDefinitions() != null ? getDefinitions().name : "?")
+					+ " dead=" + isDead() + " locked=" + locked
+					+ " hasWalkSteps=" + hasWalkSteps()
+					+ " target=" + combat.getTarget());
+			} catch (Throwable ignored) {}
+		}
 		if (isDead() || locked)
 			return;
 		// Force-retaliate. If something hit us recently (attackedBy +
@@ -407,6 +424,15 @@ public class NPC extends Entity implements Serializable {
 				} else if (preemptForPlayer && getDefinitions() != null) {
 					setTarget(source);
 					attempted = true;
+				}
+				// Force a combat tick on the same hit. The engine's
+				// process() ticks every 600ms but user reports show
+				// it apparently isn't running for the goblin's combat
+				// (no NPC-PROCESS / NPC-COMBAT lines). Kick it
+				// manually so the NPC swings back NOW instead of
+				// waiting for some lifecycle that may never come.
+				if (combat != null && combat.getTarget() != null) {
+					combat.kickCombat();
 				}
 				if (com.rs.utils.Utils.random(3) == 0) {
 					String state;

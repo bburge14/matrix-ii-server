@@ -364,15 +364,23 @@ public final class AdminHttpServer {
 
     private static class PlayersHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) throws IOException {
-            StringBuilder sb = new StringBuilder("{\"ok\":true,\"players\":[");
-            boolean first = true;
+            // Online players (full detail) + offline accounts (name + flags
+            // only - inspecting offline accounts would mean loading every
+            // serialized Player file which is too expensive for a list).
+            // Two separate JSON arrays so the panel can show them in
+            // distinct sections.
+            java.util.HashSet<String> onlineLower = new java.util.HashSet<String>();
+            StringBuilder online = new StringBuilder();
+            boolean firstOn = true;
             try {
                 for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
                     if (p == null || p.isHeadless()) continue;
-                    if (!first) sb.append(",");
-                    first = false;
-                    sb.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
-                      .append("\",\"username\":\"").append(jsonEscape(p.getUsername()))
+                    if (!firstOn) online.append(",");
+                    firstOn = false;
+                    String uname = p.getUsername();
+                    if (uname != null) onlineLower.add(uname.toLowerCase());
+                    online.append("{\"name\":\"").append(jsonEscape(p.getDisplayName()))
+                      .append("\",\"username\":\"").append(jsonEscape(uname))
                       .append("\",\"rights\":").append(p.getRights())
                       .append(",\"combat\":").append(p.getSkills().getCombatLevel())
                       .append(",\"total\":").append(p.getSkills().getTotalLevel())
@@ -387,8 +395,75 @@ public final class AdminHttpServer {
                       .append(",\"plane\":").append(p.getPlane()).append("}");
                 }
             } catch (Throwable ignored) {}
-            sb.append("]}");
+
+            StringBuilder offline = new StringBuilder();
+            boolean firstOff = true;
+            try {
+                // The login server normally owns LoginFilesManager. When
+                // the game server runs as a separate process its
+                // filesystem field is null and getAllAccounts() returns
+                // nothing. Lazy-init here so the admin endpoint can
+                // read the same accounts/ MiniFS file (read-only).
+                try { com.rs.utils.LoginFilesManager.init(); }
+                catch (Throwable ignored) {}
+                String[] all = com.rs.utils.LoginFilesManager.getAllAccounts();
+                if (all == null || all.length == 0) {
+                    // Fallback: directly enumerate the accounts MiniFS
+                    // by re-opening it read-only (handles the case
+                    // where init() bailed because the login server has
+                    // the file open exclusively).
+                    all = listAccountsFromMinifs();
+                }
+                if (all != null) {
+                    java.util.Arrays.sort(all);
+                    for (String f : all) {
+                        if (f == null) continue;
+                        // Strip accounts/ prefix + .acc suffix.
+                        String name = f;
+                        int slash = name.lastIndexOf('/');
+                        if (slash >= 0) name = name.substring(slash + 1);
+                        if (name.endsWith(".acc")) name = name.substring(0, name.length() - 4);
+                        if (name.isEmpty()) continue;
+                        if (onlineLower.contains(name.toLowerCase())) continue;
+                        if (!firstOff) offline.append(",");
+                        firstOff = false;
+                        offline.append("{\"username\":\"").append(jsonEscape(name)).append("\"}");
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"ok\":true,\"players\":[").append(online)
+              .append("],\"offline\":[").append(offline).append("]}");
             sendText(ex, 200, sb.toString());
+        }
+
+        /** Open the accounts MiniFS read-only (separate handle from the
+         *  one the login server might hold) and list the accounts/
+         *  directory. Returns null if it can't access the file. */
+        private static String[] listAccountsFromMinifs() {
+            try {
+                // Try both production (HOSTED) and dev paths, since
+                // we don't know which one the live server uses.
+                java.io.File hostedFile = new java.io.File(
+                    com.rs.Settings.LOGIN_DATA_PATH + ".data");
+                java.io.File devFile = new java.io.File(
+                    com.rs.Settings.LOGIN_DATA_PATH + "_"
+                    + System.getProperty("user.name") + ".data");
+                String basePath;
+                if (hostedFile.exists()) basePath = com.rs.Settings.LOGIN_DATA_PATH;
+                else if (devFile.exists()) basePath = com.rs.Settings.LOGIN_DATA_PATH
+                    + "_" + System.getProperty("user.name");
+                else return null;
+                minifs.MiniFS fs = minifs.MiniFS.open(basePath);
+                if (fs == null) return null;
+                String[] files = fs.listFiles("accounts/");
+                try { fs.flush(); } catch (Throwable ignored) {}
+                return files;
+            } catch (Throwable t) {
+                System.err.println("[AdminHttpServer] listAccountsFromMinifs failed: " + t);
+                return null;
+            }
         }
     }
 
