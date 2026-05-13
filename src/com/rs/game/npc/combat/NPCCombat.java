@@ -197,6 +197,23 @@ public final class NPCCombat {
 		}
 	}
 
+	/** Force-kick a combat tick. Called by NPC.handleIngoingHit after
+	 *  setTarget so the NPC swings back on the same tick instead of
+	 *  waiting for the next processNPC pass (which user reports often
+	 *  never happens). Resets combatDelay so the next process() runs
+	 *  combatAttack instead of decrementing. */
+	public void kickCombat() {
+		try {
+			combatDelay = 0;
+			com.rs.bot.BotLog.log("NPC-KICK", npc.getId()
+				+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
+				+ " kickCombat - target=" + (target == null ? "null" : target.toString()));
+			process();
+		} catch (Throwable t) {
+			com.rs.bot.BotLog.log("NPC-KICK", "kick threw: " + t);
+		}
+	}
+
 	public boolean checkAll() {
 		Entity target = this.target; // prevents multithread issues
 		if (target == null)
