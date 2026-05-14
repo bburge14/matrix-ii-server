@@ -1133,6 +1133,12 @@ public class BotBrain {
     }
 
     protected void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.content.BonesOnAltar) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
             if (lvl < method.minLevel) {
@@ -1188,6 +1194,12 @@ public class BotBrain {
     }
 
     protected void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.GemCutting) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
             if (lvl < method.minLevel) {
@@ -1225,6 +1237,12 @@ public class BotBrain {
     }
 
     protected void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Smelting) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
             if (lvl < method.minLevel) {
@@ -1281,6 +1299,13 @@ public class BotBrain {
     }
 
     protected void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Cooking) {
+            return;
+        }
+        // Note: don't sim-bank here - we WANT raw food in inventory; the
+        // restock path adds more raw items when the inventory empties.
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
             if (lvl < method.minLevel) {
@@ -1335,6 +1360,17 @@ public class BotBrain {
     }
 
     protected void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+        // Same critical guard as woodcutting/mining/fishing - the brain
+        // ticks every 600ms and would re-set the Firemaking action,
+        // resetting its internal "lighting" timer. The visible symptom
+        // was bots dropping a log on tile X, walking one tile, dropping
+        // another log, walking again - leaving a trail of unburned logs
+        // because each tick interrupted the light-in-progress.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Firemaking) {
+            return;
+        }
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
             if (lvl < method.minLevel) {
@@ -1366,22 +1402,18 @@ public class BotBrain {
             } catch (Throwable ignored) {}
         }
         if (targetFire == null) {
-            // Restock instead of blacklisting. User: "if a bot has a
-            // debug that says they don't have something, they either
-            // spawn it. OR go to the trader at burthorp and buy what
-            // they need". Fast path: spawn a stack of the highest-tier
-            // log they can use straight into inventory and re-pick
-            // the target on next tick. No more "no logs" spam +
-            // bots actually progress firemaking.
+            // Restock - spawn a stack of the highest-tier log this bot
+            // can use. Throttled chat so we don't spam "restocked logs"
+            // every tick into bots.log.
             int logId = bestLogIdForFm(botFmLvl);
             try { bot.getInventory().addItem(logId, 28); } catch (Throwable ignored) {}
             lastDiagnostic = "fm: restocked " + logId + " x28";
-            sayDebug("restocked logs (" + logId + " x28)");
+            if (Utils.random(100) < 5) sayDebug("restocked logs (" + logId + " x28)");
             return;
         }
         bot.getActionManager().setAction(new com.rs.game.player.actions.Firemaking(targetFire));
         lastDiagnostic = "fm: lighting " + targetFire;
-        if (Utils.random(100) < 30) say("nice cozy fire");
+        if (Utils.random(100) < 30) say(firemakingChatter());
     }
 
     /** Last training method the bot announced - used to avoid spamming chat. */
@@ -2358,6 +2390,22 @@ public class BotBrain {
         "going to lower my hp on purpose", "veng on cooldown rip",
         "praying mage here hits 0s"
     };
+    private static final String[] FIREMAKING_CHATTER = {
+        "nice cozy fire", "another inv burned", "love the fm grind",
+        "fm cape soon", "burning yew logs", "fm 99 incoming",
+        "wintertodt is way faster", "watching the flames",
+        "fmaker for life", "got the phoenix pet from fm finally",
+        "tinderbox just broke jk", "magic logs burn so fast",
+        "this is peaceful", "love the warmth", "pyromaniac",
+        "anyone want a fire to cook on?", "running the GE strip",
+        "fms cape makes the burner light", "bonfire xp boost up",
+        "willows burn quick", "firemaking on edge",
+        "the smoke is rough today", "this is afk gold",
+        "got 99 firemaking with maples", "burning all the way to 99",
+        "podcast time while burning", "fm gauntlets when",
+        "lighting one more inv", "always more logs to burn"
+    };
+    private String firemakingChatter() { return FIREMAKING_CHATTER[Utils.random(FIREMAKING_CHATTER.length)]; }
     private String woodcuttingChatter() { return WOODCUTTING_CHATTER[Utils.random(WOODCUTTING_CHATTER.length)]; }
     private String miningChatter() { return MINING_CHATTER[Utils.random(MINING_CHATTER.length)]; }
     private String fishingChatter() { return FISHING_CHATTER[Utils.random(FISHING_CHATTER.length)]; }
