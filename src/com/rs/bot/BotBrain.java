@@ -1462,6 +1462,39 @@ public class BotBrain {
     protected boolean goalBlacklisted(com.rs.bot.ai.TrainingMethods.Method m) {
         return m != null && goalBlacklist.contains(m);
     }
+
+    /**
+     * Sim-bank: clear the bot's inventory so the next gathering swing
+     * doesn't reject with "Not enough space". Citizen bots don't have
+     * real bank state and aren't worth a full bank-trip detour, so we
+     * just drop the gathered items in place. WC-TRACE was showing
+     * inv=0/28 across every WC bot - they'd fill once, hit hasFreeSlots
+     * == false, and never chop again. Called before setAction in each
+     * gathering action's tryStart*. Returns true when something was
+     * cleared (caller may want to skip this tick).
+     *
+     * Keeps equipped tools (axes / pickaxes / fishing kit) since those
+     * sit in equipment slots, not inventory. Anything in inventory is
+     * fair game - this is a sim-bank, not a sim-keep.
+     */
+    protected boolean simBankInventoryIfFull(AIPlayer b) {
+        try {
+            if (b == null || b.getInventory() == null) return false;
+            int free = b.getInventory().getFreeSlots();
+            if (free > 0) return false;
+            // Reach directly into the items container - skips refresh()
+            // which calls player.getPackets().sendUpdateItems and NPEs
+            // for headless bots (no session).
+            com.rs.game.item.ItemsContainer<com.rs.game.item.Item> items =
+                b.getInventory().getItems();
+            if (items != null) {
+                items.reset();
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
     /** Goal description tied to the current blacklist - reset when goal changes. */
     private String blacklistGoalDesc = null;
     /** Threshold: if no XP gained in this many ms, declare method stuck. */
@@ -1605,6 +1638,11 @@ public class BotBrain {
                     instanceof com.rs.game.player.actions.Woodcutting) {
             return;
         }
+        // Sim-bank: if inventory is full, the Woodcutting action's
+        // checkAll rejects with "Not enough space" and the bot oscillates
+        // between trees forever. Citizens don't bank for real - just
+        // wipe the inventory and keep gathering.
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
@@ -1711,6 +1749,7 @@ public class BotBrain {
                     instanceof com.rs.game.player.actions.mining.Mining) {
             return;
         }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
@@ -1793,6 +1832,7 @@ public class BotBrain {
                     instanceof com.rs.game.player.actions.Fishing) {
             return;
         }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
