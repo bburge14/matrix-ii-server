@@ -40,6 +40,20 @@ public class BotBrain {
     private int restlessness;
     private long lastMajorDecision;
 
+    // Stickiness: cached scan target so the bot commits to ONE tree / rock /
+    // fishing spot / combat NPC for several ticks instead of re-rolling
+    // every tick (the scanner returns weighted-random matches now to spread
+    // bots across resources). Without this the bot walks toward Tree A on
+    // tick N, then re-scans on tick N+1 and walks toward Tree B, never
+    // arriving at either. Cleared when the target object is gone or the
+    // bot is already adjacent to it.
+    protected com.rs.game.WorldObject cachedTargetObject;
+    protected com.rs.game.npc.NPC cachedTargetNpc;
+    /** Ticks remaining before we force a re-scan even if the target is
+     *  still valid. Prevents the bot from getting permanently locked to
+     *  an unreachable target. */
+    protected int cachedTargetTtl;
+
     // Goal-driven behavior
     private long lastGoalCheck;
     private long lastMovementTick;
@@ -1611,9 +1625,36 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("no axe + no gp, need to earn first");
             return;
         }
-        EnvironmentScanner.TreeMatch match =
-            EnvironmentScanner.findNearestTree(bot, 24, method == null ? null : method.treeDef);
+        EnvironmentScanner.TreeMatch match = null;
+        // Sticky target: keep walking to the previously-chosen tree until
+        // the TTL expires or we're adjacent. Without this, the
+        // weighted-random scanner returns a different tree each tick and
+        // the bot oscillates without ever arriving. TTL is the safety
+        // net for trees that turn out to be unreachable (clip-blocked
+        // by a fence, etc.) - we re-pick after a few seconds.
+        if (cachedTargetObject != null && cachedTargetTtl > 0) {
+            String name = cachedTargetObject.getDefinitions().getName();
+            com.rs.game.player.actions.Woodcutting.TreeDefinitions td =
+                EnvironmentScanner.matchTree(name);
+            if (td != null && (method.treeDef == null || td == method.treeDef)) {
+                match = new EnvironmentScanner.TreeMatch(cachedTargetObject, td);
+                cachedTargetTtl--;
+            } else {
+                // Tree got chopped down (stump replaced the object) or
+                // method changed - clear and re-scan.
+                cachedTargetObject = null;
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestTree(bot, 24,
+                method == null ? null : method.treeDef);
+            if (match != null) {
+                cachedTargetObject = match.object;
+                cachedTargetTtl = 20; // ~12s to reach + commit
+            }
+        }
+        if (match == null) {
+            cachedTargetObject = null;
             lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1625,6 +1666,7 @@ public class BotBrain {
             return;
         }
         bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+        cachedTargetObject = null; // action took over; let next idle re-pick
         lastDiagnostic = "wc: chopping " + match.definition;
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
@@ -1666,9 +1708,30 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("no pickaxe + no gp, need to earn first");
             return;
         }
-        EnvironmentScanner.RockMatch match =
-            EnvironmentScanner.findNearestRock(bot, 24, method == null ? null : method.rockDef);
+        EnvironmentScanner.RockMatch match = null;
+        // Same sticky-target pattern as woodcutting - commit to one rock
+        // until reached or TTL expires.
+        if (cachedTargetObject != null && cachedTargetTtl > 0) {
+            String name = cachedTargetObject.getDefinitions().getName();
+            com.rs.game.player.actions.mining.Mining.RockDefinitions rd =
+                EnvironmentScanner.matchRock(name);
+            if (rd != null && (method.rockDef == null || rd == method.rockDef)) {
+                match = new EnvironmentScanner.RockMatch(cachedTargetObject, rd);
+                cachedTargetTtl--;
+            } else {
+                cachedTargetObject = null;
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestRock(bot, 24,
+                method == null ? null : method.rockDef);
+            if (match != null) {
+                cachedTargetObject = match.object;
+                cachedTargetTtl = 20;
+            }
+        }
+        if (match == null) {
+            cachedTargetObject = null;
             lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1680,6 +1743,7 @@ public class BotBrain {
             return;
         }
         bot.getActionManager().setAction(new Mining(match.object, match.definition));
+        cachedTargetObject = null;
         lastDiagnostic = "mining: extracting " + match.definition;
         if (Utils.random(100) < 30) say(miningChatter());
     }
@@ -1713,9 +1777,32 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("can't afford a fishing tool");
             return;
         }
-        EnvironmentScanner.FishMatch match =
-            EnvironmentScanner.findNearestFishingSpot(bot, 24, method == null ? null : method.fishDef);
+        EnvironmentScanner.FishMatch match = null;
+        // Sticky target for fishing - NPCs (the fishing spots) can despawn
+        // and respawn at slightly different tiles, so we also check that
+        // the cached NPC is still alive AND still in the world.
+        if (cachedTargetNpc != null && cachedTargetTtl > 0
+                && !cachedTargetNpc.hasFinished() && !cachedTargetNpc.isDead()) {
+            com.rs.game.player.actions.Fishing.FishingSpots fs =
+                EnvironmentScanner.matchFishingSpot(cachedTargetNpc.getId(),
+                    method.fishDef == null ? -1 : method.fishDef.getTool());
+            if (fs != null && (method.fishDef == null || fs == method.fishDef)) {
+                match = new EnvironmentScanner.FishMatch(cachedTargetNpc, fs);
+                cachedTargetTtl--;
+            } else {
+                cachedTargetNpc = null;
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestFishingSpot(bot, 24,
+                method == null ? null : method.fishDef);
+            if (match != null) {
+                cachedTargetNpc = match.npc;
+                cachedTargetTtl = 20;
+            }
+        }
+        if (match == null) {
+            cachedTargetNpc = null;
             lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1727,6 +1814,7 @@ public class BotBrain {
             return;
         }
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
+        cachedTargetNpc = null;
         lastDiagnostic = "fishing: " + match.definition;
         if (Utils.random(100) < 30) say(fishingChatter());
     }

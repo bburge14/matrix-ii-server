@@ -299,7 +299,7 @@ public final class EnvironmentScanner {
      * Map an object name to a TreeDefinitions value. Names come from cache and
      * are typically "Tree", "Oak", "Willow tree", "Yew", "Magic tree", etc.
      */
-    private static TreeDefinitions matchTree(String name) {
+    public static TreeDefinitions matchTree(String name) {
         String lower = name.toLowerCase();
         if (lower.contains("magic"))  return TreeDefinitions.MAGIC;
         if (lower.contains("yew"))    return TreeDefinitions.YEW;
@@ -315,7 +315,7 @@ public final class EnvironmentScanner {
         return null;
     }
 
-    private static RockDefinitions matchRock(String name) {
+    public static RockDefinitions matchRock(String name) {
         String lower = name.toLowerCase();
         if (!(lower.contains("rocks") || lower.contains("ore") || lower.contains("rock"))) return null;
         if (lower.contains("runite") || lower.contains("rune")) return RockDefinitions.Runite_Ore;
@@ -339,7 +339,7 @@ public final class EnvironmentScanner {
      *  Otherwise return the variant whose getTool() matches preferTool,
      *  or null if no variant on this NPC supports that tool (we don't
      *  want to send a NET-fishing bot to a CAGE-only spot). */
-    private static FishingSpots matchFishingSpot(int npcId, int preferTool) {
+    public static FishingSpots matchFishingSpot(int npcId, int preferTool) {
         FishingSpots first = null;
         for (FishingSpots s : FishingSpots.values()) {
             if (s.getId() != npcId) continue;
