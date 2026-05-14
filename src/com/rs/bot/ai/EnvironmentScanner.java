@@ -61,9 +61,16 @@ public final class EnvironmentScanner {
      * that happens to be closer.
      */
     public static TreeMatch findNearestTree(WorldTile from, int radius, TreeDefinitions only) {
-        WorldObject best = null;
-        TreeDefinitions bestDef = null;
-        int bestDist = Integer.MAX_VALUE;
+        // Random-pick among all matches in radius instead of always-nearest.
+        // Without this, every bot that teleports to the same anchor walks to
+        // the literal closest tree, so 30 willow-cutters all swarm one tile
+        // in Draynor. Weight by inverse distance (closer = more likely) so
+        // bots still cluster near the anchor but spread across multiple
+        // trees instead of stacking.
+        java.util.List<WorldObject> candidates = new java.util.ArrayList<>();
+        java.util.List<TreeDefinitions> defs = new java.util.ArrayList<>();
+        java.util.List<Integer> weights = new java.util.ArrayList<>();
+        int weightTotal = 0;
         for (WorldObject o : nearbyObjects(from, radius)) {
             String name = nameOf(o);
             if (name == null) continue;
@@ -71,13 +78,20 @@ public final class EnvironmentScanner {
             if (def == null) continue;
             if (only != null && def != only) continue;
             int d = manhattan(from, o);
-            if (d < bestDist) {
-                bestDist = d;
-                best = o;
-                bestDef = def;
-            }
+            int w = Math.max(1, radius + 1 - d);
+            candidates.add(o);
+            defs.add(def);
+            weights.add(w);
+            weightTotal += w;
         }
-        return best == null ? null : new TreeMatch(best, bestDef);
+        if (candidates.isEmpty()) return null;
+        int roll = com.rs.utils.Utils.random(weightTotal);
+        int acc = 0;
+        for (int i = 0; i < candidates.size(); i++) {
+            acc += weights.get(i);
+            if (roll < acc) return new TreeMatch(candidates.get(i), defs.get(i));
+        }
+        return new TreeMatch(candidates.get(0), defs.get(0));
     }
 
     /**
@@ -89,9 +103,10 @@ public final class EnvironmentScanner {
     }
 
     public static RockMatch findNearestRock(WorldTile from, int radius, RockDefinitions only) {
-        WorldObject best = null;
-        RockDefinitions bestDef = null;
-        int bestDist = Integer.MAX_VALUE;
+        java.util.List<WorldObject> candidates = new java.util.ArrayList<>();
+        java.util.List<RockDefinitions> defs = new java.util.ArrayList<>();
+        java.util.List<Integer> weights = new java.util.ArrayList<>();
+        int weightTotal = 0;
         for (WorldObject o : nearbyObjects(from, radius)) {
             String name = nameOf(o);
             if (name == null) continue;
@@ -99,13 +114,20 @@ public final class EnvironmentScanner {
             if (def == null) continue;
             if (only != null && def != only) continue;
             int d = manhattan(from, o);
-            if (d < bestDist) {
-                bestDist = d;
-                best = o;
-                bestDef = def;
-            }
+            int w = Math.max(1, radius + 1 - d);
+            candidates.add(o);
+            defs.add(def);
+            weights.add(w);
+            weightTotal += w;
         }
-        return best == null ? null : new RockMatch(best, bestDef);
+        if (candidates.isEmpty()) return null;
+        int roll = com.rs.utils.Utils.random(weightTotal);
+        int acc = 0;
+        for (int i = 0; i < candidates.size(); i++) {
+            acc += weights.get(i);
+            if (roll < acc) return new RockMatch(candidates.get(i), defs.get(i));
+        }
+        return new RockMatch(candidates.get(0), defs.get(0));
     }
 
     /**
@@ -117,34 +139,32 @@ public final class EnvironmentScanner {
     }
 
     public static FishMatch findNearestFishingSpot(WorldTile from, int radius, FishingSpots only) {
-        NPC best = null;
-        FishingSpots bestDef = null;
-        int bestDist = Integer.MAX_VALUE;
+        java.util.List<NPC> candidates = new java.util.ArrayList<>();
+        java.util.List<FishingSpots> defs = new java.util.ArrayList<>();
+        java.util.List<Integer> weights = new java.util.ArrayList<>();
+        int weightTotal = 0;
         for (NPC n : World.getNPCs()) {
             if (n == null || n.hasFinished()) continue;
             if (n.getPlane() != from.getPlane()) continue;
             if (!from.withinDistance(n, radius)) continue;
-            // Two reasons we can't just match by enum identity:
-            //   1. Variant NPCs (Catherby cage = NPC 312 = CAGE2;
-            //      inland cage = NPC 6267 = CAGE) - same tool,
-            //      different enum.
-            //   2. Multi-option NPCs (NPC 312 supports BOTH cage
-            //      AND harpoon as separate options on the same
-            //      entity) - one NPC, multiple FishingSpots.
-            // Pick the variant whose tool matches what the method
-            // needs - otherwise pick the first matching enum so we
-            // still have something to fish if no filter was given.
             FishingSpots def = matchFishingSpot(n.getId(),
                 only == null ? -1 : only.getTool());
             if (def == null) continue;
             int d = manhattan(from, n);
-            if (d < bestDist) {
-                bestDist = d;
-                best = n;
-                bestDef = def;
-            }
+            int w = Math.max(1, radius + 1 - d);
+            candidates.add(n);
+            defs.add(def);
+            weights.add(w);
+            weightTotal += w;
         }
-        return best == null ? null : new FishMatch(best, bestDef);
+        if (candidates.isEmpty()) return null;
+        int roll = com.rs.utils.Utils.random(weightTotal);
+        int acc = 0;
+        for (int i = 0; i < candidates.size(); i++) {
+            acc += weights.get(i);
+            if (roll < acc) return new FishMatch(candidates.get(i), defs.get(i));
+        }
+        return new FishMatch(candidates.get(0), defs.get(0));
     }
 
     /**

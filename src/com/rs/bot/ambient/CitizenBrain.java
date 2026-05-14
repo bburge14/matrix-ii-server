@@ -1290,18 +1290,14 @@ public class CitizenBrain extends BotBrain {
         // MINIGAME method if no exact match (shouldn't happen normally).
         com.rs.game.WorldTile pinned = archetype == null ? null : archetype.lobbyTile();
         java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
-        // Tier-gate combatants: a level-100 hybrid picking "Lumbridge cows"
-        // is wrong RP-wise. Method.maxLevel is the "recommend swap out beyond
-        // this" cap from the data; if the bot's combat level is well past
-        // it, the method is below their tier - filter it out. Skillers don't
-        // get this gate (they freely overlevel for casual training).
+        // Tier-gate: a level-100 hybrid picking "Lumbridge cows" or a 99 WC
+        // bot picking "Chop normal trees - Lumbridge" is wrong RP-wise. We
+        // compare the bot's actual level (in the method's skill axis) to
+        // the method's maxLevel ("recommend swap out beyond this") and
+        // drop anything more than 20 levels below them.
         int botCb = 0;
-        boolean gateByTier = false;
         try {
-            if (archetype != null && archetype.isCombatant()) {
-                botCb = bot.getSkills().getCombatLevel();
-                gateByTier = true;
-            }
+            botCb = bot.getSkills().getCombatLevel();
         } catch (Throwable ignored) {}
         for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
             if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
@@ -1313,12 +1309,22 @@ public class CitizenBrain extends BotBrain {
                 // Per-minigame archetype - only accept methods at the pinned lobby
                 if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
             }
-            // Tier filter: if the method's recommended top level is more
-            // than 20 below the bot's combat level, the bot has outgrown
-            // it. (20-level buffer keeps the boundary fuzzy so a cb 65
-            // bot can still hit cb 60-capped guards.)
-            if (gateByTier && m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT
-                    && m.maxLevel > 0 && m.maxLevel < botCb - 20) continue;
+            // Tier filter. COMBAT uses combat level; everything else uses
+            // the bot's level in the method's skill. 20-level buffer keeps
+            // boundaries fuzzy so a cb 65 bot can still hit cb-60-capped
+            // guards, or a WC 65 bot can still cut maples even though it
+            // could do yews.
+            if (m.maxLevel > 0) {
+                int botLevel;
+                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
+                    botLevel = botCb;
+                } else {
+                    try {
+                        botLevel = m.skill >= 0 ? bot.getSkills().getLevel(m.skill) : 1;
+                    } catch (Throwable t) { botLevel = 1; }
+                }
+                if (m.maxLevel < botLevel - 20) continue;
+            }
             try {
                 if (!m.isApplicable(bot)) continue;
             } catch (Throwable ignored) { continue; }

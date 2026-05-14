@@ -266,7 +266,18 @@ public class BotBrain {
 
     private static final String[] BANK_CHATTER = {
         "another inv banked", "wts logs (after bank)", "back to it",
-        "deposit -> chop -> deposit, the loop", "okay refreshed"
+        "deposit -> chop -> deposit, the loop", "okay refreshed",
+        "stack ge crashed lol", "wd presets save so much time",
+        "always forget the bank pin", "withdraw all the things",
+        "swap inventory layouts", "found a junk noted item",
+        "bank tab reorganized", "ge offer cleared",
+        "got my supplies again", "noting at the npc next time",
+        "send to ge from bank when", "topping off prayer pots",
+        "loot pouch fully empty", "swap to my skill loadout",
+        "this bank chest is always packed", "ok 28/28 ready",
+        "amulet of glory teleport away", "preset 2 was my pvm one right?",
+        "200m gp goal still", "bank is just stacks of junk",
+        "withdraw x = lifesaver"
     };
     private String bankChatter() { return BANK_CHATTER[Utils.random(BANK_CHATTER.length)]; }
 
@@ -2091,19 +2102,61 @@ public class BotBrain {
 
     private static final String[] WOODCUTTING_CHATTER = {
         "anyone selling axes?", "yew logs are getting boring", "lvl up!",
-        "this tree is taking forever", "teak when?", "I love woodcutting"
+        "this tree is taking forever", "teak when?", "I love woodcutting",
+        "rune axe makes a difference fr", "wcg cape doe", "magic logs price hold?",
+        "draynor willows still meta", "yews at edge always packed",
+        "where's a quiet maple spot", "swap to lumberjack outfit yet?",
+        "got beaver pet last week", "ivy is faster xp tbh",
+        "redwoods unlock at 90 right?", "anyone want to do canifis teaks",
+        "got lucky branch drops", "this tree should be a rune rock for the wait",
+        "fletching the logs after, more efficient", "miscellania workers next",
+        "wc 92 grind for cape", "auto-cutting axe upgrade later",
+        "ge price on yew logs still ok", "going to bank, brb",
+        "love this peaceful spot", "trying to get 200m wc"
     };
     private static final String[] MINING_CHATTER = {
         "buying gold ore", "nooo my pickaxe broke", "rune rock spawn pls",
-        "anyone here boosting?", "mining is therapeutic ngl"
+        "anyone here boosting?", "mining is therapeutic ngl",
+        "gem rocks are stacking nice", "varrock armor 3 finally",
+        "dwarven stout boost time", "rune rocks just spawned",
+        "powermining iron at al-kharid", "lrc anyone?", "drag pickaxe spec heals my prayer",
+        "got a soft clay scroll", "concentrated gold at lava maze",
+        "smithing the bars after", "amethyst at dragon mine?",
+        "varrock teleport for east mine", "mining gloves help so much",
+        "blast mine is good xp", "got 99 mining last week",
+        "going for max", "shooting star tonight",
+        "rocks always feel slower than they are", "let's get this 200m",
+        "anyone got a coal bag spare", "trahaearn cape grind"
     };
     private static final String[] FISHING_CHATTER = {
         "wts raw lobster", "barbarian fishing best xp", "sharks sharks sharks",
-        "anyone got an extra harpoon?", "fishing > mining"
+        "anyone got an extra harpoon?", "fishing > mining",
+        "monkfish on piscatoris", "rocktails grinding",
+        "swordfish spot crowded", "karambwans at lumby docks",
+        "leaping sturgeon is the way", "got the angler outfit",
+        "tempoross is alright xp", "anglerfish 200m goal",
+        "fly fishing at shilo", "harpoon spec saves time",
+        "barb-tail harpoon for prayer", "drift net at fossil island",
+        "got a herald pet", "raw shark price holding",
+        "tick manipulation hurts my fingers", "max cape grind continues",
+        "gauntlets of cooking are king", "love this fishing spot",
+        "swap to mining when I'm sick of fish", "going for 99 cooking too",
+        "anyone want my raw lobsters cheap"
     };
     private static final String[] COMBAT_CHATTER = {
         "ez", "any teams?", "wts bones", "almost 99 attack", "one shot lol",
-        "this xp tho", "training to max", "anyone got food?"
+        "this xp tho", "training to max", "anyone got food?",
+        "got the kill", "rip my prayer pots", "almost died there",
+        "ovl + soulsplit best combo", "loot bag worth it?",
+        "what's the slayer task today", "got a 25k drop",
+        "swap to range here is meta", "any clue scrolls?",
+        "tank set protects so much", "barrows monsters spawn",
+        "boss timer reset?", "got a hard clue from this",
+        "drag tasks pay so well", "tribrid is the way",
+        "want to do bandos duo?", "i need to bank tbh",
+        "dharok at low hp is busted", "any tassets dropping today",
+        "going to lower my hp on purpose", "veng on cooldown rip",
+        "praying mage here hits 0s"
     };
     private String woodcuttingChatter() { return WOODCUTTING_CHATTER[Utils.random(WOODCUTTING_CHATTER.length)]; }
     private String miningChatter() { return MINING_CHATTER[Utils.random(MINING_CHATTER.length)]; }
