@@ -1416,41 +1416,72 @@ public class CitizenBrain extends BotBrain {
     private boolean faceAndAnimateTarget(AIPlayer bot) {
         try {
             int radius = 5; // close-range - bot should already be at the target
+            // If the bot already has the right action running (Woodcutting on
+            // a still-valid tree, Mining on a still-valid rock, etc.) DON'T
+            // overwrite it - that's what was making bots run between trees
+            // forever without ever chopping. Each tick the brain would call
+            // setAction again, resetting the action's progress.
+            com.rs.game.player.actions.Action cur = bot.getActionManager() != null
+                    ? bot.getActionManager().getAction() : null;
             // === TrainingMethods route (shared with Legends) ===
             if (currentMethod != null) {
                 com.rs.bot.ai.TrainingMethods.Method m = currentMethod;
                 if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING) {
+                    if (cur instanceof com.rs.game.player.actions.Woodcutting) return true;
                     com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, radius, m.treeDef);
-                    if (tm != null && tm.object != null) {
-                        try { bot.faceObject(tm.object); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (tm != null && tm.object != null && m.treeDef != null) {
+                        try {
+                            bot.faceObject(tm.object);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.Woodcutting(tm.object, m.treeDef));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.MINING) {
+                    if (cur instanceof com.rs.game.player.actions.mining.Mining) return true;
                     com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, radius, m.rockDef);
-                    if (rm != null && rm.object != null) {
-                        try { bot.faceObject(rm.object); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (rm != null && rm.object != null && m.rockDef != null) {
+                        try {
+                            bot.faceObject(rm.object);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.mining.Mining(rm.object, m.rockDef));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.FISHING) {
+                    if (cur instanceof com.rs.game.player.actions.Fishing) return true;
                     com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, radius, m.fishDef);
-                    if (fm != null && fm.npc != null) {
-                        try { bot.setNextFaceEntity(fm.npc); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (fm != null && fm.npc != null && fm.definition != null) {
+                        try {
+                            bot.setNextFaceEntity(fm.npc);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.Fishing(fm.definition, fm.npc));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT
                         || m.kind == com.rs.bot.ai.TrainingMethods.Kind.THIEVING) {
+                    if (cur instanceof com.rs.game.player.actions.PlayerCombatNew) return true;
                     if (m.npcIds != null && m.npcIds.length > 0) {
                         com.rs.game.npc.NPC n =
                             com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius, m.npcIds);
                         if (n != null) {
-                            try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
-                            playAnim(bot);
+                            try {
+                                bot.setNextFaceEntity(n);
+                                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
+                                    bot.getActionManager().setAction(
+                                        new com.rs.game.player.actions.PlayerCombatNew(n));
+                                } else {
+                                    // Thieving has its own action chain - face +
+                                    // animate is still placeholder for now since
+                                    // PickPocketAction wiring needs the right
+                                    // pickpocket type per npc id (separate task).
+                                    playAnim(bot);
+                                }
+                            } catch (Throwable ignored) {}
                             return true;
                         }
                     }
