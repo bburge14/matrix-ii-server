@@ -1676,7 +1676,30 @@ public class BotBrain {
             BotPathing.walkToObject(bot, match.object);
             return;
         }
-        bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+        // Diagnostic: log every setAction call AND verify it took. If
+        // start() rejects (no hatchet, full inventory, level mismatch) the
+        // action manager silently drops it and getAction() == null on the
+        // next tick - which is exactly the "running between trees forever"
+        // loop. Log the outcome both ways so we can see WHY in bots.log.
+        boolean accepted;
+        try {
+            bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+            accepted = bot.getActionManager().getAction()
+                instanceof com.rs.game.player.actions.Woodcutting;
+        } catch (Throwable t) {
+            accepted = false;
+            com.rs.bot.BotLog.log("WC-TRACE",
+                bot.getDisplayName() + " setAction THREW: " + t);
+        }
+        com.rs.bot.BotLog.log("WC-TRACE",
+            bot.getDisplayName() + " setAction "
+            + (accepted ? "ACCEPTED" : "REJECTED")
+            + " tree=" + match.definition
+            + " at " + match.object.getX() + "," + match.object.getY()
+            + " botPos=" + bot.getX() + "," + bot.getY()
+            + " inv=" + (bot.getInventory().getFreeSlots())
+            + "/28 wc=" + bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING)
+            + " axe=" + (com.rs.game.player.actions.Woodcutting.getHatchet(bot, false) != null));
         cachedTargetObject = null; // action took over; let next idle re-pick
         lastDiagnostic = "wc: chopping " + match.definition;
         if (Utils.random(100) < 30) say(woodcuttingChatter());
