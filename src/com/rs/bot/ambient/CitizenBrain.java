@@ -1290,6 +1290,19 @@ public class CitizenBrain extends BotBrain {
         // MINIGAME method if no exact match (shouldn't happen normally).
         com.rs.game.WorldTile pinned = archetype == null ? null : archetype.lobbyTile();
         java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
+        // Tier-gate combatants: a level-100 hybrid picking "Lumbridge cows"
+        // is wrong RP-wise. Method.maxLevel is the "recommend swap out beyond
+        // this" cap from the data; if the bot's combat level is well past
+        // it, the method is below their tier - filter it out. Skillers don't
+        // get this gate (they freely overlevel for casual training).
+        int botCb = 0;
+        boolean gateByTier = false;
+        try {
+            if (archetype != null && archetype.isCombatant()) {
+                botCb = bot.getSkills().getCombatLevel();
+                gateByTier = true;
+            }
+        } catch (Throwable ignored) {}
         for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
             if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
             if (m.location == null) continue;
@@ -1300,6 +1313,12 @@ public class CitizenBrain extends BotBrain {
                 // Per-minigame archetype - only accept methods at the pinned lobby
                 if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
             }
+            // Tier filter: if the method's recommended top level is more
+            // than 20 below the bot's combat level, the bot has outgrown
+            // it. (20-level buffer keeps the boundary fuzzy so a cb 65
+            // bot can still hit cb 60-capped guards.)
+            if (gateByTier && m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT
+                    && m.maxLevel > 0 && m.maxLevel < botCb - 20) continue;
             try {
                 if (!m.isApplicable(bot)) continue;
             } catch (Throwable ignored) { continue; }
@@ -1331,7 +1350,13 @@ public class CitizenBrain extends BotBrain {
             int dist = Math.abs(cand.location.getX() - home_x)
                      + Math.abs(cand.location.getY() - home_y);
             int proximity = Math.max(0, 200 - dist / 5);
-            int score = cand.minLevel + proximity + Utils.random(20);
+            // Tier weight bumped: was +minLevel (1..85), now +minLevel*3
+            // so tier dominates over proximity. A cb-100 hybrid scoring
+            // cows (minLvl 1) vs abyssal demons (minLvl 85) with cows
+            // closer used to be 1+200=201 vs 85+0=85 - cows won. Now
+            // it's 3 vs 255 - demons win. Proximity still nudges ties
+            // but doesn't drag bots to weak content.
+            int score = cand.minLevel * 3 + proximity + Utils.random(20);
             if (score > bestScore) {
                 bestScore = score;
                 best = cand;
