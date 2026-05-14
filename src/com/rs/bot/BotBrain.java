@@ -2043,6 +2043,8 @@ public class BotBrain {
         if (bot.getActionManager().getAction() instanceof PlayerCombatNew) return;
 
         if (method.npcIds == null || method.npcIds.length == 0) {
+            com.rs.bot.BotLog.log("CB-TRACE",
+                bot.getDisplayName() + " NO_NPCIDS method=" + method.description);
             lastDiagnostic = "combat: method has no npcIds";
             return;
         }
@@ -2060,6 +2062,15 @@ public class BotBrain {
         // miss visible NPCs on a jittered teleport landing).
         NPC target = EnvironmentScanner.findNearestNPC(bot, 24, method.npcIds);
         if (target == null) {
+            // Diagnostic: shows when bot is at the spot but NPCs aren't
+            // there. Common cause: the method's npcIds aren't actually
+            // spawned in this server's NPCSpawns at the method tile.
+            com.rs.bot.BotLog.log("CB-TRACE",
+                bot.getDisplayName() + " NO_TARGET method=" + method.description
+                + " want=" + java.util.Arrays.toString(method.npcIds)
+                + " botPos=" + bot.getX() + "," + bot.getY()
+                + " methodTile=" + method.location.getX() + "," + method.location.getY()
+                + " plane=" + bot.getPlane() + "/" + method.location.getPlane());
             lastDiagnostic = "combat: no NPC " + java.util.Arrays.toString(method.npcIds) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no enemies here");
             BotPathing.wiggle(bot, 4);
@@ -2093,6 +2104,14 @@ public class BotBrain {
         // (melee = adjacent, ranged/magic = within sight). Just hand it the
         // target and let it run.
         bot.getActionManager().setAction(new PlayerCombatNew(target));
+        boolean accepted = bot.getActionManager().getAction()
+            instanceof PlayerCombatNew;
+        com.rs.bot.BotLog.log("CB-TRACE",
+            bot.getDisplayName() + " setAction "
+            + (accepted ? "ACCEPTED" : "REJECTED")
+            + " target=" + target.getId() + "(cb " + targetCb + ")"
+            + " botCb=" + botCb + " botPos=" + bot.getX() + "," + bot.getY()
+            + " targetPos=" + target.getX() + "," + target.getY());
         // Force the NPC to engage us immediately. PlayerCombatNew.autoRelatie
         // does call target.setTarget(player) after each hit lands, but it
         // runs on a delayed WorldTask and only fires if a hit actually
