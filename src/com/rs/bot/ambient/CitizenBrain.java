@@ -1289,46 +1289,32 @@ public class CitizenBrain extends BotBrain {
         // those whose location matches the lobby tile. Falls back to any
         // MINIGAME method if no exact match (shouldn't happen normally).
         com.rs.game.WorldTile pinned = archetype == null ? null : archetype.lobbyTile();
-        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
-        // Tier-gate: a level-100 hybrid picking "Lumbridge cows" or a 99 WC
-        // bot picking "Chop normal trees - Lumbridge" is wrong RP-wise. We
-        // compare the bot's actual level (in the method's skill axis) to
-        // the method's maxLevel ("recommend swap out beyond this") and
-        // drop anything more than 20 levels below them.
         int botCb = 0;
         try {
             botCb = bot.getSkills().getCombatLevel();
         } catch (Throwable ignored) {}
-        for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
-            if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
-            if (m.location == null) continue;
-            // Skip methods previously blacklisted (e.g. by the
-            // tickTraversing stuck-detector).
-            if (goalBlacklisted(m)) continue;
-            if (pinned != null) {
-                // Per-minigame archetype - only accept methods at the pinned lobby
-                if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
+        // Three relaxation tiers - we try strictest first, then drop filters
+        // when nothing matches:
+        //   strict  -> tier-gate + blacklist
+        //   relaxed -> tier-gate only (ignore blacklist)
+        //   loose   -> no tier-gate, no blacklist (last resort)
+        // Without this, a HYBRID that's blacklisted every Slayer Tower
+        // method ends up with "no applicable method" - the bot just idles
+        // forever doing nothing. Now they fall back to lower-tier content
+        // instead of being permanently stuck.
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable =
+            buildApplicable(bot, allowedKinds, pinned, botCb, true, true);
+        if (applicable.isEmpty()) {
+            applicable = buildApplicable(bot, allowedKinds, pinned, botCb, true, false);
+            if (!applicable.isEmpty()) {
+                debug(bot, "blacklist relaxed - " + applicable.size() + " methods unblocked");
             }
-            // Tier filter. COMBAT uses combat level; everything else uses
-            // the bot's level in the method's skill. 20-level buffer keeps
-            // boundaries fuzzy so a cb 65 bot can still hit cb-60-capped
-            // guards, or a WC 65 bot can still cut maples even though it
-            // could do yews.
-            if (m.maxLevel > 0) {
-                int botLevel;
-                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
-                    botLevel = botCb;
-                } else {
-                    try {
-                        botLevel = m.skill >= 0 ? bot.getSkills().getLevel(m.skill) : 1;
-                    } catch (Throwable t) { botLevel = 1; }
-                }
-                if (m.maxLevel < botLevel - 20) continue;
+        }
+        if (applicable.isEmpty()) {
+            applicable = buildApplicable(bot, allowedKinds, pinned, botCb, false, false);
+            if (!applicable.isEmpty()) {
+                debug(bot, "tier-gate relaxed - falling back to lower-tier (" + applicable.size() + " methods)");
             }
-            try {
-                if (!m.isApplicable(bot)) continue;
-            } catch (Throwable ignored) { continue; }
-            applicable.add(m);
         }
         if (applicable.isEmpty()) return null;
         // Tier + proximity weighted pick. Real RS players don't randomly
@@ -1369,6 +1355,51 @@ public class CitizenBrain extends BotBrain {
             }
         }
         return best;
+    }
+
+    /**
+     * Build the list of methods this bot can pick, with controllable filters.
+     * @param useTierGate when true, skip methods whose maxLevel is >20 below
+     *                    the bot's combat / skill level (RP-correct gating).
+     * @param useBlacklist when true, skip methods that were blacklisted for
+     *                     being unreachable / repeatedly stuck.
+     * Used by pickRandomMethodForRole's three-tier fallback: strict ->
+     * blacklist-relaxed -> tier-relaxed. Without the relaxation, a bot
+     * that's blacklisted every reachable tier-N method ends up with zero
+     * applicable methods and idles forever.
+     */
+    private java.util.List<com.rs.bot.ai.TrainingMethods.Method> buildApplicable(
+            AIPlayer bot,
+            java.util.Set<com.rs.bot.ai.TrainingMethods.Kind> allowedKinds,
+            com.rs.game.WorldTile pinned,
+            int botCb,
+            boolean useTierGate,
+            boolean useBlacklist) {
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
+        for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
+            if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
+            if (m.location == null) continue;
+            if (useBlacklist && goalBlacklisted(m)) continue;
+            if (pinned != null) {
+                if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
+            }
+            if (useTierGate && m.maxLevel > 0) {
+                int botLevel;
+                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
+                    botLevel = botCb;
+                } else {
+                    try {
+                        botLevel = m.skill >= 0 ? bot.getSkills().getLevel(m.skill) : 1;
+                    } catch (Throwable t) { botLevel = 1; }
+                }
+                if (m.maxLevel < botLevel - 20) continue;
+            }
+            try {
+                if (!m.isApplicable(bot)) continue;
+            } catch (Throwable ignored) { continue; }
+            applicable.add(m);
+        }
+        return applicable;
     }
 
     /**
