@@ -1633,7 +1633,7 @@ public class BotBrain {
         // net for trees that turn out to be unreachable (clip-blocked
         // by a fence, etc.) - we re-pick after a few seconds.
         if (cachedTargetObject != null && cachedTargetTtl > 0) {
-            String name = cachedTargetObject.getDefinitions().getName();
+            String name = cachedTargetObject.getDefinitions().name;
             com.rs.game.player.actions.Woodcutting.TreeDefinitions td =
                 EnvironmentScanner.matchTree(name);
             if (td != null && (method.treeDef == null || td == method.treeDef)) {
@@ -1712,7 +1712,7 @@ public class BotBrain {
         // Same sticky-target pattern as woodcutting - commit to one rock
         // until reached or TTL expires.
         if (cachedTargetObject != null && cachedTargetTtl > 0) {
-            String name = cachedTargetObject.getDefinitions().getName();
+            String name = cachedTargetObject.getDefinitions().name;
             com.rs.game.player.actions.mining.Mining.RockDefinitions rd =
                 EnvironmentScanner.matchRock(name);
             if (rd != null && (method.rockDef == null || rd == method.rockDef)) {
