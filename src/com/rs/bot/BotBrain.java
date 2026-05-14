@@ -1594,6 +1594,17 @@ public class BotBrain {
     }
 
     protected void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+        // CRITICAL: don't restart the action if we're already chopping.
+        // The brain ticks every 600ms; without this guard we re-set the
+        // Woodcutting action every tick, which resets its internal swing
+        // counters - the bot never actually fells a log. CitizenBrain's
+        // tickInteracting calls this every tick without an outer
+        // "is action running" gate, so we have to gate here.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Woodcutting) {
+            return;
+        }
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
@@ -1672,6 +1683,11 @@ public class BotBrain {
     }
 
     protected void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.mining.Mining) {
+            return;
+        }
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
@@ -1749,6 +1765,11 @@ public class BotBrain {
     }
 
     protected void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Fishing) {
+            return;
+        }
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
@@ -1942,6 +1963,15 @@ public class BotBrain {
     }
 
     protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
+        // Don't restart PlayerCombatNew if it's already engaged - the
+        // action handles target-switching when the current victim dies,
+        // and re-setting every tick resets its swing timer so the bot
+        // never lands a hit.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.PlayerCombatNew) {
+            return;
+        }
         // Retreat first if we're low on HP. Eat from inventory if we have
         // food, otherwise stop attacking and walk back to safety.
         if (handleLowHpRetreat()) return;
