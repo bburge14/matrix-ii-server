@@ -23,7 +23,7 @@ import com.rs.game.player.actions.mining.Mining;
 import com.rs.game.npc.NPC;
 
 public class BotBrain {
-    private AIPlayer bot;
+    protected AIPlayer bot;
     private PersonalityProfile personality;
     private EmotionalState emotionalState;
     private MemorySystem memory;
