@@ -312,18 +312,57 @@ public final class TrainingMethods {
         // ---- Firemaking (process-skill: requires logs in inventory) ----
         // Single method with all log tiers in requiredItems - the action
         // picker (BotBrain.tryStartFiremaking) chooses the highest-tier
-        // log the bot can light. Location is GE-area open ground; could
-        // be done anywhere with a clear tile.
-        ALL.add(b("Firemake logs - GE area", Kind.FIREMAKING)
+        // Firemaking strips: long unobstructed corridors where bots can
+        // line-burn full inventories without bumping into walls / each
+        // other. Each spot has its anchor at the SOUTH/WEST end of the
+        // strip so the bot lights northward / eastward and the trail
+        // doesn't block the next bot arriving. Crowd cap is enforced
+        // by the picker (CitizenBrain.maxBotsAt) so we don't pile 30
+        // bots into the same strip - each spot caps at ~3 concurrent
+        // bots; pickRandomMethodForRole falls through to the next
+        // strip when one is full.
+        //
+        // Real RS firemaking lanes used by burners:
+        //   GE north strip       - top of the building, runway north
+        //   Edgeville west bank  - cobblestone strip west of bank
+        //   Grand Exchange south - long line south of the booths
+        //   Varrock west bank    - strip running south of the bank door
+        //   Falador east strip   - cobblestone running between bank/park
+        //   Catherby beach       - sand strip south of bank
+        //   Seers' bank south    - long stone strip
+        //   Burthorpe inn        - open ground north of the inn
+        //   Al-Kharid bank        - open ground in front of bank
+        ALL.add(b("Firemake logs - GE north strip", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(3164, 3487).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
-        ALL.add(b("Firemake logs - Edgeville bank", Kind.FIREMAKING)
-            .skill(Skills.FIREMAKING).lvl(1, 99).at(3094, 3491).xp(45000).gp(0)
+        ALL.add(b("Firemake logs - GE south strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3164, 3478).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
-        ALL.add(b("Firemake logs - Varrock west", Kind.FIREMAKING)
-            .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3436).xp(45000).gp(0)
+        ALL.add(b("Firemake logs - Edgeville west strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3088, 3494).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
-        ALL.add(b("Firemake logs - Burthorpe", Kind.FIREMAKING)
+        ALL.add(b("Firemake logs - Edgeville east strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3097, 3490).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Varrock west strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3185, 3431).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Varrock east strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3253, 3424).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Falador east strip", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3023, 3358).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Catherby beach", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(2806, 3431).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Seers' south", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(2724, 3486).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Al-Kharid bank", Kind.FIREMAKING)
+            .skill(Skills.FIREMAKING).lvl(1, 99).at(3273, 3170).xp(45000).gp(0)
+            .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
+        ALL.add(b("Firemake logs - Burthorpe inn", Kind.FIREMAKING)
             .skill(Skills.FIREMAKING).lvl(1, 99).at(2906, 3540).xp(45000).gp(0)
             .needs(1511, 1521, 1519, 1517, 1515, 1513, 6332, 3448).build());
 

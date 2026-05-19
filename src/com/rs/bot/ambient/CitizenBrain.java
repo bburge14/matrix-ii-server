@@ -1317,6 +1317,20 @@ public class CitizenBrain extends BotBrain {
             }
         }
         if (applicable.isEmpty()) return null;
+        // Crowd cap: FM strips and other narrow spots get unwatchable when
+        // 20 bots pile on the same tile (fires everywhere, trails of logs,
+        // bots stuck waiting for a free burn tile). Cap concurrent bots per
+        // method - default 3 for FM strips, 8 for combat / skill spots
+        // (those scale better since the resource layer is denser). If a
+        // candidate is over cap, drop it from the pool. If EVERYTHING is
+        // over cap, ignore the cap (last resort - better than idle).
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> uncrowded =
+            new java.util.ArrayList<>();
+        for (com.rs.bot.ai.TrainingMethods.Method m : applicable) {
+            int cap = (m.kind == com.rs.bot.ai.TrainingMethods.Kind.FIREMAKING) ? 3 : 8;
+            if (countBotsAtMethod(m) < cap) uncrowded.add(m);
+        }
+        if (!uncrowded.isEmpty()) applicable = uncrowded;
         // Tier + proximity weighted pick. Real RS players don't randomly
         // choose between chopping normals at Lumby vs magics at Gnome
         // Stronghold - they pick the highest tier they can use AND
@@ -1355,6 +1369,35 @@ public class CitizenBrain extends BotBrain {
             }
         }
         return best;
+    }
+
+    /**
+     * Count how many other citizen bots are currently doing or walking
+     * to this method, used by the crowd-cap in pickRandomMethodForRole.
+     * Cheap O(n) scan over World.getPlayers - only fires when picking a
+     * new method (not every brain tick).
+     */
+    private int countBotsAtMethod(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m == null || m.location == null) return 0;
+        int mx = m.location.getX(), my = m.location.getY();
+        int count = 0;
+        for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+            if (!(p instanceof AIPlayer)) continue;
+            AIPlayer other = (AIPlayer) p;
+            if (other == bot || other.hasFinished()) continue;
+            if (!(other.getBrain() instanceof CitizenBrain)) continue;
+            CitizenBrain cb = (CitizenBrain) other.getBrain();
+            // Two ways a bot "occupies" this method:
+            //   - they picked it (currentMethod == m), OR
+            //   - they're physically within ~6 tiles of the anchor.
+            if (cb.currentMethod == m) count++;
+            else {
+                int dx = other.getX() - mx;
+                int dy = other.getY() - my;
+                if (dx*dx + dy*dy <= 36) count++;
+            }
+        }
+        return count;
     }
 
     /**
