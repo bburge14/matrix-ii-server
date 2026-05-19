@@ -3581,6 +3581,43 @@ public final class Commands {
 		player.setNextForceTalk(new ForceTalk("<col=ff0000>My xp rate mode is: x" + Settings.getXpRate(player)
 			+ " xp, x" + Settings.getCombatXpRate(player) + " combat xp."));
 		return true;
+	    case "bossinstance":
+	    case "bi": {
+		// Open boss-instance entry for any wired boss by name.
+		// Usage: ::bi bandos, ::bi vorago, ::bi kbd, etc.
+		// Available to all players (boss instances cost gp).
+		if (cmd.length < 2) {
+		    StringBuilder sb = new StringBuilder("Usage: ::bi <name>. Available: ");
+		    for (com.rs.game.map.bossInstance.BossInstanceHandler.Boss b
+			    : com.rs.game.map.bossInstance.BossInstanceHandler.Boss.values()) {
+			sb.append(b.name()).append(' ');
+		    }
+		    player.getPackets().sendGameMessage(sb.toString());
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').replace('-', ' ');
+		com.rs.game.map.bossInstance.BossInstanceHandler.Boss target = null;
+		for (com.rs.game.map.bossInstance.BossInstanceHandler.Boss b
+			: com.rs.game.map.bossInstance.BossInstanceHandler.Boss.values()) {
+		    String norm = b.name().toLowerCase().replace('_', ' ');
+		    if (norm.equals(want) || norm.startsWith(want)
+			    || norm.replace(" ", "").equals(want.replace(" ", ""))) {
+			target = b;
+			break;
+		    }
+		}
+		if (target == null) {
+		    player.getPackets().sendGameMessage("Unknown boss: " + cmd[1]);
+		    return true;
+		}
+		try {
+		    com.rs.game.map.bossInstance.BossInstanceHandler.enterInstance(player, target);
+		    player.getPackets().sendGameMessage("Opening " + target.name() + " instance...");
+		} catch (Throwable t) {
+		    player.getPackets().sendGameMessage("Failed to open instance: " + t.getMessage());
+		}
+		return true;
+	    }
 	    case "score":
 	    case "kdr":
 		double kill = player.getKillCount();

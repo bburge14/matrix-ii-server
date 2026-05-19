@@ -461,8 +461,18 @@ public class Bank implements Serializable {
     }
 
     public void switchItem(int fromSlot, int toSlot, int fromComponentId, int toComponentId) {
-	// System.out.println(fromSlot+", "+toSlot+", "+fromComponentId+",
-	// "+toComponentId);
+	// Diagnostic - logged to bots.log under BANK-TRACE so we can see
+	// exactly what slot ids the client sent vs what we resolve them to.
+	try {
+	    int[] frs = getRealSlot(fromSlot);
+	    com.rs.bot.BotLog.log("BANK-TRACE", player.getDisplayName()
+		+ " switch from=" + fromSlot + " to=" + toSlot
+		+ " fromComp=" + fromComponentId + " toComp=" + toComponentId
+		+ " currentTab=" + currentTab + " tabsLen=" + bankTabs.length
+		+ " resolvedFrom=" + (frs == null ? "null" : ("["+frs[0]+","+frs[1]+"]"
+		    + " item=" + (bankTabs[frs[0]][frs[1]] == null ? "null"
+			: bankTabs[frs[0]][frs[1]].getId()))));
+	} catch (Throwable ignored) {}
 	if (toSlot == 65535) {
 	    int toTab = toComponentId >= 76 ? 8 - (84 - toComponentId) : 9 - ((toComponentId - 46) / 2);
 	    if (toTab < 0 || toTab > 9)
