@@ -263,22 +263,20 @@ public final class NPCCombat {
 				npc.resetWalkSteps();
 				// is far from target, moves to it till can attack
 				if ((!npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target))) || !Utils.isOnRange(npc.getX(), npc.getY(), size, target.getX(), target.getY(), targetSize, maxDistance)) {
-					// NPCs in combat run + use intelligent routing.
-					// Defaults were:
-					//   getRun() ? 2 : 1  -> NPCs walk at 1 tile/tick by
-					//   default, half a running player's speed, so a
-					//   fleeing player permanently outpaces every melee
-					//   monster.
-					//   isIntelligentRouteFinder()  -> defaults to false
-					//   for most NPCs, which routes them through
-					//   findBasicRoute (single-tile step straight at
-					//   target, no obstacle navigation, fails when any
-					//   other NPC sits on the next tile). Clustered
-					//   monsters end up blocking each other and never
-					//   converge on the player.
-					// Force both on during combat so monsters actually
-					// chase their target.
-					npc.calcFollow(target, 2, true, true);
+					// Distance-aware NPC chase. Vanilla Matrix II had NPCs
+					// walking 1 tile/tick with dumb routing, so a fleeing
+					// player could trivially outpace every melee mob. We
+					// only need the "run + smart route" bursts when the
+					// gap is too large to close in time - at melee/near
+					// range, the vanilla 1-tile walk is fine and feels
+					// right for real players.
+					int gapX = target.getX() - npc.getX();
+					int gapY = target.getY() - npc.getY();
+					int gapSq = gapX*gapX + gapY*gapY;
+					boolean farChase = gapSq > 25; // > 5 tiles
+					int steps = farChase ? 2 : (npc.getRun() ? 2 : 1);
+					boolean smart = farChase || npc.isIntelligentRouteFinder();
+					npc.calcFollow(target, steps, true, smart);
 					return true;
 				}
 				// if under target, moves

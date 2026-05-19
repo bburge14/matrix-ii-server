@@ -3027,6 +3027,35 @@ public final class Commands {
 		else if (Wilderness.isAtWild(player))
 		    player.getActionManager().setAction(new HomeTeleport(tile));
 		return true;
+	    case "leavearena":
+	    case "leaveboss":
+	    case "escape": {
+		// Force-leave any boss arena / minigame / instance that doesn't
+		// expose its own exit. Drops the active controller (which is
+		// what's blocking ::home and normal teleports), then teleports
+		// to the spawn tile. Has a 30s cooldown so it's not abused as a
+		// PK escape - the cooldown applies to wildy too. Anti-abuse:
+		// can't escape if you took damage in the last 10 seconds
+		// (matches the standard logout-block window).
+		long now = System.currentTimeMillis();
+		Long lastEscape = (Long) player.getTemporaryAttributtes().get("lastEscapeMs");
+		if (lastEscape != null && now - lastEscape < 30_000) {
+		    long left = (30_000 - (now - lastEscape)) / 1000;
+		    player.getPackets().sendGameMessage("You can escape again in " + left + "s.");
+		    return true;
+		}
+		if (player.getAttackedByDelay() > now - 10_000) {
+		    player.getPackets().sendGameMessage("You can't escape - you've been in combat too recently.");
+		    return true;
+		}
+		try { player.getControlerManager().forceStop(); } catch (Throwable ignored) {}
+		try { player.getActionManager().forceStop(); } catch (Throwable ignored) {}
+		player.stopAll();
+		player.setNextWorldTile(Settings.START_PLAYER_LOCATION);
+		player.getPackets().sendGameMessage("You teleport out of the arena.");
+		player.getTemporaryAttributtes().put("lastEscapeMs", now);
+		return true;
+	    }
 	    case "itemn": {
 		if (!player.canSpawn() && player.getRights() < 2) {
 		    player.getPackets().sendGameMessage("You can't spawn while you're in this area.");
