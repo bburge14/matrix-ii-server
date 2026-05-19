@@ -422,6 +422,30 @@ public class CitizenBrain extends BotBrain {
         // it was being triggered constantly at GE making bots look like
         // shy NPCs instead of socialites.
 
+        // Wildy panic - runs every tick BEFORE the FSM dispatch so it
+        // catches bots in TRAVERSING / INTERACTING too. Socialites,
+        // skillers, and minigamers should never end up in the
+        // wilderness; if they do (followNearbySocialite chain reaction,
+        // teleport jitter, MISCLICK stepping past the ditch, etc.) yank
+        // them back to a safe tile.
+        try {
+            boolean shouldFlee = archetype != null
+                && !archetype.isPker()
+                && !archetype.isCombatant()
+                && com.rs.game.player.controllers.Wilderness.isAtWild(bot);
+            if (shouldFlee) {
+                com.rs.game.WorldTile safe = (homeAnchor != null
+                        && !com.rs.game.player.controllers.Wilderness.isAtWild(homeAnchor))
+                    ? homeAnchor
+                    : new com.rs.game.WorldTile(3222, 3219, 0); // Lumbridge
+                bot.setNextWorldTile(safe);
+                try { bot.getControlerManager().forceStop(); } catch (Throwable ignored) {}
+                debug(bot, "wildy panic - teleporting back to "
+                    + safe.getX() + "," + safe.getY());
+                return;
+            }
+        } catch (Throwable ignored) {}
+
         // Random AFK / misclick.
         if (Math.random() < AFK_PROBABILITY) {
             afkUntilMs = System.currentTimeMillis() + (long) gaussianRange(10000, 30000, 5000);
@@ -535,29 +559,6 @@ public class CitizenBrain extends BotBrain {
     private void tickIdle(AIPlayer bot) {
         // Drop any pending bot-to-bot conversation reply that's due.
         try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
-
-        // Wildy panic: socialites / skillers / non-PK combatants who
-        // wandered into the wilderness need to GTFO. Real socialites
-        // never go past the ditch; if one ends up there it's because
-        // a teleport jitter / pathing edge case dropped them inside.
-        // Teleport to a safe city tile (home anchor or Lumby) and
-        // skip the rest of the idle tick.
-        try {
-            boolean shouldFlee = archetype != null
-                && !archetype.isPker()
-                && !archetype.isCombatant() // tier-4 combat hangouts can dip into wildy
-                && com.rs.game.player.controllers.Wilderness.isAtWild(bot);
-            if (shouldFlee) {
-                com.rs.game.WorldTile safe = homeAnchor != null
-                    ? homeAnchor
-                    : new com.rs.game.WorldTile(3222, 3219, 0); // Lumbridge
-                bot.setNextWorldTile(safe);
-                bot.getControlerManager().forceStop();
-                debug(bot, "wildy panic - teleporting back to "
-                    + safe.getX() + "," + safe.getY());
-                return;
-            }
-        } catch (Throwable ignored) {}
 
         // "Dancing" socialites - small chance to take a step toward a
         // nearby socialite leader so 2-3 of them appear to be following
