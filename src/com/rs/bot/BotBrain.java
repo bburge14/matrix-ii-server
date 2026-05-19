@@ -40,6 +40,20 @@ public class BotBrain {
     private int restlessness;
     private long lastMajorDecision;
 
+    // Stickiness: cached scan target so the bot commits to ONE tree / rock /
+    // fishing spot / combat NPC for several ticks instead of re-rolling
+    // every tick (the scanner returns weighted-random matches now to spread
+    // bots across resources). Without this the bot walks toward Tree A on
+    // tick N, then re-scans on tick N+1 and walks toward Tree B, never
+    // arriving at either. Cleared when the target object is gone or the
+    // bot is already adjacent to it.
+    protected com.rs.game.WorldObject cachedTargetObject;
+    protected com.rs.game.npc.NPC cachedTargetNpc;
+    /** Ticks remaining before we force a re-scan even if the target is
+     *  still valid. Prevents the bot from getting permanently locked to
+     *  an unreachable target. */
+    protected int cachedTargetTtl;
+
     // Goal-driven behavior
     private long lastGoalCheck;
     private long lastMovementTick;
@@ -266,7 +280,18 @@ public class BotBrain {
 
     private static final String[] BANK_CHATTER = {
         "another inv banked", "wts logs (after bank)", "back to it",
-        "deposit -> chop -> deposit, the loop", "okay refreshed"
+        "deposit -> chop -> deposit, the loop", "okay refreshed",
+        "stack ge crashed lol", "wd presets save so much time",
+        "always forget the bank pin", "withdraw all the things",
+        "swap inventory layouts", "found a junk noted item",
+        "bank tab reorganized", "ge offer cleared",
+        "got my supplies again", "noting at the npc next time",
+        "send to ge from bank when", "topping off prayer pots",
+        "loot pouch fully empty", "swap to my skill loadout",
+        "this bank chest is always packed", "ok 28/28 ready",
+        "amulet of glory teleport away", "preset 2 was my pvm one right?",
+        "200m gp goal still", "bank is just stacks of junk",
+        "withdraw x = lifesaver"
     };
     private String bankChatter() { return BANK_CHATTER[Utils.random(BANK_CHATTER.length)]; }
 
@@ -1108,6 +1133,12 @@ public class BotBrain {
     }
 
     protected void tryStartPrayer(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.content.BonesOnAltar) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.PRAYER);
             if (lvl < method.minLevel) {
@@ -1163,6 +1194,12 @@ public class BotBrain {
     }
 
     protected void tryStartCrafting(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.GemCutting) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.CRAFTING);
             if (lvl < method.minLevel) {
@@ -1200,6 +1237,12 @@ public class BotBrain {
     }
 
     protected void tryStartSmelting(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Smelting) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.SMITHING);
             if (lvl < method.minLevel) {
@@ -1256,6 +1299,13 @@ public class BotBrain {
     }
 
     protected void tryStartCooking(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Cooking) {
+            return;
+        }
+        // Note: don't sim-bank here - we WANT raw food in inventory; the
+        // restock path adds more raw items when the inventory empties.
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.COOKING);
             if (lvl < method.minLevel) {
@@ -1310,6 +1360,17 @@ public class BotBrain {
     }
 
     protected void tryStartFiremaking(com.rs.bot.ai.TrainingMethods.Method method) {
+        // Same critical guard as woodcutting/mining/fishing - the brain
+        // ticks every 600ms and would re-set the Firemaking action,
+        // resetting its internal "lighting" timer. The visible symptom
+        // was bots dropping a log on tile X, walking one tile, dropping
+        // another log, walking again - leaving a trail of unburned logs
+        // because each tick interrupted the light-in-progress.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Firemaking) {
+            return;
+        }
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FIREMAKING);
             if (lvl < method.minLevel) {
@@ -1341,22 +1402,18 @@ public class BotBrain {
             } catch (Throwable ignored) {}
         }
         if (targetFire == null) {
-            // Restock instead of blacklisting. User: "if a bot has a
-            // debug that says they don't have something, they either
-            // spawn it. OR go to the trader at burthorp and buy what
-            // they need". Fast path: spawn a stack of the highest-tier
-            // log they can use straight into inventory and re-pick
-            // the target on next tick. No more "no logs" spam +
-            // bots actually progress firemaking.
+            // Restock - spawn a stack of the highest-tier log this bot
+            // can use. Throttled chat so we don't spam "restocked logs"
+            // every tick into bots.log.
             int logId = bestLogIdForFm(botFmLvl);
             try { bot.getInventory().addItem(logId, 28); } catch (Throwable ignored) {}
             lastDiagnostic = "fm: restocked " + logId + " x28";
-            sayDebug("restocked logs (" + logId + " x28)");
+            if (Utils.random(100) < 5) sayDebug("restocked logs (" + logId + " x28)");
             return;
         }
         bot.getActionManager().setAction(new com.rs.game.player.actions.Firemaking(targetFire));
         lastDiagnostic = "fm: lighting " + targetFire;
-        if (Utils.random(100) < 30) say("nice cozy fire");
+        if (Utils.random(100) < 30) say(firemakingChatter());
     }
 
     /** Last training method the bot announced - used to avoid spamming chat. */
@@ -1436,6 +1493,39 @@ public class BotBrain {
     }
     protected boolean goalBlacklisted(com.rs.bot.ai.TrainingMethods.Method m) {
         return m != null && goalBlacklist.contains(m);
+    }
+
+    /**
+     * Sim-bank: clear the bot's inventory so the next gathering swing
+     * doesn't reject with "Not enough space". Citizen bots don't have
+     * real bank state and aren't worth a full bank-trip detour, so we
+     * just drop the gathered items in place. WC-TRACE was showing
+     * inv=0/28 across every WC bot - they'd fill once, hit hasFreeSlots
+     * == false, and never chop again. Called before setAction in each
+     * gathering action's tryStart*. Returns true when something was
+     * cleared (caller may want to skip this tick).
+     *
+     * Keeps equipped tools (axes / pickaxes / fishing kit) since those
+     * sit in equipment slots, not inventory. Anything in inventory is
+     * fair game - this is a sim-bank, not a sim-keep.
+     */
+    protected boolean simBankInventoryIfFull(AIPlayer b) {
+        try {
+            if (b == null || b.getInventory() == null) return false;
+            int free = b.getInventory().getFreeSlots();
+            if (free > 0) return false;
+            // Reach directly into the items container - skips refresh()
+            // which calls player.getPackets().sendUpdateItems and NPEs
+            // for headless bots (no session).
+            com.rs.game.item.ItemsContainer<com.rs.game.item.Item> items =
+                b.getInventory().getItems();
+            if (items != null) {
+                items.reset();
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
     /** Goal description tied to the current blacklist - reset when goal changes. */
     private String blacklistGoalDesc = null;
@@ -1569,6 +1659,22 @@ public class BotBrain {
     }
 
     protected void tryStartWoodcutting(com.rs.bot.ai.TrainingMethods.Method method) {
+        // CRITICAL: don't restart the action if we're already chopping.
+        // The brain ticks every 600ms; without this guard we re-set the
+        // Woodcutting action every tick, which resets its internal swing
+        // counters - the bot never actually fells a log. CitizenBrain's
+        // tickInteracting calls this every tick without an outer
+        // "is action running" gate, so we have to gate here.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Woodcutting) {
+            return;
+        }
+        // Sim-bank: if inventory is full, the Woodcutting action's
+        // checkAll rejects with "Not enough space" and the bot oscillates
+        // between trees forever. Citizens don't bank for real - just
+        // wipe the inventory and keep gathering.
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING);
             if (lvl < method.minLevel) {
@@ -1600,9 +1706,48 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("no axe + no gp, need to earn first");
             return;
         }
-        EnvironmentScanner.TreeMatch match =
-            EnvironmentScanner.findNearestTree(bot, 24, method == null ? null : method.treeDef);
+        EnvironmentScanner.TreeMatch match = null;
+        // Sticky target: keep walking to the previously-chosen tree until
+        // the TTL expires or we're adjacent. Without this, the
+        // weighted-random scanner returns a different tree each tick and
+        // the bot oscillates without ever arriving. TTL is the safety
+        // net for trees that turn out to be unreachable (clip-blocked
+        // by a fence, etc.) - we re-pick after a few seconds.
+        if (cachedTargetObject != null && cachedTargetTtl > 0) {
+            // World-state check: when the tree gets chopped, the
+            // world's tile now holds a stump (a different object id),
+            // but our cached WorldObject reference still points at the
+            // original tree object so its .name is still "Yew tree".
+            // matchTree() happily returns YEW, the bot tries to chop a
+            // ghost, Woodcutting.checkTree returns false, action drops,
+            // brain re-fires the cache on the next tick - infinite loop.
+            // Verify the world STILL has the same object id at that tile.
+            boolean stillThere = com.rs.game.World.containsObjectWithId(
+                cachedTargetObject, cachedTargetObject.getId());
+            if (!stillThere) {
+                cachedTargetObject = null;
+            } else {
+                String name = cachedTargetObject.getDefinitions().name;
+                com.rs.game.player.actions.Woodcutting.TreeDefinitions td =
+                    EnvironmentScanner.matchTree(name);
+                if (td != null && (method.treeDef == null || td == method.treeDef)) {
+                    match = new EnvironmentScanner.TreeMatch(cachedTargetObject, td);
+                    cachedTargetTtl--;
+                } else {
+                    cachedTargetObject = null;
+                }
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestTree(bot, 24,
+                method == null ? null : method.treeDef);
+            if (match != null) {
+                cachedTargetObject = match.object;
+                cachedTargetTtl = 20; // ~12s to reach + commit
+            }
+        }
+        if (match == null) {
+            cachedTargetObject = null;
             lastDiagnostic = "wc: no " + (method == null ? "tree" : method.treeDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + treeKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1613,12 +1758,42 @@ public class BotBrain {
             BotPathing.walkToObject(bot, match.object);
             return;
         }
-        bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+        // Diagnostic: log every setAction call AND verify it took. If
+        // start() rejects (no hatchet, full inventory, level mismatch) the
+        // action manager silently drops it and getAction() == null on the
+        // next tick - which is exactly the "running between trees forever"
+        // loop. Log the outcome both ways so we can see WHY in bots.log.
+        boolean accepted;
+        try {
+            bot.getActionManager().setAction(new Woodcutting(match.object, match.definition));
+            accepted = bot.getActionManager().getAction()
+                instanceof com.rs.game.player.actions.Woodcutting;
+        } catch (Throwable t) {
+            accepted = false;
+            com.rs.bot.BotLog.log("WC-TRACE",
+                bot.getDisplayName() + " setAction THREW: " + t);
+        }
+        com.rs.bot.BotLog.log("WC-TRACE",
+            bot.getDisplayName() + " setAction "
+            + (accepted ? "ACCEPTED" : "REJECTED")
+            + " tree=" + match.definition
+            + " at " + match.object.getX() + "," + match.object.getY()
+            + " botPos=" + bot.getX() + "," + bot.getY()
+            + " inv=" + (bot.getInventory().getFreeSlots())
+            + "/28 wc=" + bot.getSkills().getLevel(com.rs.game.player.Skills.WOODCUTTING)
+            + " axe=" + (com.rs.game.player.actions.Woodcutting.getHatchet(bot, false) != null));
+        cachedTargetObject = null; // action took over; let next idle re-pick
         lastDiagnostic = "wc: chopping " + match.definition;
         if (Utils.random(100) < 30) say(woodcuttingChatter());
     }
 
     protected void tryStartMining(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.mining.Mining) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.MINING);
             if (lvl < method.minLevel) {
@@ -1655,9 +1830,38 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("no pickaxe + no gp, need to earn first");
             return;
         }
-        EnvironmentScanner.RockMatch match =
-            EnvironmentScanner.findNearestRock(bot, 24, method == null ? null : method.rockDef);
+        EnvironmentScanner.RockMatch match = null;
+        // Same sticky-target pattern as woodcutting - commit to one rock
+        // until reached or TTL expires. World-state check so depleted
+        // rocks (which swap to a "rocks" object) don't keep being
+        // re-targeted.
+        if (cachedTargetObject != null && cachedTargetTtl > 0) {
+            boolean stillThere = com.rs.game.World.containsObjectWithId(
+                cachedTargetObject, cachedTargetObject.getId());
+            if (!stillThere) {
+                cachedTargetObject = null;
+            } else {
+                String name = cachedTargetObject.getDefinitions().name;
+                com.rs.game.player.actions.mining.Mining.RockDefinitions rd =
+                    EnvironmentScanner.matchRock(name);
+                if (rd != null && (method.rockDef == null || rd == method.rockDef)) {
+                    match = new EnvironmentScanner.RockMatch(cachedTargetObject, rd);
+                    cachedTargetTtl--;
+                } else {
+                    cachedTargetObject = null;
+                }
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestRock(bot, 24,
+                method == null ? null : method.rockDef);
+            if (match != null) {
+                cachedTargetObject = match.object;
+                cachedTargetTtl = 20;
+            }
+        }
+        if (match == null) {
+            cachedTargetObject = null;
             lastDiagnostic = "mining: no " + (method == null ? "rock" : method.rockDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + rockKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1669,11 +1873,18 @@ public class BotBrain {
             return;
         }
         bot.getActionManager().setAction(new Mining(match.object, match.definition));
+        cachedTargetObject = null;
         lastDiagnostic = "mining: extracting " + match.definition;
         if (Utils.random(100) < 30) say(miningChatter());
     }
 
     protected void tryStartFishing(com.rs.bot.ai.TrainingMethods.Method method) {
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.Fishing) {
+            return;
+        }
+        simBankInventoryIfFull(bot);
         try {
             int lvl = bot.getSkills().getLevel(com.rs.game.player.Skills.FISHING);
             if (lvl < method.minLevel) {
@@ -1702,9 +1913,32 @@ public class BotBrain {
             if (Utils.random(100) < 50) sayDebug("can't afford a fishing tool");
             return;
         }
-        EnvironmentScanner.FishMatch match =
-            EnvironmentScanner.findNearestFishingSpot(bot, 24, method == null ? null : method.fishDef);
+        EnvironmentScanner.FishMatch match = null;
+        // Sticky target for fishing - NPCs (the fishing spots) can despawn
+        // and respawn at slightly different tiles, so we also check that
+        // the cached NPC is still alive AND still in the world.
+        if (cachedTargetNpc != null && cachedTargetTtl > 0
+                && !cachedTargetNpc.hasFinished() && !cachedTargetNpc.isDead()) {
+            com.rs.game.player.actions.Fishing.FishingSpots fs =
+                EnvironmentScanner.matchFishingSpot(cachedTargetNpc.getId(),
+                    method.fishDef == null ? -1 : method.fishDef.getTool());
+            if (fs != null && (method.fishDef == null || fs == method.fishDef)) {
+                match = new EnvironmentScanner.FishMatch(cachedTargetNpc, fs);
+                cachedTargetTtl--;
+            } else {
+                cachedTargetNpc = null;
+            }
+        }
         if (match == null) {
+            match = EnvironmentScanner.findNearestFishingSpot(bot, 24,
+                method == null ? null : method.fishDef);
+            if (match != null) {
+                cachedTargetNpc = match.npc;
+                cachedTargetTtl = 20;
+            }
+        }
+        if (match == null) {
+            cachedTargetNpc = null;
             lastDiagnostic = "fishing: no " + (method == null ? "spot" : method.fishDef) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no " + fishKindLabel(method) + " in 24 tiles");
             BotPathing.wiggle(bot, 5);
@@ -1716,6 +1950,7 @@ public class BotBrain {
             return;
         }
         bot.getActionManager().setAction(new Fishing(match.definition, match.npc));
+        cachedTargetNpc = null;
         lastDiagnostic = "fishing: " + match.definition;
         if (Utils.random(100) < 30) say(fishingChatter());
     }
@@ -1843,6 +2078,15 @@ public class BotBrain {
     }
 
     protected void tryStartCombat(com.rs.bot.ai.TrainingMethods.Method method) {
+        // Don't restart PlayerCombatNew if it's already engaged - the
+        // action handles target-switching when the current victim dies,
+        // and re-setting every tick resets its swing timer so the bot
+        // never lands a hit.
+        if (bot.getActionManager() != null
+                && bot.getActionManager().getAction()
+                    instanceof com.rs.game.player.actions.PlayerCombatNew) {
+            return;
+        }
         // Retreat first if we're low on HP. Eat from inventory if we have
         // food, otherwise stop attacking and walk back to safety.
         if (handleLowHpRetreat()) return;
@@ -1851,6 +2095,8 @@ public class BotBrain {
         if (bot.getActionManager().getAction() instanceof PlayerCombatNew) return;
 
         if (method.npcIds == null || method.npcIds.length == 0) {
+            com.rs.bot.BotLog.log("CB-TRACE",
+                bot.getDisplayName() + " NO_NPCIDS method=" + method.description);
             lastDiagnostic = "combat: method has no npcIds";
             return;
         }
@@ -1868,6 +2114,15 @@ public class BotBrain {
         // miss visible NPCs on a jittered teleport landing).
         NPC target = EnvironmentScanner.findNearestNPC(bot, 24, method.npcIds);
         if (target == null) {
+            // Diagnostic: shows when bot is at the spot but NPCs aren't
+            // there. Common cause: the method's npcIds aren't actually
+            // spawned in this server's NPCSpawns at the method tile.
+            com.rs.bot.BotLog.log("CB-TRACE",
+                bot.getDisplayName() + " NO_TARGET method=" + method.description
+                + " want=" + java.util.Arrays.toString(method.npcIds)
+                + " botPos=" + bot.getX() + "," + bot.getY()
+                + " methodTile=" + method.location.getX() + "," + method.location.getY()
+                + " plane=" + bot.getPlane() + "/" + method.location.getPlane());
             lastDiagnostic = "combat: no NPC " + java.util.Arrays.toString(method.npcIds) + " in 24 tiles";
             if (Utils.random(100) < 50) sayDebug("no enemies here");
             BotPathing.wiggle(bot, 4);
@@ -1901,6 +2156,14 @@ public class BotBrain {
         // (melee = adjacent, ranged/magic = within sight). Just hand it the
         // target and let it run.
         bot.getActionManager().setAction(new PlayerCombatNew(target));
+        boolean accepted = bot.getActionManager().getAction()
+            instanceof PlayerCombatNew;
+        com.rs.bot.BotLog.log("CB-TRACE",
+            bot.getDisplayName() + " setAction "
+            + (accepted ? "ACCEPTED" : "REJECTED")
+            + " target=" + target.getId() + "(cb " + targetCb + ")"
+            + " botCb=" + botCb + " botPos=" + bot.getX() + "," + bot.getY()
+            + " targetPos=" + target.getX() + "," + target.getY());
         // Force the NPC to engage us immediately. PlayerCombatNew.autoRelatie
         // does call target.setTarget(player) after each hit lands, but it
         // runs on a delayed WorldTask and only fires if a hit actually
@@ -2091,20 +2354,78 @@ public class BotBrain {
 
     private static final String[] WOODCUTTING_CHATTER = {
         "anyone selling axes?", "yew logs are getting boring", "lvl up!",
-        "this tree is taking forever", "teak when?", "I love woodcutting"
+        "this tree is taking forever", "teak when?", "I love woodcutting",
+        "rune axe makes a difference fr", "wcg cape doe", "magic logs price hold?",
+        "draynor willows still meta", "yews at edge always packed",
+        "where's a quiet maple spot", "swap to lumberjack outfit yet?",
+        "got beaver pet last week", "ivy is faster xp tbh",
+        "redwoods unlock at 90 right?", "anyone want to do canifis teaks",
+        "got lucky branch drops", "this tree should be a rune rock for the wait",
+        "fletching the logs after, more efficient", "miscellania workers next",
+        "wc 92 grind for cape", "auto-cutting axe upgrade later",
+        "ge price on yew logs still ok", "going to bank, brb",
+        "love this peaceful spot", "trying to get 200m wc"
     };
     private static final String[] MINING_CHATTER = {
         "buying gold ore", "nooo my pickaxe broke", "rune rock spawn pls",
-        "anyone here boosting?", "mining is therapeutic ngl"
+        "anyone here boosting?", "mining is therapeutic ngl",
+        "gem rocks are stacking nice", "varrock armor 3 finally",
+        "dwarven stout boost time", "rune rocks just spawned",
+        "powermining iron at al-kharid", "lrc anyone?", "drag pickaxe spec heals my prayer",
+        "got a soft clay scroll", "concentrated gold at lava maze",
+        "smithing the bars after", "amethyst at dragon mine?",
+        "varrock teleport for east mine", "mining gloves help so much",
+        "blast mine is good xp", "got 99 mining last week",
+        "going for max", "shooting star tonight",
+        "rocks always feel slower than they are", "let's get this 200m",
+        "anyone got a coal bag spare", "trahaearn cape grind"
     };
     private static final String[] FISHING_CHATTER = {
         "wts raw lobster", "barbarian fishing best xp", "sharks sharks sharks",
-        "anyone got an extra harpoon?", "fishing > mining"
+        "anyone got an extra harpoon?", "fishing > mining",
+        "monkfish on piscatoris", "rocktails grinding",
+        "swordfish spot crowded", "karambwans at lumby docks",
+        "leaping sturgeon is the way", "got the angler outfit",
+        "tempoross is alright xp", "anglerfish 200m goal",
+        "fly fishing at shilo", "harpoon spec saves time",
+        "barb-tail harpoon for prayer", "drift net at fossil island",
+        "got a herald pet", "raw shark price holding",
+        "tick manipulation hurts my fingers", "max cape grind continues",
+        "gauntlets of cooking are king", "love this fishing spot",
+        "swap to mining when I'm sick of fish", "going for 99 cooking too",
+        "anyone want my raw lobsters cheap"
     };
     private static final String[] COMBAT_CHATTER = {
         "ez", "any teams?", "wts bones", "almost 99 attack", "one shot lol",
-        "this xp tho", "training to max", "anyone got food?"
+        "this xp tho", "training to max", "anyone got food?",
+        "got the kill", "rip my prayer pots", "almost died there",
+        "ovl + soulsplit best combo", "loot bag worth it?",
+        "what's the slayer task today", "got a 25k drop",
+        "swap to range here is meta", "any clue scrolls?",
+        "tank set protects so much", "barrows monsters spawn",
+        "boss timer reset?", "got a hard clue from this",
+        "drag tasks pay so well", "tribrid is the way",
+        "want to do bandos duo?", "i need to bank tbh",
+        "dharok at low hp is busted", "any tassets dropping today",
+        "going to lower my hp on purpose", "veng on cooldown rip",
+        "praying mage here hits 0s"
     };
+    private static final String[] FIREMAKING_CHATTER = {
+        "nice cozy fire", "another inv burned", "love the fm grind",
+        "fm cape soon", "burning yew logs", "fm 99 incoming",
+        "wintertodt is way faster", "watching the flames",
+        "fmaker for life", "got the phoenix pet from fm finally",
+        "tinderbox just broke jk", "magic logs burn so fast",
+        "this is peaceful", "love the warmth", "pyromaniac",
+        "anyone want a fire to cook on?", "running the GE strip",
+        "fms cape makes the burner light", "bonfire xp boost up",
+        "willows burn quick", "firemaking on edge",
+        "the smoke is rough today", "this is afk gold",
+        "got 99 firemaking with maples", "burning all the way to 99",
+        "podcast time while burning", "fm gauntlets when",
+        "lighting one more inv", "always more logs to burn"
+    };
+    private String firemakingChatter() { return FIREMAKING_CHATTER[Utils.random(FIREMAKING_CHATTER.length)]; }
     private String woodcuttingChatter() { return WOODCUTTING_CHATTER[Utils.random(WOODCUTTING_CHATTER.length)]; }
     private String miningChatter() { return MINING_CHATTER[Utils.random(MINING_CHATTER.length)]; }
     private String fishingChatter() { return FISHING_CHATTER[Utils.random(FISHING_CHATTER.length)]; }

@@ -26,8 +26,12 @@ public class CombatEventNPC extends NPC {
 		ROCK_GOLEM(8648, Skills.MINING, "Raarrrgghh! Flee human!"),
 		RIVER_TROLL(8646, Skills.FISHING, "Fishies be mine! Leave dem fishies!"),
 		SHADE(8645, Skills.PRAYER, null),
-		ZOMBIE(75, -2, "Braaiinnzzzzzzzzzz"), //-2 any combat skill
-		EVIL_CHICKEN(3375, -1, null),
+		// ZOMBIE (-2 any combat skill) and EVIL_CHICKEN (-1 any skill)
+		// removed by request - they spawned mid-fight / mid-skilling
+		// and felt like grief rather than RS flavour. Skill-themed
+		// events above (Tree Spirit / Rock Golem / River Troll / Shade)
+		// stay since they only fire from their matching skill and
+		// read as intentional RS random events.
 		SWARM(411, -1, null);
 		
 		

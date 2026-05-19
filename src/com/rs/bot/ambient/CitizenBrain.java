@@ -1289,23 +1289,48 @@ public class CitizenBrain extends BotBrain {
         // those whose location matches the lobby tile. Falls back to any
         // MINIGAME method if no exact match (shouldn't happen normally).
         com.rs.game.WorldTile pinned = archetype == null ? null : archetype.lobbyTile();
-        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
-        for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
-            if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
-            if (m.location == null) continue;
-            // Skip methods previously blacklisted (e.g. by the
-            // tickTraversing stuck-detector).
-            if (goalBlacklisted(m)) continue;
-            if (pinned != null) {
-                // Per-minigame archetype - only accept methods at the pinned lobby
-                if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
+        int botCb = 0;
+        try {
+            botCb = bot.getSkills().getCombatLevel();
+        } catch (Throwable ignored) {}
+        // Three relaxation tiers - we try strictest first, then drop filters
+        // when nothing matches:
+        //   strict  -> tier-gate + blacklist
+        //   relaxed -> tier-gate only (ignore blacklist)
+        //   loose   -> no tier-gate, no blacklist (last resort)
+        // Without this, a HYBRID that's blacklisted every Slayer Tower
+        // method ends up with "no applicable method" - the bot just idles
+        // forever doing nothing. Now they fall back to lower-tier content
+        // instead of being permanently stuck.
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable =
+            buildApplicable(bot, allowedKinds, pinned, botCb, true, true);
+        if (applicable.isEmpty()) {
+            applicable = buildApplicable(bot, allowedKinds, pinned, botCb, true, false);
+            if (!applicable.isEmpty()) {
+                debug(bot, "blacklist relaxed - " + applicable.size() + " methods unblocked");
             }
-            try {
-                if (!m.isApplicable(bot)) continue;
-            } catch (Throwable ignored) { continue; }
-            applicable.add(m);
+        }
+        if (applicable.isEmpty()) {
+            applicable = buildApplicable(bot, allowedKinds, pinned, botCb, false, false);
+            if (!applicable.isEmpty()) {
+                debug(bot, "tier-gate relaxed - falling back to lower-tier (" + applicable.size() + " methods)");
+            }
         }
         if (applicable.isEmpty()) return null;
+        // Crowd cap: FM strips and other narrow spots get unwatchable when
+        // 20 bots pile on the same tile (fires everywhere, trails of logs,
+        // bots stuck waiting for a free burn tile). Cap concurrent bots per
+        // method - default 3 for FM strips, 8 for combat / skill spots
+        // (those scale better since the resource layer is denser). If a
+        // candidate is over cap, drop it from the pool. If EVERYTHING is
+        // over cap, ignore the cap (last resort - better than idle).
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> uncrowded =
+            new java.util.ArrayList<>();
+        for (com.rs.bot.ai.TrainingMethods.Method m : applicable) {
+            int cap = (m.kind == com.rs.bot.ai.TrainingMethods.Kind.FIREMAKING) ? 3 : 8;
+            if (countBotsAtMethod(m) < cap) uncrowded.add(m);
+        }
+        if (!uncrowded.isEmpty()) applicable = uncrowded;
         // Tier + proximity weighted pick. Real RS players don't randomly
         // choose between chopping normals at Lumby vs magics at Gnome
         // Stronghold - they pick the highest tier they can use AND
@@ -1331,13 +1356,93 @@ public class CitizenBrain extends BotBrain {
             int dist = Math.abs(cand.location.getX() - home_x)
                      + Math.abs(cand.location.getY() - home_y);
             int proximity = Math.max(0, 200 - dist / 5);
-            int score = cand.minLevel + proximity + Utils.random(20);
+            // Tier weight bumped: was +minLevel (1..85), now +minLevel*3
+            // so tier dominates over proximity. A cb-100 hybrid scoring
+            // cows (minLvl 1) vs abyssal demons (minLvl 85) with cows
+            // closer used to be 1+200=201 vs 85+0=85 - cows won. Now
+            // it's 3 vs 255 - demons win. Proximity still nudges ties
+            // but doesn't drag bots to weak content.
+            int score = cand.minLevel * 3 + proximity + Utils.random(20);
             if (score > bestScore) {
                 bestScore = score;
                 best = cand;
             }
         }
         return best;
+    }
+
+    /**
+     * Count how many other citizen bots are currently doing or walking
+     * to this method, used by the crowd-cap in pickRandomMethodForRole.
+     * Cheap O(n) scan over World.getPlayers - only fires when picking a
+     * new method (not every brain tick).
+     */
+    private int countBotsAtMethod(com.rs.bot.ai.TrainingMethods.Method m) {
+        if (m == null || m.location == null) return 0;
+        int mx = m.location.getX(), my = m.location.getY();
+        int count = 0;
+        for (com.rs.game.player.Player p : com.rs.game.World.getPlayers()) {
+            if (!(p instanceof AIPlayer)) continue;
+            AIPlayer other = (AIPlayer) p;
+            if (other == bot || other.hasFinished()) continue;
+            if (!(other.getBrain() instanceof CitizenBrain)) continue;
+            CitizenBrain cb = (CitizenBrain) other.getBrain();
+            // Two ways a bot "occupies" this method:
+            //   - they picked it (currentMethod == m), OR
+            //   - they're physically within ~6 tiles of the anchor.
+            if (cb.currentMethod == m) count++;
+            else {
+                int dx = other.getX() - mx;
+                int dy = other.getY() - my;
+                if (dx*dx + dy*dy <= 36) count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Build the list of methods this bot can pick, with controllable filters.
+     * @param useTierGate when true, skip methods whose maxLevel is >20 below
+     *                    the bot's combat / skill level (RP-correct gating).
+     * @param useBlacklist when true, skip methods that were blacklisted for
+     *                     being unreachable / repeatedly stuck.
+     * Used by pickRandomMethodForRole's three-tier fallback: strict ->
+     * blacklist-relaxed -> tier-relaxed. Without the relaxation, a bot
+     * that's blacklisted every reachable tier-N method ends up with zero
+     * applicable methods and idles forever.
+     */
+    private java.util.List<com.rs.bot.ai.TrainingMethods.Method> buildApplicable(
+            AIPlayer bot,
+            java.util.Set<com.rs.bot.ai.TrainingMethods.Kind> allowedKinds,
+            com.rs.game.WorldTile pinned,
+            int botCb,
+            boolean useTierGate,
+            boolean useBlacklist) {
+        java.util.List<com.rs.bot.ai.TrainingMethods.Method> applicable = new java.util.ArrayList<>();
+        for (com.rs.bot.ai.TrainingMethods.Method m : com.rs.bot.ai.TrainingMethods.getAll()) {
+            if (m.kind == null || !allowedKinds.contains(m.kind)) continue;
+            if (m.location == null) continue;
+            if (useBlacklist && goalBlacklisted(m)) continue;
+            if (pinned != null) {
+                if (m.location.getX() != pinned.getX() || m.location.getY() != pinned.getY()) continue;
+            }
+            if (useTierGate && m.maxLevel > 0) {
+                int botLevel;
+                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
+                    botLevel = botCb;
+                } else {
+                    try {
+                        botLevel = m.skill >= 0 ? bot.getSkills().getLevel(m.skill) : 1;
+                    } catch (Throwable t) { botLevel = 1; }
+                }
+                if (m.maxLevel < botLevel - 20) continue;
+            }
+            try {
+                if (!m.isApplicable(bot)) continue;
+            } catch (Throwable ignored) { continue; }
+            applicable.add(m);
+        }
+        return applicable;
     }
 
     /**
@@ -1385,41 +1490,72 @@ public class CitizenBrain extends BotBrain {
     private boolean faceAndAnimateTarget(AIPlayer bot) {
         try {
             int radius = 5; // close-range - bot should already be at the target
+            // If the bot already has the right action running (Woodcutting on
+            // a still-valid tree, Mining on a still-valid rock, etc.) DON'T
+            // overwrite it - that's what was making bots run between trees
+            // forever without ever chopping. Each tick the brain would call
+            // setAction again, resetting the action's progress.
+            com.rs.game.player.actions.Action cur = bot.getActionManager() != null
+                    ? bot.getActionManager().getAction() : null;
             // === TrainingMethods route (shared with Legends) ===
             if (currentMethod != null) {
                 com.rs.bot.ai.TrainingMethods.Method m = currentMethod;
                 if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.WOODCUTTING) {
+                    if (cur instanceof com.rs.game.player.actions.Woodcutting) return true;
                     com.rs.bot.ai.EnvironmentScanner.TreeMatch tm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestTree(bot, radius, m.treeDef);
-                    if (tm != null && tm.object != null) {
-                        try { bot.faceObject(tm.object); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (tm != null && tm.object != null && m.treeDef != null) {
+                        try {
+                            bot.faceObject(tm.object);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.Woodcutting(tm.object, m.treeDef));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.MINING) {
+                    if (cur instanceof com.rs.game.player.actions.mining.Mining) return true;
                     com.rs.bot.ai.EnvironmentScanner.RockMatch rm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestRock(bot, radius, m.rockDef);
-                    if (rm != null && rm.object != null) {
-                        try { bot.faceObject(rm.object); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (rm != null && rm.object != null && m.rockDef != null) {
+                        try {
+                            bot.faceObject(rm.object);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.mining.Mining(rm.object, m.rockDef));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.FISHING) {
+                    if (cur instanceof com.rs.game.player.actions.Fishing) return true;
                     com.rs.bot.ai.EnvironmentScanner.FishMatch fm =
                         com.rs.bot.ai.EnvironmentScanner.findNearestFishingSpot(bot, radius, m.fishDef);
-                    if (fm != null && fm.npc != null) {
-                        try { bot.setNextFaceEntity(fm.npc); } catch (Throwable ignored) {}
-                        playAnim(bot);
+                    if (fm != null && fm.npc != null && fm.definition != null) {
+                        try {
+                            bot.setNextFaceEntity(fm.npc);
+                            bot.getActionManager().setAction(
+                                new com.rs.game.player.actions.Fishing(fm.definition, fm.npc));
+                        } catch (Throwable ignored) {}
                         return true;
                     }
                 } else if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT
                         || m.kind == com.rs.bot.ai.TrainingMethods.Kind.THIEVING) {
+                    if (cur instanceof com.rs.game.player.actions.PlayerCombatNew) return true;
                     if (m.npcIds != null && m.npcIds.length > 0) {
                         com.rs.game.npc.NPC n =
                             com.rs.bot.ai.EnvironmentScanner.findNearestNPC(bot, radius, m.npcIds);
                         if (n != null) {
-                            try { bot.setNextFaceEntity(n); } catch (Throwable ignored) {}
-                            playAnim(bot);
+                            try {
+                                bot.setNextFaceEntity(n);
+                                if (m.kind == com.rs.bot.ai.TrainingMethods.Kind.COMBAT) {
+                                    bot.getActionManager().setAction(
+                                        new com.rs.game.player.actions.PlayerCombatNew(n));
+                                } else {
+                                    // Thieving has its own action chain - face +
+                                    // animate is still placeholder for now since
+                                    // PickPocketAction wiring needs the right
+                                    // pickpocket type per npc id (separate task).
+                                    playAnim(bot);
+                                }
+                            } catch (Throwable ignored) {}
                             return true;
                         }
                     }

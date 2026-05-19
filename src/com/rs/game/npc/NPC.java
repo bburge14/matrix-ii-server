@@ -217,69 +217,8 @@ public class NPC extends Entity implements Serializable {
 	}
 
 	public void processNPC() {
-		// Top-level diagnostic. Fires BEFORE the dead/locked
-		// short-circuit so we can definitively prove processNPC is
-		// being called for an NPC the player is fighting. Sampled
-		// 1-in-10 (was 1-in-50) so it actually shows up in the user's
-		// short log windows. Only fires when target is a real Player
-		// so bot-vs-bot doesn't drown the signal.
-		if (com.rs.utils.Utils.random(10) == 0
-				&& combat != null && combat.getTarget() instanceof com.rs.game.player.Player
-				&& !(combat.getTarget() instanceof com.rs.bot.AIPlayer)) {
-			try {
-				com.rs.bot.BotLog.log("NPC-TICK", getId()
-					+ " " + (getDefinitions() != null ? getDefinitions().name : "?")
-					+ " dead=" + isDead() + " locked=" + locked
-					+ " hasWalkSteps=" + hasWalkSteps()
-					+ " target=" + combat.getTarget());
-			} catch (Throwable ignored) {}
-		}
 		if (isDead() || locked)
 			return;
-		// Force-retaliate. If something hit us recently (attackedBy +
-		// attackedByDelay still alive) AND we currently have no combat
-		// target AND we're a normal interactable NPC with an Attack
-		// option, engage the attacker. This is belt-and-suspenders on
-		// top of handleIngoingHit's same-tick set: covers cases where
-		// the hit had damage == -1 and applyHit got skipped, scripted
-		// cantInteract toggles, lureDelay drift in autoRelatie, etc.
-		// The user's complaint was that monsters never retaliate -
-		// this catches every per-tick opportunity to fix that.
-		try {
-			Entity who = getAttackedBy();
-			// hasAttackOption() filter dropped: it returned false for
-			// cows (whose primary option is Milk, not Attack) and any
-			// other NPC whose Attack right-click is wired up via id /
-			// NPCHandler instead of the options[] array. The fact that
-			// "who" hit us at all means the engine considered this NPC
-			// attackable - we should always retaliate.
-			if (who != null
-					&& combat != null && combat.getTarget() == null
-					&& getAttackedByDelay() + 6000 >= Utils.currentTimeMillis()
-					&& !isCantInteract() && !isForceWalking()
-					&& !who.isDead() && !who.hasFinished()
-					&& who.getPlane() == getPlane()
-					&& getDefinitions() != null) {
-				setTarget(who);
-				if (combat.getTarget() == null) {
-					// setTarget called combat.checkAll which immediately
-					// removed the target - log why. Sampled at 1-in-5
-					// since this is the primary diagnostic, routed
-					// through BotLog so it lands in data/logs/bots.log
-					// where the user is already tailing.
-					if (com.rs.utils.Utils.random(5) == 0) {
-						com.rs.bot.BotLog.log("NPC-RETAL", getId() + " " + getDefinitions().name
-							+ " setTarget(" + who.getX() + "," + who.getY() + ",p" + who.getPlane()
-							+ ") -> target=null. mapArea=" + getMapAreaNameHash()
-							+ " respawnDist=" + (Math.abs(getX()-getRespawnTile().getX())+Math.abs(getY()-getRespawnTile().getY()))
-							+ " forceWalking=" + isForceWalking()
-							+ " cantInteract=" + isCantInteract());
-					}
-				}
-			}
-		} catch (Throwable t) {
-			com.rs.bot.BotLog.log("NPC-RETAL", "hook threw: " + t);
-		}
 		if (!combat.process()) { // if not under combat
 			if (!isForceWalking()) {// combat still processed for attack delay
 				// go down
@@ -384,6 +323,29 @@ public class NPC extends Entity implements Serializable {
 	public void handleIngoingHit(final Hit hit) {
 		if (capDamage != -1 && hit.getDamage() > capDamage)
 			hit.setDamage(capDamage);
+		Entity hitSource = hit.getSource();
+		// Force-retaliate BEFORE the look filter. Stock RS retaliates on
+		// every successful swing including misses - an admin / low-level
+		// player attacking a high-level NPC almost always rolls MISSED,
+		// and the look filter below bails out before our retal hook ever
+		// runs. Moving the hook above the filter ensures MISSED hits
+		// still trigger retal. Also preempts AIPlayer (bot) targets so
+		// real players are never ignored in favour of a residual bot
+		// face-target.
+		if (hitSource instanceof Player
+				&& !(hitSource instanceof com.rs.bot.AIPlayer)) {
+			try {
+				if (combat != null
+						&& !isDead() && !hasFinished()
+						&& !isCantInteract() && !isForceWalking()
+						&& getDefinitions() != null) {
+					Entity cur = combat.getTarget();
+					if (cur != hitSource) {
+						setTarget(hitSource);
+					}
+				}
+			} catch (Throwable ignored) {}
+		}
 		if (hit.getLook() != HitLook.MELEE_DAMAGE && hit.getLook() != HitLook.RANGE_DAMAGE && hit.getLook() != HitLook.MAGIC_DAMAGE)
 			return;
 		Entity source = hit.getSource();
@@ -394,64 +356,6 @@ public class NPC extends Entity implements Serializable {
 		if (source instanceof Player) {
 			((Player) source).getPrayer().handleHitPrayers(this, hit);
 			((Player) source).getControlerManager().processIncommingHit(hit, this);
-			// Force-retaliate when hit by a player. Always log the
-			// gate state so we can see exactly why an NPC didn't fight
-			// back (target already set, dead, cantInteract, etc).
-			// 1-in-3 sample on the always-fire branch keeps the volume
-			// reasonable while still catching every common scenario.
-			try {
-				boolean alive = !isDead() && !hasFinished();
-				boolean canInteract = !isCantInteract() && !isForceWalking();
-				boolean hasCombat = combat != null;
-				boolean targetEmpty = hasCombat && combat.getTarget() == null;
-				// Real-player preempt: if a HUMAN player hits an NPC that's
-				// currently targeting an AI bot, hand aggro to the player.
-				// Without this, the user's log showed "Iruloth -> NPC 32
-				// Guard dmg=13" but the Guard's target stayed locked on
-				// [AI]obsEdge - real player got nothing back because a bot
-				// got there first. AI-vs-AI keeps existing target so bot
-				// brawls don't constantly thrash.
-				boolean isRealPlayer = !(source instanceof com.rs.bot.AIPlayer);
-				boolean preemptForPlayer = hasCombat && !targetEmpty
-					&& alive && canInteract
-					&& isRealPlayer
-					&& combat.getTarget() instanceof com.rs.bot.AIPlayer;
-				boolean attempted = false;
-				if (hasCombat && targetEmpty && alive && canInteract
-						&& getDefinitions() != null) {
-					setTarget(source);
-					attempted = true;
-				} else if (preemptForPlayer && getDefinitions() != null) {
-					setTarget(source);
-					attempted = true;
-				}
-				// Force a combat tick on the same hit. The engine's
-				// process() ticks every 600ms but user reports show
-				// it apparently isn't running for the goblin's combat
-				// (no NPC-PROCESS / NPC-COMBAT lines). Kick it
-				// manually so the NPC swings back NOW instead of
-				// waiting for some lifecycle that may never come.
-				if (combat != null && combat.getTarget() != null) {
-					combat.kickCombat();
-				}
-				if (com.rs.utils.Utils.random(3) == 0) {
-					String state;
-					if (!alive)               state = "DEAD";
-					else if (!canInteract)    state = "CANT_INTERACT(force=" + isForceWalking() + ")";
-					else if (!hasCombat)      state = "NO_COMBAT";
-					else if (preemptForPlayer && attempted)
-						state = "PREEMPT_FROM_BOT -> " + (combat.getTarget() == null ? "REJECTED" : "OK");
-					else if (!targetEmpty)    state = "TARGET_ALREADY=" + combat.getTarget();
-					else if (attempted)       state = "SET_TARGET -> " + (combat.getTarget() == null ? "REJECTED" : "OK");
-					else                       state = "UNKNOWN";
-					com.rs.bot.BotLog.log("NPC-RETAL-HIT", getId()
-						+ " " + getDefinitions().name
-						+ " hit by " + ((Player) source).getDisplayName()
-						+ " state=" + state);
-				}
-			} catch (Throwable t) {
-				com.rs.bot.BotLog.log("NPC-RETAL-HIT", "hook threw: " + t);
-			}
 		}
 
 	}
@@ -744,7 +648,14 @@ public class NPC extends Entity implements Serializable {
 		if (isForceWalking() || cantInteract) // if force walk not gonna get target
 			return;
 		combat.setTarget(entity);
-		lastAttackedByTarget = Utils.currentTimeMillis();
+		// Only stamp lastAttackedByTarget if combat ACTUALLY locked onto
+		// this target. combat.setTarget calls checkAll and clears the
+		// target on failure (distance, plane mismatch, etc) - stamping
+		// the timestamp anyway would gate autoRelatie for the next 12
+		// seconds even though no engagement happened, so subsequent
+		// hits also can't retaliate. Stamp only on success.
+		if (combat.getTarget() == entity)
+			lastAttackedByTarget = Utils.currentTimeMillis();
 	}
 
 	public void removeTarget() {
@@ -776,6 +687,18 @@ public class NPC extends Entity implements Serializable {
 				if (playerIndexes != null) {
 					for (int playerIndex : playerIndexes) {
 						Player player = World.getPlayers().get(playerIndex);
+						// Skip AIPlayers (bots) from the aggression target
+						// pool. With hundreds of bots spawned in populated
+						// zones the random selection downstream picked a
+						// bot 99% of the time, so aggressive monsters
+						// effectively "stopped attacking" real players.
+						// Bots still attack NPCs themselves via their own
+						// CitizenBrain combat path, and NPCs still
+						// retaliate against bots via the standard
+						// engine autoRelatie/applyHit flow after a bot
+						// hits them - this only stops bots from being
+						// PROACTIVELY aggro'd by aggressive monsters.
+						if (player instanceof com.rs.bot.AIPlayer) continue;
 						if (player == null || player.getCutscenesManager().hasCutscene() || !player.clientHasLoadedMapRegion() || player.getPlane() != getPlane() || player.isDead() || player.hasFinished() || !player.isRunning() || player.getAppearence().isHidden() || !Utils.isOnRange(getX(), getY(), size, player.getX(), player.getY(), player.getSize(), forceTargetDistance > 0 ? forceTargetDistance : agroRatio) || !clipedProjectile(player, false) || (!forceAgressive && !Wilderness.isAtWild(this) && player.getSkills().getCombatLevelWithSummoning() >= getCombatLevel() * 2))
 							continue;
 						possibleTarget.add(player);
@@ -830,7 +753,14 @@ public class NPC extends Entity implements Serializable {
 	public boolean checkAgressivity() {
 		if (!forceAgressive) {
 			NPCCombatDefinitions defs = getCombatDefinitions();
-			if (!defs.isAgressive())
+			// Stock RuneScape rule: monsters that aren't aggressive in
+			// safe zones BECOME aggressive in the wilderness. The data
+			// file flags Greater Demons / Dark Wizards / etc. as
+			// aggressive=false so they don't aggro Lumby tutorial spots,
+			// but in wildy they SHOULD aggro. Without this override,
+			// nothing in the wildy chases the player and "monsters don't
+			// attack me anymore".
+			if (!defs.isAgressive() && !com.rs.game.player.controllers.Wilderness.isAtWild(this))
 				return false;
 		}
 		ArrayList<Entity> possibleTarget = getPossibleTargets();
@@ -1078,24 +1008,7 @@ public class NPC extends Entity implements Serializable {
 	}
 
 	public HeadIcon[] getIcons() {
-		// Default impl: pull head icons from cache definition (opcode 102 -
-		// per-slot sprite + file IDs). Skill masters / shopkeepers get their
-		// floating skill icon automatically once NPCDefinitions.headIconSpriteIds
-		// is non-null. Subclasses (KalphiteQueen, TormentedDemon) still
-		// override for dynamic prayer-style icons.
-		try {
-			com.rs.cache.loaders.NPCDefinitions defs = getDefinitions();
-			if (defs == null || defs.headIconSpriteIds == null) return new HeadIcon[0];
-			int[] sprites = defs.headIconSpriteIds;
-			short[] files = defs.headIconFileIds;
-			HeadIcon[] icons = new HeadIcon[sprites.length];
-			for (int i = 0; i < sprites.length; i++) {
-				icons[i] = new HeadIcon(sprites[i], files == null ? -1 : files[i]);
-			}
-			return icons;
-		} catch (Throwable t) {
-			return new HeadIcon[0];
-		}
+		return new HeadIcon[0];
 	}
 
 	public void requestIconRefresh() {

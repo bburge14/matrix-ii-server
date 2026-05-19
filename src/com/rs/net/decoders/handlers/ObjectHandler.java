@@ -2843,6 +2843,10 @@ public final class ObjectHandler {
 							break;
 						case "stairs":
 						case "staircase":
+						case "spiral staircase":
+						case "stone staircase":
+						case "marble staircase":
+						case "wooden staircase":
 							handleStaircases(player, object, 1);
 							break;
 						case "small obelisk":
@@ -3056,6 +3060,10 @@ public final class ObjectHandler {
 							break;
 						case "stairs":
 						case "staircase":
+						case "spiral staircase":
+						case "stone staircase":
+						case "marble staircase":
+						case "wooden staircase":
 							handleStaircases(player, object, 2);
 							break;
 						case "summoning obelisk":
@@ -3116,6 +3124,10 @@ public final class ObjectHandler {
 							break;
 						case "stairs":
 						case "staircase":
+						case "spiral staircase":
+						case "stone staircase":
+						case "marble staircase":
+						case "wooden staircase":
 							handleStaircases(player, object, 3);
 							break;
 						default:
@@ -3401,6 +3413,7 @@ public final class ObjectHandler {
 
 	private static boolean handleStaircases(Player player, WorldObject object, int optionId) {
 		String option = object.getDefinitions().getOption(optionId);
+		if (option == null) return false;
 		if (option.equalsIgnoreCase("Climb-up")) {
 			if (player.getPlane() == 3)
 				return false;
@@ -3410,12 +3423,21 @@ public final class ObjectHandler {
 				return false;
 			player.useStairs(-1, player.transform(0, 0, -1), 0, 1);
 		} else if (option.equalsIgnoreCase("Climb")) {
-			if (player.getPlane() == 3 || player.getPlane() == 0)
-				return false;
-			player.getDialogueManager().startDialogue("ClimbNoEmoteStairs", player.transform(0, 0, 1), player.transform(0, 0, -1), "Go up the stairs.", "Go down the stairs.");
+			// Mid-floors with both up and down available - dialogue.
+			// Top floor (plane 3) can only go down; ground (plane 0)
+			// can only go up. Originally this case returned false
+			// instead of doing anything, so Slayer Tower top-floor
+			// (gargoyle level) had no way to descend.
+			if (player.getPlane() == 3) {
+				player.useStairs(-1, player.transform(0, 0, -1), 0, 1);
+			} else if (player.getPlane() == 0) {
+				player.useStairs(-1, player.transform(0, 0, 1), 0, 1);
+			} else {
+				player.getDialogueManager().startDialogue("ClimbNoEmoteStairs", player.transform(0, 0, 1), player.transform(0, 0, -1), "Go up the stairs.", "Go down the stairs.");
+			}
 		} else
 			return false;
-		return false;
+		return true;
 	}
 
 	private static boolean handleLadder(Player player, WorldObject object, int optionId) {

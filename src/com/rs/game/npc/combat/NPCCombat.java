@@ -39,32 +39,7 @@ public final class NPCCombat {
 		if (combatDelay > 0)
 			combatDelay--;
 		if (target != null) {
-			// Diagnostic: if NPC-COMBAT logs were silent earlier the
-			// real question is whether process() runs at all when
-			// target is set. Sampled 1-in-12 (~once per ~7s per ticking
-			// NPC) so we don't flood the log but still catch the case
-			// where combatAttack is being skipped because checkAll fails.
-			try {
-				if (com.rs.utils.Utils.random(12) == 0) {
-					com.rs.bot.BotLog.log("NPC-PROCESS", npc.getId()
-						+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-						+ " combatDelay=" + combatDelay
-						+ " target=" + (target == null ? "null" : target.toString()));
-				}
-			} catch (Throwable ignored) {}
 			if (!checkAll()) {
-				try {
-					if (com.rs.utils.Utils.random(8) == 0) {
-						com.rs.bot.BotLog.log("NPC-CHECKALL-FAIL", npc.getId()
-							+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-							+ " mapArea=" + npc.getMapAreaNameHash()
-							+ " plane=" + npc.getPlane() + "/" + (target != null ? target.getPlane() : -1)
-							+ " npcTile=" + npc.getX() + "," + npc.getY()
-							+ " respawnTile=" + npc.getRespawnTile().getX() + "," + npc.getRespawnTile().getY()
-							+ " bound=" + npc.isBound() + " stunned=" + npc.isStunned()
-							+ " cantInteract=" + npc.isCantInteract());
-					}
-				} catch (Throwable ignored) {}
 				removeTarget();
 				return false;
 			}
@@ -125,43 +100,17 @@ public final class NPCCombat {
 		}
 		// MAGE_FOLLOW and RANGE_FOLLOW follow close but can attack far unlike
 		// melee
-		int maxDistance = npc.isCantFollowUnderCombat() ? 16 :
+		int maxDistance = npc.isCantFollowUnderCombat() ? 16 : 
 			npc.getAttackStyle() != Combat.MELEE_TYPE ?
 				9 : 0;//attackStyle == NPCCombatDefinitions.MELEE ? 0 : npc.isCantFollowUnderCombat() ? 16 : 9;
 		//player is walking to atm
-		boolean clip = npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target));
-		int extra = (npc.hasWalkSteps() && target.hasWalkSteps() ? (npc.getRun() && target.getRun() ? 2 : 1) : 0);
-		boolean inRange = Utils.isOnRange(npc, target, maxDistance + extra);
-		boolean colides = !npc.isCantFollowUnderCombat() && Utils.colides(npc, target);
-		if (!clip || !inRange || colides) {
-			// Diagnostic: NPC has a target but combatAttack is rejecting
-			// the swing. Tell us which gate fired so we can pinpoint why
-			// "monsters don't fight back". 1-in-6 sample.
-			try {
-				if (com.rs.utils.Utils.random(6) == 0) {
-					String reason;
-					if (!clip)        reason = "NO_CLIP";
-					else if (!inRange) reason = "OUT_OF_RANGE(maxD=" + maxDistance + " extra=" + extra
-						+ " npc=" + npc.getX() + "," + npc.getY()
-						+ " tgt=" + target.getX() + "," + target.getY() + ")";
-					else               reason = "COLLIDES";
-					com.rs.bot.BotLog.log("NPC-COMBAT", npc.getId()
-						+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-						+ " combatAttack rejected: " + reason);
-				}
-			} catch (Throwable ignored) {}
+		if ((!npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target))) 
+				|| !Utils.isOnRange(npc, target, maxDistance
+		//correct extra distance for walk. no glitches this way ^^. even if frozen
+		+ (npc.hasWalkSteps() && target.hasWalkSteps() ? (npc.getRun() && target.getRun() ? 2 : 1) : 0)) || (!npc.isCantFollowUnderCombat() && Utils.colides(npc, target))) {//doesnt let u attack when u under / while walking out, remove this check if u want
 			return 0;
-
+			
 		}
-		// Log a successful swing kick-off so we can confirm combatAttack
-		// reached the actual attack call. 1-in-6 sample.
-		try {
-			if (com.rs.utils.Utils.random(6) == 0) {
-				com.rs.bot.BotLog.log("NPC-COMBAT", npc.getId()
-					+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-					+ " ATTACKING (style=" + npc.getAttackStyle() + ")");
-			}
-		} catch (Throwable ignored) {}
 		addAttackedByDelay(target);
 		return CombatScriptsHandler.specialAttack(npc, target);
 	}
@@ -197,23 +146,6 @@ public final class NPCCombat {
 		}
 	}
 
-	/** Force-kick a combat tick. Called by NPC.handleIngoingHit after
-	 *  setTarget so the NPC swings back on the same tick instead of
-	 *  waiting for the next processNPC pass (which user reports often
-	 *  never happens). Resets combatDelay so the next process() runs
-	 *  combatAttack instead of decrementing. */
-	public void kickCombat() {
-		try {
-			combatDelay = 0;
-			com.rs.bot.BotLog.log("NPC-KICK", npc.getId()
-				+ " " + (npc.getDefinitions() != null ? npc.getDefinitions().name : "?")
-				+ " kickCombat - target=" + (target == null ? "null" : target.toString()));
-			process();
-		} catch (Throwable t) {
-			com.rs.bot.BotLog.log("NPC-KICK", "kick threw: " + t);
-		}
-	}
-
 	public boolean checkAll() {
 		Entity target = this.target; // prevents multithread issues
 		if (target == null)
@@ -230,16 +162,7 @@ public final class NPCCombat {
 		int maxDistance;
 		int agroRatio = npc.getCombatDefinitions().getAgroRatio();
 		if (!npc.isNoDistanceCheck() && !npc.isCantFollowUnderCombat()) {
-			// User report: NPCs don't retaliate. Root cause: this
-			// distance check wipes the target the moment the NPC
-			// drifts past `maxDistance` tiles from its respawn tile.
-			// At maxDistance=12 even a few seconds of wandering puts
-			// regular mobs (Goblins / Cows / Guards) out of range,
-			// so every checkAll fires forceWalkRespawnTile + removes
-			// the target before combatAttack ever runs. Bumped the
-			// floor from 12 to 32 so NPCs can chase a player a
-			// realistic distance before rubber-banding home.
-			maxDistance = agroRatio > 32 ? agroRatio : 32;
+			maxDistance = agroRatio > 12 ? agroRatio : 12; //before 32, but its too much
 			if (!(npc instanceof Familiar)) {
 
 				if (npc.getMapAreaNameHash() != -1) {
@@ -254,16 +177,11 @@ public final class NPCCombat {
 					return false;
 				}
 			}
-			// Target-distance check: max distance between NPC and the
-			// target it's chasing. Bumped 16 -> 24 so NPCs don't drop
-			// target the moment the player walks a couple of tiles
-			// away. Real RS NPCs persist target longer; 16 was too
-			// twitchy.
-			maxDistance = agroRatio > 24 ? agroRatio : 24;
+			maxDistance = agroRatio > 16 ? agroRatio : 16;
 			distanceX = target.getX() - npc.getX();
 			distanceY = target.getY() - npc.getY();
 			if (distanceX > size + maxDistance || distanceX < -1 - maxDistance || distanceY > size + maxDistance || distanceY < -1 - maxDistance) {
-				return false; // if target distance > 24
+				return false; // if target distance higher 16
 			}
 		} else {
 			distanceX = target.getX() - npc.getX();
@@ -345,7 +263,22 @@ public final class NPCCombat {
 				npc.resetWalkSteps();
 				// is far from target, moves to it till can attack
 				if ((!npc.clipedProjectile(target, maxDistance == 0 && !forceCheckClipAsRange(target))) || !Utils.isOnRange(npc.getX(), npc.getY(), size, target.getX(), target.getY(), targetSize, maxDistance)) {
-					npc.calcFollow(target, npc.getRun() ? 2 : 1, true, npc.isIntelligentRouteFinder());
+					// NPCs in combat run + use intelligent routing.
+					// Defaults were:
+					//   getRun() ? 2 : 1  -> NPCs walk at 1 tile/tick by
+					//   default, half a running player's speed, so a
+					//   fleeing player permanently outpaces every melee
+					//   monster.
+					//   isIntelligentRouteFinder()  -> defaults to false
+					//   for most NPCs, which routes them through
+					//   findBasicRoute (single-tile step straight at
+					//   target, no obstacle navigation, fails when any
+					//   other NPC sits on the next tile). Clustered
+					//   monsters end up blocking each other and never
+					//   converge on the player.
+					// Force both on during combat so monsters actually
+					// chase their target.
+					npc.calcFollow(target, 2, true, true);
 					return true;
 				}
 				// if under target, moves
