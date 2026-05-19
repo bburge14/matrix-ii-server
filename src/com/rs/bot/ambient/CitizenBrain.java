@@ -536,6 +536,29 @@ public class CitizenBrain extends BotBrain {
         // Drop any pending bot-to-bot conversation reply that's due.
         try { BotConversations.tickConvo(bot); } catch (Throwable ignored) {}
 
+        // Wildy panic: socialites / skillers / non-PK combatants who
+        // wandered into the wilderness need to GTFO. Real socialites
+        // never go past the ditch; if one ends up there it's because
+        // a teleport jitter / pathing edge case dropped them inside.
+        // Teleport to a safe city tile (home anchor or Lumby) and
+        // skip the rest of the idle tick.
+        try {
+            boolean shouldFlee = archetype != null
+                && !archetype.isPker()
+                && !archetype.isCombatant() // tier-4 combat hangouts can dip into wildy
+                && com.rs.game.player.controllers.Wilderness.isAtWild(bot);
+            if (shouldFlee) {
+                com.rs.game.WorldTile safe = homeAnchor != null
+                    ? homeAnchor
+                    : new com.rs.game.WorldTile(3222, 3219, 0); // Lumbridge
+                bot.setNextWorldTile(safe);
+                bot.getControlerManager().forceStop();
+                debug(bot, "wildy panic - teleporting back to "
+                    + safe.getX() + "," + safe.getY());
+                return;
+            }
+        } catch (Throwable ignored) {}
+
         // "Dancing" socialites - small chance to take a step toward a
         // nearby socialite leader so 2-3 of them appear to be following
         // each other. Limited to socialites + only fires when the bot
@@ -727,6 +750,34 @@ public class CitizenBrain extends BotBrain {
     }
 
     private void tickInteracting(AIPlayer bot) {
+        // Force-retaliate when someone hit us. The engine's autoRelatie
+        // skips when hasWalkSteps() / hasSkillWorking() / isLocked() -
+        // PK bots are always walking (chase / wander / loot pickup), so
+        // they almost never auto-retal in practice. User confirmed:
+        // "I am a level 126 and they were level 110, PK bots not
+        // attacking back."
+        //
+        // If the bot has an attackedBy entity and isn't already engaging
+        // it, fire PlayerCombatNew directly. Bypasses all the
+        // walking/locked gates the engine's autoRelatie checks.
+        try {
+            com.rs.game.Entity attacker = bot.getAttackedBy();
+            if (attacker != null
+                    && !attacker.isDead() && !attacker.hasFinished()
+                    && bot.getAttackedByDelay() > System.currentTimeMillis()
+                    && !(bot.getActionManager().getAction()
+                        instanceof com.rs.game.player.actions.PlayerCombatNew
+                        && ((com.rs.game.player.actions.PlayerCombatNew)
+                            bot.getActionManager().getAction()).getTarget() == attacker)) {
+                bot.setNextFaceEntity(attacker);
+                bot.getActionManager().setAction(
+                    new com.rs.game.player.actions.PlayerCombatNew(attacker));
+                debug(bot, "force-retal vs " + (attacker instanceof com.rs.game.player.Player
+                    ? ((com.rs.game.player.Player) attacker).getDisplayName()
+                    : "npc"));
+                return;
+            }
+        } catch (Throwable ignored) {}
         // PK behaviour. Two flavours:
         //   * Dedicated COMBATANT_PKER - this is their ONLY combat mode.
         //     They eat / pot, hunt opted-in players in a wider radius
