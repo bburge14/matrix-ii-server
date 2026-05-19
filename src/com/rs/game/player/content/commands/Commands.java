@@ -3056,6 +3056,43 @@ public final class Commands {
 		player.getTemporaryAttributtes().put("lastEscapeMs", now);
 		return true;
 	    }
+	    case "bossinstance":
+	    case "bi": {
+		// Open boss-instance entry for any wired boss by name.
+		// Usage: ::bossinstance kbd, ::bi bandos, ::bi vorago, etc.
+		// Case-insensitive, matches against Boss enum names.
+		if (cmd.length < 2) {
+		    StringBuilder sb = new StringBuilder("Usage: ::bi <name>. Available: ");
+		    for (com.rs.game.map.bossInstance.BossInstanceHandler.Boss b
+		            : com.rs.game.map.bossInstance.BossInstanceHandler.Boss.values()) {
+		        sb.append(b.name()).append(' ');
+		    }
+		    player.getPackets().sendGameMessage(sb.toString());
+		    return true;
+		}
+		String want = cmd[1].toLowerCase().replace('_', ' ').replace('-', ' ');
+		com.rs.game.map.bossInstance.BossInstanceHandler.Boss target = null;
+		for (com.rs.game.map.bossInstance.BossInstanceHandler.Boss b
+		        : com.rs.game.map.bossInstance.BossInstanceHandler.Boss.values()) {
+		    String norm = b.name().toLowerCase().replace('_', ' ');
+		    if (norm.equals(want) || norm.startsWith(want)
+		            || norm.replace(" ", "").equals(want.replace(" ", ""))) {
+		        target = b;
+		        break;
+		    }
+		}
+		if (target == null) {
+		    player.getPackets().sendGameMessage("Unknown boss: " + cmd[1]);
+		    return true;
+		}
+		try {
+		    com.rs.game.map.bossInstance.BossInstanceHandler.enterInstance(player, target);
+		    player.getPackets().sendGameMessage("Opening " + target.name() + " instance...");
+		} catch (Throwable t) {
+		    player.getPackets().sendGameMessage("Failed to open instance: " + t.getMessage());
+		}
+		return true;
+	    }
 	    case "itemn": {
 		if (!player.canSpawn() && player.getRights() < 2) {
 		    player.getPackets().sendGameMessage("You can't spawn while you're in this area.");

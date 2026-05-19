@@ -31,6 +31,14 @@ public class BossInstanceHandler {
 		, Corporeal_Beast(CorporealBeastInstance.class, 300000, 200, false, true, new WorldTile(2970, 4384, 2), new WorldTile(2974, 4384, 2), null, "CorporealBeastInstanceController", 617)
 		, Kalphite_King(KalphiteKingInstance.class, 0, 200, false, false, new WorldTile(2971, 1656, 0), new WorldTile(2974, 1746, 0), null, "KalphiteKingInstanceController", 1140)
 		, Vorago(VoragoInstance.class, 1000000, 50, true, true, new WorldTile(2972, 3431, 0), new WorldTile(3043, 6100, 0), new WorldTile(3072, 6176, 0), "VoragoInstanceController", 1155)
+		// GWD bosses - reuse the generic BossInstanceController (no special
+		// in-instance logic needed beyond standard exit/disconnect handling).
+		// outsideTile = a city tile the player teleports to on exit;
+		// insideTile = the boss arena spawn location.
+		, Bandos(com.rs.game.map.bossInstance.impl.BandosInstance.class, 250000, 6, false, true, new WorldTile(2914, 5300, 0), new WorldTile(2864, 5354, 0), null, "BossInstanceController", 318)
+		, Armadyl(com.rs.game.map.bossInstance.impl.ArmadylInstance.class, 250000, 6, false, true, new WorldTile(2872, 5269, 2), new WorldTile(2839, 5296, 0), null, "BossInstanceController", 318)
+		, Saradomin(com.rs.game.map.bossInstance.impl.SaradominInstance.class, 250000, 6, false, true, new WorldTile(2914, 5300, 0), new WorldTile(2913, 5273, 0), null, "BossInstanceController", 318)
+		, Zamorak(com.rs.game.map.bossInstance.impl.ZamorakInstance.class, 250000, 6, false, true, new WorldTile(2914, 5300, 0), new WorldTile(2926, 5333, 0), null, "BossInstanceController", 318)
 
 		;
 		private final Map<String, BossInstance> cachedInstances = Collections.synchronizedMap(new HashMap<String, BossInstance>());
