@@ -516,15 +516,24 @@ public final class TrainingMethods {
             .skill(Skills.ATTACK).lvl(60, 85).at(2676, 3666).xp(50000).cb(60)
             .npcs(1308, 1309, 1310, 1311).build());
 
-        // Tier 4 (cb 90-120): nechryael, dust devils, abyssal demons, gargoyles
-        ALL.add(b("Train combat - Slayer tower abyssal demons", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(85, 120).at(3417, 3563, 2).xp(70000).cb(85)
+        // Tier 4 (cb 90-120): abyssal demons, banshees, dust devils.
+        //
+        // Slayer Tower's higher floors (gargoyles plane 2-3, aberrant
+        // spectres plane 1) are unreachable for bots - executeTrainingMethod's
+        // plane-shift only finds ladder objects within 6 tiles, and the
+        // spiral staircases are scattered + agility-gated. Until proper
+        // multi-floor bot pathing exists, redirect the high-tier slayer
+        // method to the plane-0 Kourend abyssal demon cave (1633,5300)
+        // which is fully reachable. Banshees stay as a ground-floor
+        // Slayer Tower option since they DO spawn on plane 0 (1612).
+        ALL.add(b("Train combat - Abyssal demons Kourend cave", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(85, 120).at(1633, 5300).xp(70000).cb(85)
             .gp(180000)
             .npcs(1615, 1616, 13345).build());
-        ALL.add(b("Train combat - Slayer tower gargoyles", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(75, 110).at(3437, 3552, 2).xp(65000).cb(75)
-            .gp(120000)
-            .npcs(1610, 1611).build());
+        ALL.add(b("Train combat - Slayer tower banshees", Kind.COMBAT)
+            .skill(Skills.ATTACK).lvl(40, 75).at(3437, 3559).xp(35000).cb(40)
+            .gp(40000)
+            .npcs(1612).build());
         ALL.add(b("Train combat - Dust devils Smoke", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(65, 95).at(3309, 9376).xp(55000).cb(65)
             .gp(80000)
