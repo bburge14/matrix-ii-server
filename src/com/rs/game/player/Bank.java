@@ -423,19 +423,41 @@ public class Bank implements Serializable {
     }
 
     public void insertItem(int fromSlot, int toSlot, int fromComponentId, int toComponentId) {
-	int[] slot = getRealSlot(fromSlot);
-	Item fromItem = getItem(slot);
-	if (fromItem == null)
-	    return;
+	// CRITICAL BUG FIX: the original built a +1 oversized temp array and
+	// NEVER used it, instead doing a hardcoded swap at [slot[1]] /
+	// [slot[1]+1]. That overwrote whatever item was at slot[1]+1
+	// (destroying it) AND threw an array-out-of-bounds if the drag-source
+	// was the last slot in the tab. User: "I set stuff in tabs and they
+	// move on their own, places are not where it used to be."
+	//
+	// Real RS insert: slide items between from-pos and to-pos by one slot
+	// in the direction of travel, then place the from-item at to-pos. No
+	// size change to the tab array, no item destruction.
+	int[] fromRealSlot = getRealSlot(fromSlot);
+	if (fromRealSlot == null) return;
+	Item fromItem = getItem(fromRealSlot);
+	if (fromItem == null) return;
 	int[] toRealSlot = getRealSlot(toSlot);
-	Item toItem = getItem(toRealSlot);
-	if (toItem == null)
+	if (toRealSlot == null) return;
+	if (fromRealSlot[0] != toRealSlot[0]) {
+	    // Cross-tab insert isn't a slide - delegate to switchItem which
+	    // already handles tab-to-tab moves.
+	    switchItem(fromSlot, toSlot, fromComponentId, toComponentId);
 	    return;
-	Item[] tab = new Item[bankTabs[slot[0]].length + 1];
-	System.arraycopy(bankTabs[slot[0]], slot[1], tab, slot[1] - 1, bankTabs[slot[0]].length - slot[1] + 1);
-	bankTabs[slot[0]][slot[1]] = toItem;
-	bankTabs[slot[0]][slot[1] + 1] = fromItem;
-	refreshTab(slot[0]);
+	}
+	Item[] tab = bankTabs[fromRealSlot[0]];
+	int from = fromRealSlot[1];
+	int to = toRealSlot[1];
+	if (from == to) return;
+	if (from < to) {
+	    // Sliding forward: items between from+1 and to shift back by 1.
+	    for (int i = from; i < to; i++) tab[i] = tab[i + 1];
+	} else {
+	    // Sliding backward: items between to and from-1 shift forward by 1.
+	    for (int i = from; i > to; i--) tab[i] = tab[i - 1];
+	}
+	tab[to] = fromItem;
+	refreshTab(fromRealSlot[0]);
     }
 
     public void switchItem(int fromSlot, int toSlot, int fromComponentId, int toComponentId) {
@@ -675,7 +697,7 @@ public class Bank implements Serializable {
 	}
     }
 
-    public void sendExamineÎnventory(int slotId) {
+    public void sendExamineï¿½nventory(int slotId) {
 	Item item = player.getInventory().getItem(slotId);
 	if (item == null)
 	    return;
