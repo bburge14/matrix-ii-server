@@ -1714,16 +1714,28 @@ public class BotBrain {
         // net for trees that turn out to be unreachable (clip-blocked
         // by a fence, etc.) - we re-pick after a few seconds.
         if (cachedTargetObject != null && cachedTargetTtl > 0) {
-            String name = cachedTargetObject.getDefinitions().name;
-            com.rs.game.player.actions.Woodcutting.TreeDefinitions td =
-                EnvironmentScanner.matchTree(name);
-            if (td != null && (method.treeDef == null || td == method.treeDef)) {
-                match = new EnvironmentScanner.TreeMatch(cachedTargetObject, td);
-                cachedTargetTtl--;
-            } else {
-                // Tree got chopped down (stump replaced the object) or
-                // method changed - clear and re-scan.
+            // World-state check: when the tree gets chopped, the
+            // world's tile now holds a stump (a different object id),
+            // but our cached WorldObject reference still points at the
+            // original tree object so its .name is still "Yew tree".
+            // matchTree() happily returns YEW, the bot tries to chop a
+            // ghost, Woodcutting.checkTree returns false, action drops,
+            // brain re-fires the cache on the next tick - infinite loop.
+            // Verify the world STILL has the same object id at that tile.
+            boolean stillThere = com.rs.game.World.containsObjectWithId(
+                cachedTargetObject, cachedTargetObject.getId());
+            if (!stillThere) {
                 cachedTargetObject = null;
+            } else {
+                String name = cachedTargetObject.getDefinitions().name;
+                com.rs.game.player.actions.Woodcutting.TreeDefinitions td =
+                    EnvironmentScanner.matchTree(name);
+                if (td != null && (method.treeDef == null || td == method.treeDef)) {
+                    match = new EnvironmentScanner.TreeMatch(cachedTargetObject, td);
+                    cachedTargetTtl--;
+                } else {
+                    cachedTargetObject = null;
+                }
             }
         }
         if (match == null) {
@@ -1820,16 +1832,24 @@ public class BotBrain {
         }
         EnvironmentScanner.RockMatch match = null;
         // Same sticky-target pattern as woodcutting - commit to one rock
-        // until reached or TTL expires.
+        // until reached or TTL expires. World-state check so depleted
+        // rocks (which swap to a "rocks" object) don't keep being
+        // re-targeted.
         if (cachedTargetObject != null && cachedTargetTtl > 0) {
-            String name = cachedTargetObject.getDefinitions().name;
-            com.rs.game.player.actions.mining.Mining.RockDefinitions rd =
-                EnvironmentScanner.matchRock(name);
-            if (rd != null && (method.rockDef == null || rd == method.rockDef)) {
-                match = new EnvironmentScanner.RockMatch(cachedTargetObject, rd);
-                cachedTargetTtl--;
-            } else {
+            boolean stillThere = com.rs.game.World.containsObjectWithId(
+                cachedTargetObject, cachedTargetObject.getId());
+            if (!stillThere) {
                 cachedTargetObject = null;
+            } else {
+                String name = cachedTargetObject.getDefinitions().name;
+                com.rs.game.player.actions.mining.Mining.RockDefinitions rd =
+                    EnvironmentScanner.matchRock(name);
+                if (rd != null && (method.rockDef == null || rd == method.rockDef)) {
+                    match = new EnvironmentScanner.RockMatch(cachedTargetObject, rd);
+                    cachedTargetTtl--;
+                } else {
+                    cachedTargetObject = null;
+                }
             }
         }
         if (match == null) {
