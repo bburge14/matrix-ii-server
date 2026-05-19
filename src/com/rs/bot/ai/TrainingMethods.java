@@ -475,15 +475,15 @@ public final class TrainingMethods {
         ALL.add(b("Train combat - Stronghold rats lvl 1", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(1, 15).at(2155, 5092).xp(8000).cb(1)
             .npcs(2854, 2855, 2856).build());
-        // Burthorpe combat starter spots - Trolls / Imps / Goblins around
-        // the city + the Death Plateau area. Anchors in the city itself
-        // so bots aggro the right pack on arrival.
-        ALL.add(b("Train combat - Burthorpe imps", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(1, 20).at(2898, 3554).xp(7000).cb(1)
-            .npcs(708, 709).build()); // 708 imp, 709 vicious imp (414 was wrong)
-        ALL.add(b("Train combat - Burthorpe goblins", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(1, 25).at(2880, 3546).xp(9000).cb(1)
-            .npcs(100, 101, 102).build()); // 100/101 goblin, 102 strong goblin
+        // Burthorpe combat - only Death Plateau trolls. The "imps" and
+        // "goblins" entries here pointed at (2898,3554) and (2880,3546)
+        // for npc IDs 708/709 and 100/101/102 respectively, but neither
+        // species is actually spawned in Burthorpe in this server's
+        // NPCSpawns. Bots arrived and CB-TRACE flooded NO_TARGET. The
+        // real NPCs at those tiles are Guards (1076) and Servants (1081),
+        // already covered by other methods. Dropped both as broken-data
+        // dead ends; the existing Death Plateau trolls entry stays for
+        // anyone training there.
         ALL.add(b("Train combat - Death Plateau trolls", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(60, 99).at(2853, 3582).xp(35000).cb(60)
             .npcs(1095, 1096, 1097, 1098).build()); // mountain trolls (941-945 were wrong)

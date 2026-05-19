@@ -2140,6 +2140,21 @@ public class BotBrain {
             goalBlacklist.add(method);
             return;
         }
+        // Walk-into-range first when the scanner picks a target more than
+        // 6 tiles away. PlayerCombatNew's own approach logic can handle
+        // melee chase but if the scanner finds a target 18 tiles south
+        // of us (CB-TRACE example: botPos 3294,3187 targetPos 3301,3170,
+        // dist=18), engaging is wasted - the action immediately exits
+        // out-of-range and the brain re-fires next tick. Walk closer
+        // instead, then engage on the tick we land in melee range.
+        int dx = target.getX() - bot.getX();
+        int dy = target.getY() - bot.getY();
+        if (dx*dx + dy*dy > 36) { // > 6 tiles
+            BotPathing.walkToEntity(bot, target);
+            lastDiagnostic = "combat: walking to NPC " + target.getId()
+                + " (" + (int)Math.sqrt(dx*dx + dy*dy) + " tiles)";
+            return;
+        }
 
         // Unsheathe before the swing - isSheathe() returns false during
         // active combat but only after a hit lands, and the appearance
