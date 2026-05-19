@@ -507,8 +507,8 @@ public final class TrainingMethods {
             .skill(Skills.ATTACK).lvl(60, 90).at(2721, 3726).xp(45000).cb(60)
             .npcs(1265, 1267).build());
         ALL.add(b("Train combat - Ankou", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(60, 85).at(2701, 3471).xp(48000).cb(60)
-            .npcs(98, 1798).build());
+            .skill(Skills.ATTACK).lvl(60, 85).at(3019, 3289).xp(48000).cb(60)
+            .npcs(98, 1798).build()); // Stronghold of Player Safety lvl 4; old (2701,3471) had no Ankou spawns
         ALL.add(b("Train combat - Experiment cave", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(50, 75).at(3539, 9963).xp(40000).cb(50)
             .npcs(1677, 1678).build());
@@ -535,19 +535,16 @@ public final class TrainingMethods {
             .gp(40000)
             .npcs(1612).build());
         ALL.add(b("Train combat - Dust devils Smoke", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(65, 95).at(3309, 9376).xp(55000).cb(65)
+            .skill(Skills.ATTACK).lvl(65, 95).at(3168, 5510).xp(55000).cb(65)
             .gp(80000)
-            .npcs(1624, 1625).build());
+            .npcs(1624, 1625).build()); // canonical Smoke Dungeon coords; old (3309,9376) had no spawns
 
-        // Tier 5 (cb 100+ bossing - profitable PvM)
-        ALL.add(b("Boss - King Black Dragon", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(85, 99).at(2273, 4680).xp(80000).cb(95)
-            .gp(800000)
-            .npcs(50).dangerous().build());
-        ALL.add(b("Boss - Kalphite Queen", Kind.COMBAT)
-            .skill(Skills.ATTACK).lvl(90, 99).at(3485, 9510).xp(90000).cb(110)
-            .gp(1500000)
-            .npcs(1158, 1160).dangerous().build());
+        // Tier 5 (cb 100+ bossing - profitable PvM).
+        //
+        // KBD (50) and KQ (1158, 1160) removed - neither boss has a spawn
+        // entry in this server's NPCSpawns, so bots teleported to the lair
+        // tiles and found nothing. GWD bosses (6203/6222/6247/6260) DO
+        // have spawns at the canonical instance coords, those stay.
         ALL.add(b("Boss - GWD Bandos", Kind.COMBAT)
             .skill(Skills.ATTACK).lvl(70, 99).at(2864, 5354).xp(75000).cb(110)
             .gp(2000000)
