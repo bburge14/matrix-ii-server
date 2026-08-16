@@ -44,17 +44,12 @@
 // ^ Smith at Varrock east anvil
 7883 - 2896 3442 0
 // ^ Master Cook moved to Taverly per user request
-15056 - 2921 3445 0
-// ^ Pikkupstix (Summoning Master) at Taverly
-3 - 3104 3162 0
-// ^ Wizard Distentor (RC/Magic Master) at Wizards' Tower
-// New free-zone skill masters (Burthorpe/Taverly area)
-15407 - 2923 3524 0
-// ^ Diviner (Wizard Finix variant) at user-specified coords
-1585 - 2912 3531 0
-// ^ Master Ranger near Commander Denulth
-15403 - 2914 3531 0
-// ^ Master Mage near Commander Denulth
+// Pikkupstix, Wizard Distentor spawns removed - real Burthorpe/Taverly NPCs
+// (Pikkupstix=6988, Magestix=14866, Poletax=14854 etc.) are already spawned
+// by the base spawnsList.txt so no custom spawn needed. Fake spawns for
+// 15407 (fake diviner), 1585 (turned out to be Fire giant), 15403 (fake mage)
+// were removed - the real named Burthorpe/Taverly masters are wired via
+// NPCHandler.java to the correct existing cache IDs.
 // Donator zone entrance NPCs
 2253 - 3787 4358 1
 9085 - 3789 4360 1
@@ -74,9 +69,9 @@
 // ^ DZ Fishing: Master Fisher Harry duplicate
 47 - 3815 4382 1
 // ^ DZ Crafting/Smith/Cook/Fire: Smith duplicate (per user request - was Fat Tony out of area)
-15056 - 3784 4404 1
-// ^ DZ Summoning: Pikkupstix duplicate
-14937 - 3787 4427 1
-// ^ DZ Firemaking: Marcus Everburn duplicate (in WC zone per user)
+6988 - 3784 4404 1
+// ^ DZ Summoning: Pikkupstix duplicate (real ID 6988 per user)
+14883 - 3787 4427 1
+// ^ DZ Firemaking: Marcus Everburn duplicate (real ID 14883 per user)
 6893 - 2925 3445 0
 // ^ Master Pet Shop - sells all 50 pets, near Pikkupstix in Taverly
