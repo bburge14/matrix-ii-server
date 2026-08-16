@@ -4,19 +4,16 @@ cd /d "%~dp0"
 setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM  Brad's Playground - Client Launcher with restart watchdog
+REM  Brad's Playground - Client Launcher
 REM
-REM  Fixes for:
 REM   - Idle blackscreen   : forces pure software rendering (no
-REM                          DirectDraw, no D3D, no OpenGL). Slower
-REM                          but doesn't blackscreen when idle.
-REM   - Server-crash freeze: short network read timeout (20s) so
-REM                          dead sockets surface a disconnect
-REM                          instead of leaving the client hung.
-REM   - Crash recovery     : auto-restart loop. On clean exit,
-REM                          prompts to restart (Y in 5s, N to quit).
-REM                          On crash (non-zero exit), auto-restarts
-REM                          after 7s cooldown.
+REM                          DirectDraw, no D3D, no OpenGL).
+REM   - Server-crash freeze: short network read timeout (20s)
+REM                          surfaces dead sockets fast.
+REM   - Clean exit         : if the user closes the client, the
+REM                          launcher exits. No prompt.
+REM   - Crash recovery     : ONLY auto-restarts on non-zero exit
+REM                          (actual JVM crash), after 7s cooldown.
 REM ============================================================
 
 :loop
@@ -44,22 +41,18 @@ title Brad's Playground (exited - code %EXITCODE%)
 echo.
 echo [%TIME%] Client exited with code %EXITCODE%.
 
-if "%EXITCODE%"=="0" (
-    echo.
-    choice /c yn /t 5 /d y /m "Restart in 5s (Y/N)"
-    if errorlevel 2 goto end
-    echo Restarting...
-) else (
-    echo Crash detected. Auto-restarting in 7 seconds...
-    echo Press Ctrl+C now to abort.
-    timeout /t 7 /nobreak > nul 2>&1
-)
+REM Clean exit (user closed the client) -> quit the launcher.
+if "%EXITCODE%"=="0" goto end
 
+REM Non-zero exit = crash. Auto-restart after cooldown.
+echo Crash detected. Auto-restarting in 7 seconds...
+echo Press Ctrl+C now to abort.
+timeout /t 7 /nobreak > nul 2>&1
 echo.
 goto loop
 
 :end
 echo.
-echo Goodbye.
+echo Client closed. Launcher exiting.
 timeout /t 2 > nul 2>&1
 exit /b 0
