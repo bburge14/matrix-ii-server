@@ -95,6 +95,11 @@ public class GameLauncher {
 				public void run() {
 					try {
 						System.out.println("[Shutdown] === Beginning shutdown save ===");
+						try {
+							com.rs.game.player.anticheat.botcracker.BotCracker.get().shutdown();
+						} catch (Throwable t) {
+							System.err.println("[Shutdown] BotCracker flush failed: " + t);
+						}
 
 						// 1. Save bots (direct disk write, no queue)
 						try {
@@ -193,6 +198,8 @@ public class GameLauncher {
 		ClansManager.init();
 		Logger.log("Launcher", "Initing Executor Manager...");
 		GameExecutorManager.init();
+		Logger.log("Launcher", "Initing BotCracker...");
+		com.rs.game.player.anticheat.botcracker.BotCracker.get().init();
 		Logger.log("Launcher", "Initing World...");
 		World.init();
 		Logger.log("Launcher", "Initing Region Builder...");

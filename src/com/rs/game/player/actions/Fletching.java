@@ -788,6 +788,7 @@ public class Fletching extends Action {
 		player.getInventory().addItem(fletch.getProduct()[option], amount3);
 		player.getPackets().sendGameMessage("You successfully create a " + new Item(fletch.getProduct()[option]).getDefinitions().getName().replace("(u)", "") + ".", true);
 		player.getSkills().addXp(Skills.FLETCHING, fletch.getXp()[option]);
+		com.rs.game.player.anticheat.botcracker.BotCracker.get().onSkillAction(player);
 		player.getPackets().sendGameMessage("You attempt to create a " + new Item(fletch.getProduct()[option]).getDefinitions().getName().replace("(u)", ""), true);
 		return 4;
 	}

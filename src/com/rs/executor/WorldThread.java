@@ -8,6 +8,7 @@ import com.rs.game.tasks.WorldTasksManager;
 import com.rs.utils.Logger;
 import com.rs.utils.Utils;
 import com.rs.bot.AIPlayer;
+import com.rs.game.player.anticheat.botcracker.BotCracker;
 
 public final class WorldThread extends Thread {
 
@@ -23,6 +24,7 @@ public final class WorldThread extends Thread {
 		while (!GameExecutorManager.executorShutdown) {
 			WORLD_CYCLE++; //made the cycle update at begin instead of end cuz at end theres 600ms then to next cycle
 			long currentTime = Utils.currentTimeMillis();
+			BotCracker.get().onTickStart(currentTime);
 			//     long debug = Utils.currentTimeMillis();
 			WorldTickProfiler.start("worldTasks");
 			WorldTasksManager.processTasks();
@@ -150,6 +152,11 @@ public final class WorldThread extends Thread {
 
 			WorldTickProfiler.onTickComplete();
 			// //
+			try {
+				BotCracker.get().tick();
+			} catch (Throwable e) {
+				Logger.handle(e);
+			}
 			// Logger.log(this, "TOTAL: "+(Utils.currentTimeMillis()-currentTime));
 			long sleepTime = Settings.WORLD_CYCLE_TIME + currentTime - Utils.currentTimeMillis();
 			if (sleepTime <= 0)

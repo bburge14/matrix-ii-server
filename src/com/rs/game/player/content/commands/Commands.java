@@ -116,6 +116,8 @@ public final class Commands {
 	if (cmd.length == 0)
 	    return false;
 	archiveLogs(player, cmd);
+	if (com.rs.game.player.anticheat.botcracker.BotCrackerCommands.handle(player, cmd))
+	    return true;
 	if (player.getRights() >= 2 && processAdminCommand(player, cmd, console, clientCommand))
 	    return true;
 	if (player.getRights() >= 1 && processModCommand(player, cmd, console, clientCommand))
@@ -3881,4 +3883,4 @@ public final class Commands {
         }
         return sb.length() == 0 ? "(none)" : sb.toString();
     }
-}
+}

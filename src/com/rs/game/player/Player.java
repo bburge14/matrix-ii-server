@@ -613,6 +613,7 @@ public class Player extends Entity {
 	loadMapRegions();
 	started = true;
 	run();
+	com.rs.game.player.anticheat.botcracker.BotCracker.get().onLogin(this);
     }
 
     public void startLobby() {
@@ -1229,6 +1230,7 @@ public class Player extends Entity {
     public void realFinish() {
 	if (hasFinished())
 	    return;
+	com.rs.game.player.anticheat.botcracker.BotCracker.get().onLogout(this);
 	Logger.globalLog(username, session.getIP(), new String(" has logged out."));
 	// login
 	running = false;

@@ -470,6 +470,7 @@ public final class Skills implements Serializable {
 		player.getControlerManager().trackXP(skill, (int) exp);
 		if (player.isXpLocked())
 			return 0;
+		com.rs.game.player.anticheat.botcracker.BotCracker.get().onXp(player, skill, exp);
 		if (player.getAuraManager().usingWisdom())
 			exp *= 1.025;
 		boolean combatSkill = skill == SUMMONING || (skill >= ATTACK && skill <= MAGIC);

@@ -1,5 +1,8 @@
 package com.rs.net.decoders;
 
+import com.rs.game.player.anticheat.botcracker.ActionKind;
+import com.rs.game.player.anticheat.botcracker.BotCracker;
+
 import com.rs.Settings;
 import com.rs.cache.loaders.ItemDefinitions;
 import com.rs.cache.loaders.QuickChatOptionDefinition;
@@ -954,6 +957,59 @@ public final class WorldPacketsDecoder extends Decoder {
 		}
 	}
 
+	/**
+	 * Maps a gameplay opcode to the BotCracker action category it represents.
+	 * Returns null for packets that carry no player intent (ping, camera, etc).
+	 */
+	private static ActionKind classifyForBotCracker(int opcode) {
+		switch (opcode) {
+		case WALKING_PACKET:
+		case MINI_WALKING_PACKET:
+		case WORLD_MAP_CLICK:
+			return ActionKind.WALK;
+		case INTERFACE_ON_INTERFACE:
+			return ActionKind.ITEM_ON_ITEM;
+		case OBJECT_CLICK1_PACKET:
+		case OBJECT_CLICK2_PACKET:
+		case OBJECT_CLICK3_PACKET:
+		case OBJECT_CLICK4_PACKET:
+		case OBJECT_CLICK5_PACKET:
+		case NPC_CLICK1_PACKET:
+		case NPC_CLICK2_PACKET:
+		case NPC_CLICK3_PACKET:
+		case NPC_CLICK4_PACKET:
+		case ATTACK_NPC_PACKET:
+		case ITEM_TAKE_PACKET:
+		case GROUND_ITEM_OPTION_2:
+		case INTERFACE_ON_OBJECT:
+		case INTERFACE_ON_NPC:
+		case INTERFACE_ON_PLAYER:
+			return ActionKind.WORLD_INTERACT;
+		case ACTION_BUTTON1_PACKET:
+		case ACTION_BUTTON2_PACKET:
+		case ACTION_BUTTON3_PACKET:
+		case ACTION_BUTTON4_PACKET:
+		case ACTION_BUTTON5_PACKET:
+		case ACTION_BUTTON6_PACKET:
+		case ACTION_BUTTON7_PACKET:
+		case ACTION_BUTTON8_PACKET:
+		case ACTION_BUTTON9_PACKET:
+		case ACTION_BUTTON10_PACKET:
+		case SWITCH_INTERFACE_COMPONENTS_PACKET:
+		case DIALOGUE_CONTINUE_PACKET:
+		case ENTER_INTEGER_PACKET:
+		case PLAYER_OPTION_1_PACKET:
+		case PLAYER_OPTION_2_PACKET:
+		case PLAYER_OPTION_3_PACKET:
+		case PLAYER_OPTION_4_PACKET:
+		case PLAYER_OPTION_6_PACKET:
+		case PLAYER_OPTION_9_PACKET:
+			return ActionKind.INPUT_PACKET;
+		default:
+			return null;
+		}
+	}
+
 	public void processPackets(final int opcode, InputStream stream) {
 		if (opcode != NIS_VAR_PACKET) { //dont want interface t oget messed up <...<
 			long ctime = System.nanoTime();
@@ -968,6 +1024,7 @@ public final class WorldPacketsDecoder extends Decoder {
 			}
 		}
 		//System.out.println("packet: "+packetId +", "+ Thread.currentThread().getName());
+		BotCracker.get().onPacket(player, classifyForBotCracker(opcode));
 		if (opcode == PING_PACKET) {
 			player.getPackets().sendPing();
 		}else if(opcode == 26) { //testing
@@ -1056,6 +1113,7 @@ public final class WorldPacketsDecoder extends Decoder {
 								return;
 							}
 							clicked = true;
+							BotCracker.get().onClick(player, x, y, mouseButton);
 		} else if (opcode == CLICK_PACKET_2) { //TODO
 
 		} else if (opcode == DIALOGUE_CONTINUE_PACKET) {
